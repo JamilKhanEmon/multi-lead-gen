@@ -14,6 +14,7 @@ from typing import Dict, Any, Optional, List, Tuple
 from app.core.config import settings
 from app.core.logging import logger
 from app.services.geo_expander import GeoExpander
+from app.engine.discovery_optimizer import DiscoveryOptimizer
 
 
 class OpenClawGatewayError(Exception):
@@ -60,7 +61,16 @@ class LiveResearchEngine:
 
         logger.info(f"LiveResearchEngine: Starting live discovery for '{industry}' in '{full_location}' (Auto-exhaustion cap: {effective_limit})")
 
-        # 1. Primary: Headless Browser Search for Real Commercial Companies with Live Websites & Portals
+        # 1. LLM Query Expansion & Search Optimization Plan
+        plan = await DiscoveryOptimizer.optimize_search_plan(
+            industry=industry,
+            location=full_location,
+            country=country,
+            city=city,
+        )
+        logger.info(f"DiscoveryOptimizer: Using {len(plan['search_queries'])} targeted search queries and {len(plan['osm_queries'])} OSM targets.")
+
+        # 2. Primary: Headless Browser Search with Optimized Queries & Smart Validation
         try:
             browser_discovered = await cls._search_commercial_companies_via_browser(
                 industry=industry,
@@ -69,6 +79,8 @@ class LiveResearchEngine:
                 business_type_override=business_type_override,
                 seen_domains=seen_domains,
                 seen_names=seen_names,
+                search_queries=plan.get("search_queries"),
+                plan=plan,
             )
             for b in browser_discovered:
                 b["city"] = city
@@ -78,89 +90,8 @@ class LiveResearchEngine:
         except Exception as e:
             logger.warning(f"Live browser discovery fallback: {e}")
 
-        # 2. Secondary Verified Discovery via Local Directory (OSM Places)
-        queries = GeoExpander.build_search_queries(industry, full_location)
-
-        # Build dynamic search targets based on industry and hierarchical location
-        loc_base = f"{sub_city} {city}".strip() if sub_city and city else (sub_city or city or full_location)
-        
-        # 1. Universal variations applicable to any industry
-        base_variants = [
-            industry,
-            f"{industry} Company",
-            f"{industry} Agency",
-            f"{industry} Developer",
-            f"{industry} Services",
-            f"{industry} Group",
-            f"{industry} Office",
-            f"{industry} Solutions",
-            f"{industry} Center",
-        ]
-        
-        # 2. Industry-specific natural synonyms (purely additive based on keywords in industry)
-        ind_lower = industry.lower()
-        if any(w in ind_lower for w in ["estate", "property", "properties", "housing", "land", "realt"]):
-            base_variants.extend([
-                "Housing",
-                "Housing Society",
-                "Properties",
-                "Builders",
-                "Developers",
-                "Real Estate Developer",
-                "Holdings",
-                "Estate Agent",
-                "Land Development",
-                "Real Estate Agency",
-            ])
-        elif any(w in ind_lower for w in ["dent", "teeth", "ortho"]):
-            base_variants.extend([
-                "Dentist",
-                "Dental Care",
-                "Dental Surgery",
-                "Dental Hospital",
-                "Dental Center",
-                "Orthodontics",
-            ])
-        elif any(w in ind_lower for w in ["clinic", "hospital", "doctor", "health", "medic"]):
-            base_variants.extend([
-                "Medical Center",
-                "Healthcare",
-                "Diagnostic Center",
-                "Specialized Clinic",
-                "Hospital",
-            ])
-        elif any(w in ind_lower for w in ["law", "legal", "attorney", "advocate"]):
-            base_variants.extend([
-                "Law Firm",
-                "Advocates",
-                "Legal Associates",
-                "Attorneys",
-                "Barristers",
-            ])
-        elif any(w in ind_lower for w in ["restaurant", "food", "cafe", "dine"]):
-            base_variants.extend([
-                "Restaurant",
-                "Cafe",
-                "Bistro",
-                "Eatery",
-                "Fast Food",
-            ])
-        elif any(w in ind_lower for w in ["software", "tech", "it", "web", "agency"]):
-            base_variants.extend([
-                "Software Company",
-                "IT Solutions",
-                "Tech Agency",
-                "Software Agency",
-            ])
-
-        # Deduplicate search targets
-        seen_targets = set()
-        osm_search_targets = []
-        for v in base_variants[:12]:
-            t = f"{v} {loc_base}".strip()
-            if t.lower() not in seen_targets:
-                seen_targets.add(t.lower())
-                osm_search_targets.append(t)
+        # 3. Secondary: Clean OSM Search with Positive and Negative Keyword Enforcement
+        osm_search_targets = plan.get("osm_queries", [])
 
         for target_q in osm_search_targets:
             if len(discovered) >= effective_limit:
@@ -176,15 +107,20 @@ class LiveResearchEngine:
                     if not p_name or clean_norm_name in seen_names or len(p_name) < 3:
                         continue
 
-                    # Discard generic single words like "Clinic" or "Shop"
-                    if p_name.lower() in ["dental clinic", "clinic", "hospital", "real estate", "restaurant", "store", "shop"]:
+                    # Validate candidate against positive and negative semantic rules
+                    candidate_check = {
+                        "canonical_name": p_name,
+                        "industry": industry,
+                        "location": full_location,
+                        "address": p.get("address"),
+                        "website": p.get("website"),
+                        "domain": None,
+                        "snippet": p.get("display_name"),
+                    }
+                    is_valid, reason = DiscoveryOptimizer.validate_candidate(candidate_check, plan)
+                    if not is_valid:
+                        logger.debug(f"OSM candidate rejected: {reason}")
                         continue
-
-                    # Filter out unrelated retail/food entities that might appear on housing roads
-                    name_l = p_name.lower()
-                    if any(w in industry.lower() for w in ["estate", "property", "housing", "land", "builder"]):
-                        if any(x in name_l for x in ["medical hall", "pharmacy", "kfc", "restaurant", "cafe", "fast food", "clinic", "optical", "salon", "sweet"]):
-                            continue
 
                     seen_names.add(clean_norm_name)
                     website = p.get("website")
@@ -227,8 +163,9 @@ class LiveResearchEngine:
             except Exception as e:
                 logger.warning(f"OSM directory search error for '{target_q}': {e}")
 
-        # 2. Secondary: Web Search for Additional Corporate Websites if limit not met
+        # 4. Tertiary: Fallback Web Search if limit not met
         if len(discovered) < effective_limit:
+            queries = plan.get("search_queries", []) or GeoExpander.build_search_queries(industry, full_location)
             for q in queries[:4]:
                 if len(discovered) >= effective_limit:
                     break
@@ -240,7 +177,7 @@ class LiveResearchEngine:
                     for actual_url, title, snippet in items:
                         if len(discovered) >= effective_limit:
                             break
-                        biz = cls._process_candidate_url(actual_url, title, snippet, industry, full_location, business_type_override, seen_domains, seen_names)
+                        biz = cls._process_candidate_url(actual_url, title, snippet, industry, full_location, business_type_override, seen_domains, seen_names, plan=plan)
                         if biz:
                             biz["city"] = city
                             biz["country"] = country
@@ -261,6 +198,8 @@ class LiveResearchEngine:
         business_type_override: Optional[str] = None,
         seen_domains: Optional[set] = None,
         seen_names: Optional[set] = None,
+        search_queries: Optional[List[str]] = None,
+        plan: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Executes live browser search to discover real operating commercial entities
@@ -277,7 +216,7 @@ class LiveResearchEngine:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page(user_agent=cls.USER_AGENT)
-                queries = [
+                queries = search_queries or [
                     f"{industry} company in {location}",
                     f"top {industry} in {location} official website",
                     f"{industry} firms {location}",
@@ -311,7 +250,7 @@ class LiveResearchEngine:
                             title = it.get("title", "")
                             snippet = it.get("snippet", "")
                             biz = cls._process_candidate_url(
-                                url, title, snippet, industry, location, business_type_override, seen_domains, seen_names
+                                url, title, snippet, industry, location, business_type_override, seen_domains, seen_names, plan=plan
                             )
                             if biz:
                                 results.append(biz)
@@ -403,16 +342,21 @@ class LiveResearchEngine:
                     ptype = (props.get("type") or "").lower()
 
                     # Exclude roads, highways, streets, and paths (e.g. "Road No. 6, Sikder Real Estate")
-                    if osm_key in ["highway", "railway", "waterway"] or ptype in ["street", "highway"]:
+                    if osm_key in ["highway", "railway", "waterway"] or ptype in ["street", "highway", "residential", "neighbourhood", "suburb"]:
                         continue
 
                     # Filter out names starting with road/street/sector prefixes
-                    if any(name_l.startswith(prefix) for prefix in ["road no", "road #", "road-", "lane no", "sector ", "block ", "avenue "]):
+                    if any(name_l.startswith(prefix) for prefix in ["road no", "road #", "road-", "lane no", "sector ", "block ", "avenue ", "plot "]):
                         continue
 
-                    if osm_value in ["place_of_worship", "school", "mosque", "cemetery", "graveyard", "recreation_ground", "pitch", "living_street", "residential"]:
-                        if osm_key == "highway" or ptype == "street":
-                            continue
+                    # Disqualify non-commercial places, residential areas, and places of worship
+                    disqualified_osm_values = [
+                        "place_of_worship", "school", "mosque", "cemetery", "graveyard",
+                        "recreation_ground", "pitch", "living_street", "residential", "suburb",
+                        "neighbourhood", "allotments", "village_green", "farm", "forest"
+                    ]
+                    if osm_value in disqualified_osm_values:
+                        continue
 
                     street = props.get("street") or ""
                     district = props.get("district") or props.get("locality") or ""
@@ -445,6 +389,10 @@ class LiveResearchEngine:
                 for item in data:
                     name = item.get("name")
                     if not name:
+                        continue
+                    item_class = (item.get("class") or "").lower()
+                    item_type = (item.get("type") or "").lower()
+                    if item_class in ["highway", "place", "boundary", "landuse"] or item_type in ["residential", "living_street", "suburb", "neighbourhood"]:
                         continue
                     ext = item.get("extratags") or {}
                     addr_dict = item.get("address") or {}
@@ -535,6 +483,7 @@ class LiveResearchEngine:
         business_type_override: Optional[str],
         seen_domains: set,
         seen_names: set,
+        plan: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """Validates and constructs a verified business entity record."""
         if not actual_url.startswith("http"):
@@ -554,14 +503,7 @@ class LiveResearchEngine:
         if clean_norm_name in seen_names or len(company_name) < 3:
             return None
 
-        seen_domains.add(domain)
-        seen_names.add(clean_norm_name)
-
-        maps_query = urllib.parse.quote(f"{company_name} {location}")
-        gmaps_url = f"https://www.google.com/maps/search/{maps_query}"
-        gsearch_url = f"https://www.google.com/search?q={maps_query}"
-
-        return {
+        candidate = {
             "canonical_name": company_name,
             "industry": industry,
             "location": location,
@@ -571,11 +513,27 @@ class LiveResearchEngine:
             "business_type": detected_btype,
             "snippet": snippet or title,
             "source_url": actual_url,
-            "google_maps_url": gmaps_url,
-            "google_search_url": gsearch_url,
             "phone": None,
             "confidence": 0.95,
         }
+
+        # Apply semantic validation against negative and positive keywords
+        if plan:
+            is_valid, reason = DiscoveryOptimizer.validate_candidate(candidate, plan)
+            if not is_valid:
+                logger.debug(f"Web candidate rejected: {reason}")
+                return None
+
+        seen_domains.add(domain)
+        seen_names.add(clean_norm_name)
+
+        maps_query = urllib.parse.quote(f"{company_name} {location}")
+        gmaps_url = f"https://www.google.com/maps/search/{maps_query}"
+        gsearch_url = f"https://www.google.com/search?q={maps_query}"
+
+        candidate["google_maps_url"] = gmaps_url
+        candidate["google_search_url"] = gsearch_url
+        return candidate
 
     @classmethod
     def _clean_company_identity(

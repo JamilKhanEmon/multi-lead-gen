@@ -62,14 +62,14 @@ export default function ResearchInitiatorPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-2xl mx-auto space-y-5 sm:space-y-6">
       {/* Page Header */}
       <div>
-        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Compass className="w-6 h-6 text-sky-400" />
+        <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+          <Compass className="w-5 h-5 sm:w-6 sm:h-6 text-sky-400" />
           Launch Autonomous Research Run
         </h2>
-        <p className="text-sm text-slate-400 mt-1">
+        <p className="text-xs sm:text-sm text-slate-400 mt-1">
           OpenClaw autonomously discovers real local businesses, audits their live websites, and qualifies high-intent B2B leads.
         </p>
       </div>
@@ -81,7 +81,7 @@ export default function ResearchInitiatorPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-5">
+      <form onSubmit={handleSubmit} className="glass-panel p-4 sm:p-6 rounded-2xl border border-slate-800 space-y-4 sm:space-y-5">
         {/* 1. Country Field (Required) */}
         <div>
           <div className="flex items-center justify-between mb-2">

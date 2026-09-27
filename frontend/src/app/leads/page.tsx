@@ -57,20 +57,20 @@ export default function LeadsPipelinePage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Users className="w-6 h-6 text-amber-400" />
+          <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+            <Users className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400" />
             Qualified Lead Pipeline
           </h2>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Deterministically scored and gate-validated prospective clients with corroborated solvable gaps.
           </p>
         </div>
         {leads.length > 0 && (
           <button
             onClick={handleClearAll}
-            className="px-3.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-semibold flex items-center gap-1.5 transition"
+            className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-semibold flex items-center gap-1.5 transition self-end sm:self-auto"
           >
             <Trash2 className="w-3.5 h-3.5" /> Clear Pipeline
           </button>
@@ -78,13 +78,13 @@ export default function LeadsPipelinePage() {
       </div>
 
       {/* Filter Tabs & Search Bar */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2 p-1 rounded-xl bg-slate-900 border border-slate-800">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto max-w-full">
           {["ALL", "Strong Potential", "Review Needed", "Rejected"].map((tier) => (
             <button
               key={tier}
               onClick={() => setActiveTier(tier)}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
                 activeTier === tier
                   ? "bg-slate-800 text-white shadow-sm"
                   : "text-slate-400 hover:text-slate-200"
@@ -95,7 +95,7 @@ export default function LeadsPipelinePage() {
           ))}
         </div>
 
-        <div className="relative w-72">
+        <div className="relative w-full sm:w-72">
           <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
           <input
             type="text"
@@ -114,7 +114,8 @@ export default function LeadsPipelinePage() {
             {loading ? "Loading prospective leads..." : "No leads match the selected criteria."}
           </div>
         ) : (
-          <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm min-w-[700px]">
             <thead className="bg-slate-900/90 text-xs text-slate-400 border-b border-slate-800 font-semibold tracking-wider uppercase">
               <tr>
                 <th className="py-3.5 px-4">Score & Tier</th>
@@ -235,6 +236,7 @@ export default function LeadsPipelinePage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

@@ -22,6 +22,7 @@ from app.engine.parameter_engine import ParameterEngine
 from app.engine.evidence_engine import EvidenceEngine
 from app.engine.service_matcher import ServiceMatcher
 from app.engine.qualification_engine import QualificationEngine
+from app.engine.discovery_optimizer import DiscoveryOptimizer
 import redis.asyncio as aioredis
 
 
@@ -82,6 +83,14 @@ async def handle_discover_businesses(
     companies = discovery_result.get("discovered_companies", [])
     logger.info(f"Discovered {len(companies)} candidate companies")
 
+    # Build semantic validation plan
+    val_plan = DiscoveryOptimizer.build_fallback_plan(
+        industry=industry,
+        location=location,
+        country=country,
+        city=city,
+    )
+
     candidate_businesses = []
     seen_biz_ids = set()
     async with AsyncSessionLocal() as session:
@@ -91,6 +100,12 @@ async def handle_discover_businesses(
             raw_phone = comp.get("phone")
 
             if not raw_name:
+                continue
+
+            # Strict semantic check against negative keywords and non-commercial markers
+            is_valid, reason = DiscoveryOptimizer.validate_candidate(comp, val_plan)
+            if not is_valid:
+                logger.info(f"TaskDiscover: Rejecting candidate '{raw_name}': {reason}")
                 continue
 
             norm_domain = DeduplicationEngine.normalize_domain(raw_domain)
