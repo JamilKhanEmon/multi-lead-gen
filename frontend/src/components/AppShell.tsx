@@ -12,6 +12,8 @@ import {
   Menu,
   X,
   Zap,
+  Megaphone,
+  PhoneCall,
 } from "lucide-react";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -21,9 +23,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const navItems = [
     { label: "Dashboard", href: "/", icon: LayoutDashboard, color: "text-sky-400" },
     { label: "New Research", href: "/research", icon: Compass, color: "text-emerald-400" },
+    { label: "Voice Agent", href: "/voice-agent", icon: PhoneCall, color: "text-emerald-400" },
+    { label: "Meta B2B Ads", href: "/campaigns", icon: Megaphone, color: "text-pink-400" },
     { label: "Lead Pipeline", href: "/leads", icon: Users, color: "text-amber-400" },
     { label: "135 Parameters", href: "/parameters", icon: Sliders, color: "text-violet-400" },
   ];
+
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";

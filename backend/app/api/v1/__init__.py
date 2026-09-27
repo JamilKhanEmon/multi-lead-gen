@@ -11,6 +11,8 @@ from .services import router as services_router
 from .business_types import router as business_types_router
 from .admin import router as admin_router
 from .webhooks import router as webhooks_router
+from .campaigns import router as campaigns_router
+from .voice_agent import router as voice_agent_router
 
 api_v1_router = APIRouter()
 
@@ -23,3 +25,6 @@ api_v1_router.include_router(services_router)
 api_v1_router.include_router(business_types_router)
 api_v1_router.include_router(admin_router)
 api_v1_router.include_router(webhooks_router)
+api_v1_router.include_router(campaigns_router)
+api_v1_router.include_router(voice_agent_router)
+

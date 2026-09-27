@@ -422,7 +422,13 @@ class LiveResearchEngine:
                 return results
         except Exception as e:
             logger.warning(f"Nominatim fetch exception for query '{query_str}': {e}")
-            return results
+    @classmethod
+    async def _execute_web_search(cls, query_str: str) -> List[Dict[str, str]]:
+        """Executes a live web search for competitor intelligence and market analysis."""
+        loop = asyncio.get_event_loop()
+        html, _ = await loop.run_in_executor(None, cls._fetch_ddg_html, query_str)
+        items = cls._parse_ddg_items(html)
+        return [{"url": url, "title": title, "snippet": snippet} for url, title, snippet in items]
 
     @classmethod
     def _fetch_ddg_html(cls, query_str: str, form_inputs: Optional[Dict[str, str]] = None) -> Tuple[str, Dict[str, str]]:

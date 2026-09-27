@@ -9,6 +9,8 @@ from .evidence import Source, SourceSnapshot, Evidence, ParameterResult
 from .lead import Lead, LeadScore, LeadFeedback
 from .research import ResearchRun, ResearchJob, SchedulerRun
 from .audit import User, AuditLog, SystemEvent, BenchmarkResult, ModelRun
+from .campaign import MetaCampaign
+from .voice_agent import VoiceKnowledgeBase, VoiceCallQueueItem, VoiceCallLog
 
 __all__ = [
     "Base",
@@ -37,4 +39,9 @@ __all__ = [
     "SystemEvent",
     "BenchmarkResult",
     "ModelRun",
+    "MetaCampaign",
+    "VoiceKnowledgeBase",
+    "VoiceCallQueueItem",
+    "VoiceCallLog",
 ]
+

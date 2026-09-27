@@ -84,6 +84,14 @@ class Settings(BaseSettings):
     RESEARCH_TIMEOUT_SECONDS: int = Field(default=120, ge=30, le=600)
     MAX_RETRY_ATTEMPTS: int = Field(default=5, ge=1, le=10)
 
+    # Meta Marketing API (Optional: For Live Ad Deployment)
+    META_ACCESS_TOKEN: Optional[str] = Field(default=None, description="System User Access Token with ads_management")
+    META_AD_ACCOUNT_ID: Optional[str] = Field(default=None, description="Meta Ad Account ID e.g. act_123456789")
+    META_PAGE_ID: Optional[str] = Field(default=None, description="Facebook Business Page ID")
+
+    # Google Pro / Gemini / Imagen 3 / Veo API
+    GOOGLE_API_KEY: Optional[str] = Field(default=None, description="Google Gemini/Imagen/Veo API key")
+
     # CORS configuration
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
@@ -92,3 +100,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
