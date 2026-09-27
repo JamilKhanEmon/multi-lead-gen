@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ledgen_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-leadgen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leadgen_secret_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-leadgen}
+    ports:
+      # Explicit loopback binding for security
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-leadgen} -d ${POSTGRES_DB:-leadgen}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ledgen_internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: ledgen_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      # Explicit loopback binding for security
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ledgen_internal
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+
+networks:
+  ledgen_internal:
+    driver: bridge

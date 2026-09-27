@@ -1,0 +1,11 @@
+{
+  "name": "leadgen-platform-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Unified root orchestrator for LeadGen Autonomous Platform",
+  "scripts": {
+    "dev": "bash start.sh",
+    "start": "bash start.sh",
+    "stop": "bash infra/scripts/stop_all.sh"
+  }
+}

@@ -1,0 +1,105 @@
+"""
+Worker Pipeline Runner: Consumes jobs from Redis 'leadgen:tasks', handles backoff retries,
+dead-letter queue routing, and coordinates autonomous research execution.
+"""
+import asyncio
+import json
+import random
+import signal
+import sys
+from typing import Dict, Any
+import redis.asyncio as aioredis
+from app.core.config import settings
+from app.core.logging import logger
+from app.services.openclaw_client import OpenClawClient
+from app.services.ollama_client import OllamaClient
+from app.workers.tasks import handle_discover_businesses, handle_research_and_qualify
+
+# Exponential backoff schedule (seconds): 2, 4, 8, 16, 32
+BACKOFF_STEPS = [2, 4, 8, 16, 32]
+
+
+class WorkerRunner:
+    """Async worker processing tasks from Redis queue."""
+
+    def __init__(self):
+        self.running = True
+        self.openclaw_client = OpenClawClient()
+        self.ollama_client = OllamaClient()
+
+    def stop(self):
+        logger.info("Worker runner received stop signal. Finishing active task...")
+        self.running = False
+
+    async def run(self):
+        logger.info(f"Starting LeadGen Worker (Queue: leadgen:tasks, Concurrency target: {settings.WORKER_CONCURRENCY})")
+        r = aioredis.from_url(settings.REDIS_URL)
+
+        while self.running:
+            try:
+                # Pop task with 2-second timeout to check self.running regularly
+                res = await r.brpop("leadgen:tasks", timeout=2)
+                if not res:
+                    continue
+
+                _, raw_task = res
+                task_data = json.loads(raw_task)
+                task_type = task_data.get("type")
+                job_id = task_data.get("job_id", "unknown")
+                attempt = task_data.get("attempt", 1)
+                max_attempts = task_data.get("max_attempts", 5)
+
+                logger.info(f"Processing job [{job_id}] type: {task_type} (attempt {attempt}/{max_attempts})")
+
+                try:
+                    if task_type == "discover_businesses":
+                        await handle_discover_businesses(task_data, self.openclaw_client)
+                    elif task_type in ("research_and_qualify", "website_research"):
+                        await handle_research_and_qualify(task_data, self.openclaw_client, self.ollama_client)
+                    else:
+                        logger.warning(f"Unrecognized task type: {task_type}")
+
+                    logger.info(f"Job [{job_id}] completed successfully.")
+
+                except Exception as task_err:
+                    logger.error(f"Error executing job [{job_id}]: {task_err}")
+                    if attempt < max_attempts:
+                        # Schedule retry with exponential backoff + jitter (+/-10%)
+                        base_delay = BACKOFF_STEPS[min(attempt - 1, len(BACKOFF_STEPS) - 1)]
+                        jitter = random.uniform(0.9, 1.1)
+                        delay = round(base_delay * jitter, 2)
+                        task_data["attempt"] = attempt + 1
+                        logger.info(f"Retrying job [{job_id}] in {delay}s...")
+                        await asyncio.sleep(delay)
+                        await r.lpush("leadgen:tasks", json.dumps(task_data))
+                    else:
+                        # Move to dead-letter queue
+                        logger.error(f"Job [{job_id}] exceeded max attempts ({max_attempts}). Moving to 'leadgen:failed'.")
+                        task_data["failed_reason"] = str(task_err)
+                        await r.lpush("leadgen:failed", json.dumps(task_data))
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Worker queue polling error: {e}. Reconnecting in 3s...")
+                await asyncio.sleep(3)
+
+        await r.aclose()
+        logger.info("Worker runner exited cleanly.")
+
+
+async def main():
+    runner = WorkerRunner()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, runner.stop)
+        except NotImplementedError:
+            pass
+
+    await runner.run()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
