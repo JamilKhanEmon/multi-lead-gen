@@ -49,22 +49,22 @@ import {
 } from "@/lib/api";
 
 const PRESET_INDUSTRIES = [
-  "Garments & Textile Manufacturing",
-  "Pharmaceuticals & Healthcare Plants",
-  "Steel & Metal Fabrication",
-  "Plastics & Packaging Mills",
-  "Food & Beverage Processing",
-  "Automotive & Electronics Assembly",
-  "Logistics & Heavy Warehousing",
+  "Professional & Legal Services",
+  "Healthcare & Specialized Clinics",
+  "Commercial Contracting & Engineering",
+  "Software, SaaS & Digital Technology",
+  "Manufacturing & Industrial Facilities",
+  "Real Estate & Commercial Properties",
+  "E-Commerce, Logistics & Retail",
 ];
 
 const PRESET_LOCATIONS = [
-  "United States (Top Industrial & Manufacturing Hubs)",
-  "United Kingdom & Western Europe",
-  "United Arab Emirates & Gulf Industrial Freezones",
-  "Gazipur & Savar Industrial Belt, Bangladesh",
-  "Chattogram Port & Export Processing Zone (EPZ)",
   "Global / Worldwide Multi-Region",
+  "United States (Top Metro & Commercial Markets)",
+  "United Kingdom & Western Europe",
+  "Canada & Australia Metro Hubs",
+  "United Arab Emirates & Gulf Commercial Freezones",
+  "Southeast Asia & Asia-Pacific Hubs",
 ];
 
 const PRESET_JOB_ROLES = [

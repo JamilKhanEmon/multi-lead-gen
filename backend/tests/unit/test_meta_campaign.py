@@ -34,8 +34,8 @@ async def test_meta_intelligence_targeting_and_competitor_synthesis():
 
         res = await MetaIntelligenceEngine.analyze_market_and_competitors(
             service_name="Computer Vision Defect Detection",
-            industry="Garments & Textiles",
-            target_location="Gazipur, Bangladesh",
+            industry="Manufacturing & Engineering",
+            target_location="Chicago, USA",
         )
 
         assert "targeting" in res
@@ -49,9 +49,9 @@ async def test_meta_intelligence_creatives_generation():
     """Validates that 2-step creatives are properly formed with Post 1 hook and Post 2 WhatsApp CTA."""
     creatives = await MetaIntelligenceEngine.generate_funnel_creatives(
         service_name="Computer Vision Defect Detection",
-        industry="Garments & Textiles",
-        target_location="Gazipur",
-        pain_point="Fabric wastage",
+        industry="Manufacturing & Engineering",
+        target_location="Chicago, USA",
+        pain_point="Operational wastage",
         core_offer="Free 1-day demo",
     )
 
@@ -87,9 +87,9 @@ async def test_meta_client_sandbox_publish_and_metrics():
     # Test metric calculation
     mock_campaign = MetaCampaign(
         id="test-123",
-        name="Test Garments Funnel",
-        industry="Garments",
-        target_location="Gazipur",
+        name="Commercial Tech Funnel",
+        industry="Technology",
+        target_location="Chicago, USA",
         service_name="Vision AI",
         budget_daily_bdt=500.0,
         retargeting_threshold_pct=50,

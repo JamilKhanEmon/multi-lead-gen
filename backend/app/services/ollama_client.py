@@ -75,7 +75,7 @@ class OllamaClient:
         t0 = time.time()
         logger.debug(f"Calling Ollama model '{self.model}' at {url}")
 
-        fallback_models = [self.model, "gemma3:4b", "qwen2.5:7b", "qwen3:8b"]
+        fallback_models = [self.model, "qwen2.5:7b", "llama3.1:8b", "gemma3:4b"]
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             last_err = None

@@ -67,6 +67,7 @@ class LiveResearchEngine:
             location=full_location,
             country=country,
             city=city,
+            sub_city=sub_city,
         )
         logger.info(f"DiscoveryOptimizer: Using {len(plan['search_queries'])} targeted search queries and {len(plan['osm_queries'])} OSM targets.")
 
@@ -97,7 +98,7 @@ class LiveResearchEngine:
             if len(discovered) >= effective_limit:
                 break
             try:
-                places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 50, country, city)
+                places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 50, country, city, sub_city)
                 for p in places:
                     if len(discovered) >= effective_limit:
                         break
@@ -134,9 +135,36 @@ class LiveResearchEngine:
                         except Exception:
                             pass
 
-                    maps_q = urllib.parse.quote(f"{p_name} {full_location}")
-                    gmaps_url = f"https://www.google.com/maps/search/{maps_q}"
-                    gsearch_url = f"https://www.google.com/search?q={maps_q}"
+                    lat = p.get("latitude")
+                    lon = p.get("longitude")
+                    phone = p.get("phone")
+                    email = p.get("email")
+
+                    # If no contact channel exists from map, execute autonomous secondary web search
+                    if not website and not phone and not email:
+                        enriched = await cls.enrich_contact_from_web(p_name, full_location)
+                        if enriched.get("phone"):
+                            phone = enriched["phone"]
+                        if enriched.get("email"):
+                            email = enriched["email"]
+                        if enriched.get("website"):
+                            website = enriched["website"]
+                            domain = enriched.get("domain")
+
+                    # STRICT ZERO-CONTACT GATE:
+                    # Discard candidate if there is NO email, NO phone, and NO website/domain
+                    if not website and not domain and not phone and not email:
+                        logger.info(f"Zero-Contact Gate: Discarding unreachable entity '{p_name}' (No website, phone, or email).")
+                        continue
+
+                    if lat is not None and lon is not None:
+                        gmaps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+                    else:
+                        maps_q = urllib.parse.quote(f"{p_name} {full_location}")
+                        gmaps_url = f"https://www.google.com/maps/search/{maps_q}"
+                    
+                    search_q = urllib.parse.quote(f"{p_name} {full_location}")
+                    gsearch_url = f"https://www.google.com/search?q={search_q}"
 
                     b_type = (business_type_override or industry).lower().replace(" ", "_")
 
@@ -154,8 +182,10 @@ class LiveResearchEngine:
                         "source_url": website or gmaps_url,
                         "google_maps_url": gmaps_url,
                         "google_search_url": gsearch_url,
-                        "phone": p.get("phone"),
-                        "email": p.get("email"),
+                        "latitude": lat,
+                        "longitude": lon,
+                        "phone": phone,
+                        "email": email,
                         "confidence": 0.98 if website else 0.92,
                     })
 
@@ -218,8 +248,8 @@ class LiveResearchEngine:
                 page = await browser.new_page(user_agent=cls.USER_AGENT)
                 queries = search_queries or [
                     f"{industry} company in {location}",
-                    f"top {industry} in {location} official website",
-                    f"{industry} firms {location}",
+                    f"{industry} offices and services in {location} official website",
+                    f"{industry} commercial firms {location}",
                 ]
                 for q in queries:
                     if len(results) >= limit:
@@ -287,8 +317,7 @@ class LiveResearchEngine:
                     if not l or not l.startswith("http"):
                         continue
                     parsed = urllib.parse.urlparse(l)
-                    dom = parsed.netloc.lower().replace("www.", "")
-                    if any(bad in dom for bad in ["brave.com", "facebook.com", "linkedin.com", "youtube.com", "wikipedia.org", "bdtradeinfo.com"]):
+                    if any(bad in dom for bad in ["brave.com", "facebook.com", "linkedin.com", "youtube.com", "wikipedia.org", "yellowpages"]):
                         continue
                     if "." in dom and len(dom) > 4:
                         return dom
@@ -297,12 +326,69 @@ class LiveResearchEngine:
         return None
 
     @classmethod
+    async def enrich_contact_from_web(
+        cls, business_name: str, location: str
+    ) -> Dict[str, Optional[str]]:
+        """
+        Executes an autonomous secondary web search to locate contact channels
+        (email, phone, official domain, or facebook profile) for businesses found via maps.
+        """
+        info: Dict[str, Optional[str]] = {
+            "phone": None,
+            "email": None,
+            "website": None,
+            "domain": None,
+            "facebook_url": None,
+        }
+        try:
+            q = f"{business_name} {location} contact phone email"
+            results = await cls._execute_web_search(q)
+            for r in (results or [])[:5]:
+                url = r.get("url", "")
+                title = r.get("title", "")
+                snippet = r.get("snippet", "")
+                full_text = f"{title} {snippet}"
+
+                # Extract phone numbers (Global & International patterns)
+                if not info["phone"]:
+                    phone_match = re.search(r'(?:\+?880\s?1[3-9]\d{8}|\+?1[2-9]\d{2}[2-9]\d{6}|\+?[0-9]{2,4}[\s.-]?[0-9]{3,4}[\s.-]?[0-9]{4,6})', full_text)
+                    if phone_match:
+                        raw_ph = phone_match.group(0).strip()
+                        if len(re.sub(r'\D', '', raw_ph)) >= 7:
+                            info["phone"] = raw_ph
+
+                # Extract email
+                if not info["email"]:
+                    email_match = re.search(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', full_text)
+                    if email_match:
+                        cand_em = email_match.group(0).lower()
+                        if not any(cand_em.endswith(x) for x in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"]):
+                            info["email"] = cand_em
+
+                # Extract domain or Facebook URL
+                if url.startswith("http"):
+                    parsed = urllib.parse.urlparse(url)
+                    dom = parsed.netloc.lower().replace("www.", "")
+                    if "facebook.com" in dom:
+                        if not info["facebook_url"]:
+                            info["facebook_url"] = url
+                    elif not any(bad in dom for bad in ["duckduckgo.com", "bing.com", "google.com", "yahoo.com", "wikipedia.org", "youtube.com", "linkedin.com", "yellowpages"]):
+                        if "." in dom and len(dom) > 4:
+                            if not info["domain"]:
+                                info["domain"] = dom
+                                info["website"] = f"{parsed.scheme}://{dom}"
+        except Exception as e:
+            logger.debug(f"enrich_contact_from_web error for '{business_name}': {e}")
+        return info
+
+    @classmethod
     def _fetch_osm_places(
         cls,
         query_str: str,
         limit: int = 50,
         target_country: str = "",
         target_city: str = "",
+        target_sub_city: str = "",
     ) -> List[Dict[str, Any]]:
         """Queries OpenStreetMap via Photon (ultra-fast, comprehensive) and Nominatim for real verified businesses."""
         results = []
@@ -326,13 +412,12 @@ class LiveResearchEngine:
                         continue
 
                     # Filter out non-commercial government infrastructure, NGOs, and irrelevant matches
+                    # Filter out non-commercial government infrastructure, military, and public facilities
                     name_l = name.lower()
                     gov_words = [
-                        "development board", "welfare committee", "organization", "training center",
-                        "ministry", "directorate", "department of", "police", "cantonment", "barracks",
-                        "corporation (badc)", "power board", "water board", "agent banking",
-                        "bank limited", "software development", "human development", "social development",
-                        "university", "institute", "school"
+                        "welfare committee", "ministry of", "department of", "police department",
+                        "police station", "cantonment", "military barracks", "military base",
+                        "embassy", "consulate", "post office", "fire station", "courthouse"
                     ]
                     if any(w in name_l for w in gov_words):
                         continue
@@ -341,19 +426,31 @@ class LiveResearchEngine:
                     osm_value = (props.get("osm_value") or "").lower()
                     ptype = (props.get("type") or "").lower()
 
-                    # Exclude roads, highways, streets, and paths (e.g. "Road No. 6, Sikder Real Estate")
+                    # Exclude roads, highways, streets, and paths
                     if osm_key in ["highway", "railway", "waterway"] or ptype in ["street", "highway", "residential", "neighbourhood", "suburb"]:
                         continue
 
-                    # Filter out names starting with road/street/sector prefixes
-                    if any(name_l.startswith(prefix) for prefix in ["road no", "road #", "road-", "lane no", "sector ", "block ", "avenue ", "plot "]):
+                    # Filter out purely residential apartment buildings that are not corporate offices
+                    if osm_key == "building" and osm_value in ["apartments", "residential", "house", "dormitory", "detached"]:
+                        continue
+
+                    # Filter out names that are clearly street addresses rather than business entities
+                    address_match = False
+                    for prefix in ["road ", "rd ", "street ", "st ", "lane ", "ln ", "sector ", "block ", "plot ", "house "]:
+                        if name_l.startswith(prefix):
+                            rest = name_l[len(prefix):].strip()
+                            if re.match(r'^(no\.?|#)?\s*\d+', rest) or (len(rest) <= 2 and rest.isalnum()):
+                                address_match = True
+                                break
+                    if address_match:
                         continue
 
                     # Disqualify non-commercial places, residential areas, and places of worship
                     disqualified_osm_values = [
                         "place_of_worship", "school", "mosque", "cemetery", "graveyard",
                         "recreation_ground", "pitch", "living_street", "residential", "suburb",
-                        "neighbourhood", "allotments", "village_green", "farm", "forest"
+                        "neighbourhood", "allotments", "village_green", "farm", "forest",
+                        "apartments", "house", "detached", "dormitory"
                     ]
                     if osm_value in disqualified_osm_values:
                         continue
@@ -363,6 +460,18 @@ class LiveResearchEngine:
                     city = props.get("city") or ""
                     formatted_addr = ", ".join([x for x in [street, district, city] if x])
 
+                    # Strict sub_city locality check: if user specified a sub_city, ensure it matches the address
+                    if target_sub_city:
+                        sub_l = target_sub_city.lower().strip()
+                        raw_loc_text = f"{street} {district} {props.get('locality', '')} {formatted_addr}".lower()
+                        if raw_loc_text and sub_l not in raw_loc_text:
+                            continue
+
+                    geom = f.get("geometry") or {}
+                    coords = geom.get("coordinates") or []
+                    lon = float(coords[0]) if len(coords) >= 2 and coords[0] is not None else None
+                    lat = float(coords[1]) if len(coords) >= 2 and coords[1] is not None else None
+
                     results.append({
                         "name": name.strip(),
                         "address": formatted_addr,
@@ -370,6 +479,8 @@ class LiveResearchEngine:
                         "website": None,
                         "phone": None,
                         "email": None,
+                        "latitude": lat,
+                        "longitude": lon,
                         "display_name": f"{name}, {formatted_addr}",
                     })
                 return results
@@ -392,7 +503,7 @@ class LiveResearchEngine:
                         continue
                     item_class = (item.get("class") or "").lower()
                     item_type = (item.get("type") or "").lower()
-                    if item_class in ["highway", "place", "boundary", "landuse"] or item_type in ["residential", "living_street", "suburb", "neighbourhood"]:
+                    if item_class in ["highway", "place", "boundary", "landuse"] or item_type in ["residential", "living_street", "suburb", "neighbourhood", "apartments", "house", "dormitory"]:
                         continue
                     ext = item.get("extratags") or {}
                     addr_dict = item.get("address") or {}
@@ -402,9 +513,19 @@ class LiveResearchEngine:
                     city = addr_dict.get("city") or addr_dict.get("town") or ""
                     formatted_addr = ", ".join([x for x in [road, suburb, city] if x]) or item.get("display_name")
 
+                    # Strict sub_city locality check: if user specified a sub_city, ensure it matches the address
+                    if target_sub_city:
+                        sub_l = target_sub_city.lower().strip()
+                        raw_loc_text = f"{road} {suburb} {city} {formatted_addr} {item.get('display_name', '')}".lower()
+                        if raw_loc_text and sub_l not in raw_loc_text:
+                            continue
+
                     phone = ext.get("phone") or ext.get("contact:phone")
                     website = ext.get("website") or ext.get("contact:website")
                     email = ext.get("email") or ext.get("contact:email")
+
+                    lat = float(item["lat"]) if item.get("lat") else None
+                    lon = float(item["lon"]) if item.get("lon") else None
 
                     # Filter website url
                     if website and not website.startswith("http"):
@@ -417,6 +538,8 @@ class LiveResearchEngine:
                         "website": website,
                         "phone": phone,
                         "email": email,
+                        "latitude": lat,
+                        "longitude": lon,
                         "display_name": item.get("display_name"),
                     })
                 return results
@@ -560,7 +683,7 @@ class LiveResearchEngine:
         for p in parts:
             clean = p.strip()
             if len(clean) >= 3 and not any(k in clean.lower() for k in ["best", "top", "ranked", "reviews", "directory", "near me", "list", "guide", "2026", "2025", "home", "official"]):
-                if not any(x in clean.lower() for x in ["http", "www", ".com", ".net", ".org", ".ae", ".bd"]):
+                if not re.search(r'(https?://|www\.|\.[a-zA-Z]{2,})', clean.lower()):
                     best_name = clean
                     break
 

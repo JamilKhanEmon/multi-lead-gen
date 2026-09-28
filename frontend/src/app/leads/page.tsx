@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchLeads, deleteLead, clearAllLeads, Lead } from "@/lib/api";
-import { Users, Filter, ArrowUpRight, Search, Phone, Mail, Globe, ExternalLink, User, Trash2 } from "lucide-react";
+import { Users, Filter, ArrowUpRight, Search, Phone, Mail, Globe, ExternalLink, User, Trash2, MapPin } from "lucide-react";
 
 export default function LeadsPipelinePage() {
   const router = useRouter();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [activeTier, setActiveTier] = useState<string>("ALL");
+  const [websiteFilter, setWebsiteFilter] = useState<"ALL" | "WITH_WEBSITE" | "NO_WEBSITE">("ALL");
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -48,12 +49,20 @@ export default function LeadsPipelinePage() {
 
   const filtered = leads.filter((lead) => {
     const matchesTier = activeTier === "ALL" || lead.tier === activeTier;
+    const matchesWebsite =
+      websiteFilter === "ALL" ||
+      (websiteFilter === "WITH_WEBSITE" && !!lead.domain) ||
+      (websiteFilter === "NO_WEBSITE" && !lead.domain);
     const matchesSearch =
       searchTerm === "" ||
       (lead.business_name && lead.business_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (lead.primary_gap_summary && lead.primary_gap_summary.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesTier && matchesSearch;
+      (lead.primary_gap_summary && lead.primary_gap_summary.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (lead.address && lead.address.toLowerCase().includes(searchTerm.toLowerCase()));
+    return matchesTier && matchesWebsite && matchesSearch;
   });
+
+  const noWebsiteCount = leads.filter((l) => !l.domain).length;
+  const withWebsiteCount = leads.filter((l) => !!l.domain).length;
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -64,7 +73,7 @@ export default function LeadsPipelinePage() {
             Qualified Lead Pipeline
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Deterministically scored and gate-validated prospective clients with corroborated solvable gaps.
+            Deterministically scored and gate-validated prospective clients with corroborated solvable gaps and map locations.
           </p>
         </div>
         {leads.length > 0 && (
@@ -79,23 +88,62 @@ export default function LeadsPipelinePage() {
 
       {/* Filter Tabs & Search Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto max-w-full">
-          {["ALL", "Strong Potential", "Review Needed", "Rejected"].map((tier) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Tier Tabs */}
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto max-w-full">
+            {["ALL", "Strong Potential", "Review Needed", "Rejected"].map((tier) => (
+              <button
+                key={tier}
+                onClick={() => setActiveTier(tier)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+                  activeTier === tier
+                    ? "bg-slate-800 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {tier}
+              </button>
+            ))}
+          </div>
+
+          {/* Website Presence Filter */}
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-800 text-xs">
             <button
-              key={tier}
-              onClick={() => setActiveTier(tier)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
-                activeTier === tier
-                  ? "bg-slate-800 text-white shadow-sm"
+              onClick={() => setWebsiteFilter("ALL")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                websiteFilter === "ALL"
+                  ? "bg-slate-800 text-white"
                   : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              {tier}
+              All ({leads.length})
             </button>
-          ))}
+            <button
+              onClick={() => setWebsiteFilter("NO_WEBSITE")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+                websiteFilter === "NO_WEBSITE"
+                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                  : "text-amber-400/80 hover:text-amber-300"
+              }`}
+              title="Businesses without a website — prime web development agency leads"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>
+              No Website ({noWebsiteCount})
+            </button>
+            <button
+              onClick={() => setWebsiteFilter("WITH_WEBSITE")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                websiteFilter === "WITH_WEBSITE"
+                  ? "bg-slate-800 text-sky-300"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              With Website ({withWebsiteCount})
+            </button>
+          </div>
         </div>
 
-        <div className="relative w-full sm:w-72">
+        <div className="relative w-full sm:w-64">
           <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
           <input
             type="text"
@@ -148,16 +196,55 @@ export default function LeadsPipelinePage() {
                     </div>
                   </td>
                   <td className="py-4 px-4 font-semibold text-slate-100 max-w-xs">
-                    <div className="group-hover:text-sky-400 transition truncate">{lead.business_name || "Commercial Candidate"}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="group-hover:text-sky-400 transition truncate">{lead.business_name || "Commercial Candidate"}</span>
+                      {lead.business_type && lead.business_type !== "other" && (
+                        <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${
+                          lead.business_type.toLowerCase().includes("developer") || lead.business_type.toLowerCase().includes("builder")
+                            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                            : lead.business_type.toLowerCase().includes("agency") || lead.business_type.toLowerCase().includes("broker")
+                            ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                            : lead.business_type.toLowerCase().includes("clinic") || lead.business_type.toLowerCase().includes("hospital")
+                            ? "bg-teal-500/20 text-teal-300 border border-teal-500/30"
+                            : lead.business_type.toLowerCase().includes("law") || lead.business_type.toLowerCase().includes("legal")
+                            ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                            : "bg-sky-500/20 text-sky-300 border border-sky-500/30"
+                        }`}>
+                          {lead.business_type}
+                        </span>
+                      )}
+                    </div>
                     {lead.contact_person && (
                       <div className="text-[11px] text-purple-300 flex items-center gap-1 font-normal mt-0.5">
                         <User className="w-3 h-3 text-purple-400 shrink-0" />
                         <span className="truncate">{lead.contact_person} {lead.contact_title ? `(${lead.contact_title})` : ""}</span>
                       </div>
                     )}
-                    {lead.address && (
-                      <div className="text-[10px] text-slate-500 font-normal truncate mt-0.5">{lead.address}</div>
-                    )}
+                    {lead.address ? (
+                      <a
+                        href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address}`)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Click to view exact location in Google Maps"
+                        className="text-[11px] text-amber-400/90 hover:text-amber-300 font-normal truncate mt-1 inline-flex items-center gap-1 hover:underline max-w-full"
+                      >
+                        <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
+                        <span className="truncate">{lead.address}</span>
+                        <ExternalLink className="w-2.5 h-2.5 opacity-60 shrink-0" />
+                      </a>
+                    ) : lead.google_maps_url ? (
+                      <a
+                        href={lead.google_maps_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Click to view location search on Google Maps"
+                        className="text-[10px] text-amber-400/80 hover:text-amber-300 font-normal mt-0.5 inline-flex items-center gap-1 hover:underline"
+                      >
+                        <MapPin className="w-2.5 h-2.5 text-amber-400" /> View Map Location
+                      </a>
+                    ) : null}
                   </td>
                   <td className="py-4 px-4 whitespace-nowrap">
                     {lead.domain ? (
@@ -171,9 +258,40 @@ export default function LeadsPipelinePage() {
                         <Globe className="w-3 h-3" /> {lead.domain} <ExternalLink className="w-2.5 h-2.5" />
                       </a>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-rose-500/15 text-rose-300 border border-rose-500/25">
-                        Missing Website (Gap)
-                      </span>
+                      <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/25">
+                          No Website (Web Dev Lead)
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <a
+                            href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || ''}`)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Open exact location on Google Maps"
+                            className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1 transition"
+                          >
+                            <MapPin className="w-2.5 h-2.5" /> Maps
+                          </a>
+                          <a
+                            href={lead.google_search_url || `https://www.google.com/search?q=${encodeURIComponent(lead.business_name || '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Search business on Google"
+                            className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 transition"
+                          >
+                            <Search className="w-2.5 h-2.5" /> Google
+                          </a>
+                          <a
+                            href={`https://www.facebook.com/search/top?q=${encodeURIComponent(lead.business_name || '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Search Facebook Page"
+                            className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1 transition"
+                          >
+                            FB
+                          </a>
+                        </div>
+                      </div>
                     )}
                   </td>
                   <td className="py-4 px-4 whitespace-nowrap text-xs">

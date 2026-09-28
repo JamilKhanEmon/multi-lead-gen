@@ -32,6 +32,8 @@ import {
   Globe,
   User,
   Trash2,
+  MapPin,
+  Search,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -372,13 +374,51 @@ export default function DashboardPage() {
                       </div>
                     </td>
                     <td className="py-3.5 px-4 font-medium text-slate-200 max-w-[200px]">
-                      <div className="group-hover:text-sky-400 transition truncate">{lead.business_name || "Commercial Candidate"}</div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="group-hover:text-sky-400 transition truncate">{lead.business_name || "Commercial Candidate"}</span>
+                        {lead.business_type && lead.business_type !== "other" && (
+                          <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${
+                            lead.business_type.toLowerCase().includes("developer") || lead.business_type.toLowerCase().includes("builder")
+                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                              : lead.business_type.toLowerCase().includes("agency") || lead.business_type.toLowerCase().includes("broker")
+                              ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                              : "bg-sky-500/20 text-sky-300 border border-sky-500/30"
+                          }`}>
+                            {lead.business_type}
+                          </span>
+                        )}
+                      </div>
                       {lead.contact_person && (
                         <div className="text-[11px] text-purple-300 flex items-center gap-1 font-normal mt-0.5 truncate">
                           <User className="w-3 h-3 text-purple-400 shrink-0" />
                           <span>{lead.contact_person} {lead.contact_title ? `(${lead.contact_title})` : ""}</span>
                         </div>
                       )}
+                      {lead.address ? (
+                        <a
+                          href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address}`)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title="Click to view exact location in Google Maps"
+                          className="text-[10px] text-amber-400/90 hover:text-amber-300 font-normal truncate mt-1 inline-flex items-center gap-1 hover:underline max-w-full"
+                        >
+                          <MapPin className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                          <span className="truncate">{lead.address}</span>
+                          <ExternalLink className="w-2 h-2 opacity-60 shrink-0" />
+                        </a>
+                      ) : lead.google_maps_url ? (
+                        <a
+                          href={lead.google_maps_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title="Click to view location on Google Maps"
+                          className="text-[10px] text-amber-400/80 hover:text-amber-300 font-normal mt-0.5 inline-flex items-center gap-1 hover:underline"
+                        >
+                          <MapPin className="w-2.5 h-2.5 text-amber-400" /> View Map Location
+                        </a>
+                      ) : null}
                     </td>
                     <td className="py-3.5 px-4 whitespace-nowrap">
                       {lead.domain ? (
@@ -392,9 +432,31 @@ export default function DashboardPage() {
                           <Globe className="w-3 h-3" /> {lead.domain} <ExternalLink className="w-2.5 h-2.5" />
                         </a>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-rose-500/15 text-rose-300 border border-rose-500/25">
-                          Missing Website
-                        </span>
+                        <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/25">
+                            No Website
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <a
+                              href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || ''}`)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Open on Google Maps"
+                              className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1 transition"
+                            >
+                              <MapPin className="w-2 h-2" /> Maps
+                            </a>
+                            <a
+                              href={lead.google_search_url || `https://www.google.com/search?q=${encodeURIComponent(lead.business_name || '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Search on Google"
+                              className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1 transition"
+                            >
+                              <Search className="w-2 h-2" /> Google
+                            </a>
+                          </div>
+                        </div>
                       )}
                     </td>
                     <td className="py-3.5 px-4 whitespace-nowrap text-xs">

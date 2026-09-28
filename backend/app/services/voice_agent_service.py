@@ -274,7 +274,7 @@ class VoiceAgentService:
                 res = await client.post(
                     ollama_url,
                     json={
-                        "model": settings.OLLAMA_MODEL or "gemma3:4b",
+                        "model": settings.OLLAMA_MODEL or "qwen2.5:7b",
                         "messages": messages,
                         "stream": False,
                         "options": {

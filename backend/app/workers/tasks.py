@@ -83,12 +83,13 @@ async def handle_discover_businesses(
     companies = discovery_result.get("discovered_companies", [])
     logger.info(f"Discovered {len(companies)} candidate companies")
 
-    # Build semantic validation plan
-    val_plan = DiscoveryOptimizer.build_fallback_plan(
+    # Build semantic validation plan with AI query optimization & negative filtering
+    val_plan = await DiscoveryOptimizer.optimize_search_plan(
         industry=industry,
         location=location,
         country=country,
         city=city,
+        sub_city=sub_city,
     )
 
     candidate_businesses = []
@@ -106,6 +107,11 @@ async def handle_discover_businesses(
             is_valid, reason = DiscoveryOptimizer.validate_candidate(comp, val_plan)
             if not is_valid:
                 logger.info(f"TaskDiscover: Rejecting candidate '{raw_name}': {reason}")
+                continue
+
+            # Strict contactability gate: Reject ghost/unreachable records with zero contact channels
+            if not raw_domain and not raw_phone and not comp.get("email"):
+                logger.info(f"TaskDiscover: Discarding candidate '{raw_name}' due to zero contact channels (no website, phone, or email).")
                 continue
 
             norm_domain = DeduplicationEngine.normalize_domain(raw_domain)
@@ -133,24 +139,40 @@ async def handle_discover_businesses(
                     canonical_name=raw_name,
                     domain=norm_domain,
                     phone=norm_phone,
+                    email=comp.get("email"),
+                    address=comp.get("address"),
                     business_type=comp.get("business_type", payload.get("business_type_override", "other")),
                     metadata_json=comp,
                 )
                 session.add(biz)
                 await session.flush()
 
-                if comp.get("address") or location or city:
+                if comp.get("address") or location or city or comp.get("latitude") is not None:
                     loc = BusinessLocation(
                         business_id=biz.id,
                         address=comp.get("address"),
                         city=comp.get("city") or city or location,
                         country=comp.get("country") or country or None,
+                        latitude=comp.get("latitude"),
+                        longitude=comp.get("longitude"),
                     )
                     session.add(loc)
 
                 target_biz = biz
             else:
                 target_biz = existing_biz
+                if comp.get("address") and not target_biz.address:
+                    target_biz.address = comp.get("address")
+                if comp.get("phone") and not target_biz.phone:
+                    target_biz.phone = norm_phone
+                if comp.get("email") and not target_biz.email:
+                    target_biz.email = comp.get("email")
+                if isinstance(target_biz.metadata_json, dict):
+                    updated_meta = dict(target_biz.metadata_json)
+                    for k, v in comp.items():
+                        if v and not updated_meta.get(k):
+                            updated_meta[k] = v
+                    target_biz.metadata_json = updated_meta
 
             if target_biz.id not in seen_biz_ids:
                 seen_biz_ids.add(target_biz.id)

@@ -51,6 +51,10 @@ class LeadResponse(BaseModel):
     contact_title: Optional[str] = None
     address: Optional[str] = None
     business_type: Optional[str] = None
+    google_maps_url: Optional[str] = None
+    google_search_url: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
     class Config:
         from_attributes = True

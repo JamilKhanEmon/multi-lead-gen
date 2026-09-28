@@ -300,10 +300,25 @@ export default function LeadDetailPage() {
 
           <div className="space-y-1">
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
-              <MapPin className="w-3 h-3 text-amber-400" /> Location
+              <MapPin className="w-3 h-3 text-amber-400" /> Location & Maps
             </span>
-            <div className="text-slate-200 truncate">
+            <div className="text-slate-200 truncate" title={lead.address || "Target Metro Market"}>
               {lead.address || "Target Metro Market"}
+            </div>
+            <div className="flex items-center gap-2 pt-0.5 flex-wrap">
+              <a
+                href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || ''}`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[10px] text-amber-400 hover:text-amber-300 hover:underline inline-flex items-center gap-1 font-medium"
+              >
+                <MapPin className="w-2.5 h-2.5" /> View on Maps <ExternalLink className="w-2.5 h-2.5" />
+              </a>
+              {lead.latitude && lead.longitude && (
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                  {lead.latitude.toFixed(4)}, {lead.longitude.toFixed(4)}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -336,6 +351,164 @@ export default function LeadDetailPage() {
         </div>
         {feedbackSuccess && (
           <div className="text-xs text-emerald-400 font-medium">{feedbackSuccess}</div>
+        )}
+      </div>
+
+      {/* Interactive Map & Manual Outreach Discovery Hub */}
+      <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-amber-400" />
+              Physical Location & Manual Verification
+            </h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Verify the exact business location, customer reviews, owner contact, and physical presence on Google Maps.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <a
+              href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || ''}`)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
+            >
+              <MapPin className="w-3.5 h-3.5" /> Open in Google Maps <ExternalLink className="w-3 h-3" />
+            </a>
+            <a
+              href={lead.google_search_url || `https://www.google.com/search?q=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || ''}`)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
+            >
+              <Search className="w-3.5 h-3.5" /> Search Google <ExternalLink className="w-3 h-3" />
+            </a>
+            <a
+              href={`https://www.facebook.com/search/top?q=${encodeURIComponent(lead.business_name || '')}`}
+              target="_blank"
+              rel="noreferrer"
+              className="px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
+            >
+              <Globe className="w-3.5 h-3.5" /> Find Facebook <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        </div>
+
+        {/* Embedded Interactive Google Map */}
+        <div className="rounded-xl overflow-hidden border border-slate-800 bg-slate-950 relative shadow-inner">
+          <iframe
+            title={`${lead.business_name} Google Map Location`}
+            width="100%"
+            height="260"
+            style={{ border: 0, filter: "invert(90%) hue-rotate(180deg) brightness(95%) contrast(90%)" }}
+            loading="lazy"
+            src={`https://maps.google.com/maps?q=${encodeURIComponent(
+              lead.latitude && lead.longitude
+                ? `${lead.latitude},${lead.longitude}`
+                : `${lead.business_name || ''} ${lead.address || ''}`
+            )}&t=&z=16&ie=UTF8&iwloc=&output=embed`}
+          />
+          <div className="absolute bottom-2 left-2 right-2 px-3 py-1.5 rounded-lg bg-slate-900/90 backdrop-blur border border-slate-800 flex items-center justify-between text-[11px] text-slate-300">
+            <div className="flex items-center gap-2 truncate">
+              <span className="font-semibold text-white truncate">{lead.business_name}</span>
+              {lead.address && <span className="text-slate-400 truncate">• {lead.address}</span>}
+            </div>
+            {lead.latitude && lead.longitude && (
+              <span className="font-mono text-amber-400 shrink-0">
+                GPS: {lead.latitude.toFixed(5)}, {lead.longitude.toFixed(5)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Missing Website Outreach Guidance if Lead has No Domain */}
+        {!lead.domain && (
+          <div className="p-4 rounded-xl bg-gradient-to-r from-amber-950/30 via-slate-900/60 to-rose-950/30 border border-amber-500/30 space-y-3">
+            <div className="space-y-1">
+              <div className="text-xs font-bold text-amber-300 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                Top Web Agency Opportunity: No Official Website Found
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                This business is physically established and visible on Google Maps, but has no official web portal. 
+                They are the <strong>highest conversion candidates for website design, digital menus, online booking, and local SEO services</strong>.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-xs">
+              <a
+                href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || ''}`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 transition flex items-center gap-2"
+              >
+                <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
+                <div>
+                  <div className="font-semibold text-[11px]">1. Inspect Google Maps</div>
+                  <div className="text-[10px] text-slate-400">Verify customer reviews & photos</div>
+                </div>
+              </a>
+
+              <a
+                href={`https://www.facebook.com/search/top?q=${encodeURIComponent(lead.business_name || '')}`}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 transition flex items-center gap-2"
+              >
+                <Globe className="w-4 h-4 text-blue-400 shrink-0" />
+                <div>
+                  <div className="font-semibold text-[11px]">2. Search Facebook Page</div>
+                  <div className="text-[10px] text-slate-400">Check active social messages & posts</div>
+                </div>
+              </a>
+
+              {lead.phone ? (
+                <a
+                  href={`tel:${lead.phone}`}
+                  className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 transition flex items-center gap-2"
+                >
+                  <Phone className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-[11px]">3. Call / WhatsApp</div>
+                    <div className="text-[10px] text-slate-400 font-mono truncate">{lead.phone}</div>
+                  </div>
+                </a>
+              ) : (
+                <a
+                  href={`https://www.google.com/search?q=${encodeURIComponent(`${lead.business_name || ''} phone number ${lead.address || ''}`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="p-2.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 transition flex items-center gap-2"
+                >
+                  <Phone className="w-4 h-4 text-sky-400 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-[11px]">3. Find Phone via Search</div>
+                    <div className="text-[10px] text-slate-400">Look up phone number online</div>
+                  </div>
+                </a>
+              )}
+            </div>
+
+            {/* Quick Pitch Copy Template */}
+            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Recommended B2B Cold Outreach Draft
+                </span>
+                <span className="text-[10px] text-sky-400 bg-sky-500/10 border border-sky-500/30 px-2 py-0.5 rounded font-mono">
+                  Subject: Quick inquiry
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-200 font-sans bg-slate-900/80 p-3 rounded-lg border border-slate-800 space-y-2 select-all leading-relaxed">
+                <p><strong>Subject:</strong> Quick inquiry regarding your office in {lead.address || "your area"}</p>
+                <p>Dear Sir,</p>
+                <p>I recently came across your business located in {lead.address || "your area"}. You have an active local presence, but while looking up your official services online, I noticed you do not currently have an official corporate website or digital client portal.</p>
+                <p>Today, over 70% of local customers look for a verified web portal before visiting or calling. Without one, valuable clients often end up contacting other alternatives in the area.</p>
+                <p>We build fast, mobile-friendly websites with direct WhatsApp and inquiry automation that bring 2x–3x more direct local clients. Would you be open to a quick 2-minute preview of a sample design we prepared for your business?</p>
+                <p className="text-slate-400 pt-1">Sincerely,<br />[Your Name / Agency]</p>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
@@ -746,12 +919,20 @@ export default function LeadDetailPage() {
           <strong>Strategic Offer:</strong> {explanation.recommended_solution || "Full-stack digital presence modernization & customer inquiry automation."}
         </p>
         <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-            Ready-to-Send Outreach Message Draft
+          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+            <span>Ready-to-Send Executive Outreach Draft</span>
+            <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded font-mono">
+              Subject: Observable friction points on your website ({lead.domain || "portal"})
+            </span>
           </div>
-          <p className="text-xs text-slate-300 font-sans leading-relaxed italic">
-            &ldquo;Hi {lead.contact_person || `${lead.business_name} Team`}, we noticed your active presence in {lead.address || "the market"}. While reviewing your digital portal, we identified that your mobile visitor experience and automated lead capture have observable friction points that may be causing lead leakage. We specialize in resolving these gaps within 48 hours to significantly increase your inquiry conversion rate. Would you be open to a 10-minute briefing?&rdquo;
-          </p>
+          <div className="text-xs text-slate-200 font-sans bg-slate-900/80 p-3.5 rounded-lg border border-slate-800 space-y-2 select-all leading-relaxed">
+            <p><strong>Subject:</strong> Observable friction points on your website ({lead.domain || "portal"})</p>
+            <p>Dear Sir,</p>
+            <p>I was reviewing your official website ({lead.domain}) while researching active businesses in {lead.address || "the market"}. You have an established enterprise, but I noticed a couple of technical friction points—specifically regarding mobile responsiveness and automated lead capture.</p>
+            <p>Because most local clients browse from their smartphones, these layout and inquiry friction points can cause interested visitors to drop off before contacting you.</p>
+            <p>We help established firms resolve these technical gaps within 48 hours to significantly increase mobile inquiry conversion rates. Would you be open to a brief 5-minute discussion on how we can fix this for you?</p>
+            <p className="text-slate-400 pt-1">Sincerely,<br />[Your Name / Agency]</p>
+          </div>
         </div>
       </div>
 

@@ -8,10 +8,10 @@ from pydantic import BaseModel, Field
 
 
 class ResearchRunCreate(BaseModel):
-    industry: str = Field(..., example="Dental Clinic")
-    country: Optional[str] = Field(default="", example="Bangladesh")
-    city: Optional[str] = Field(default="", example="Dhaka")
-    sub_city: Optional[str] = Field(default="", example="Savar")
+    industry: str = Field(..., example="Any Commercial Business")
+    country: Optional[str] = Field(default="", example="United States")
+    city: Optional[str] = Field(default="", example="New York")
+    sub_city: Optional[str] = Field(default="", example="Manhattan")
     location: Optional[str] = Field(default="")
     depth: str = Field(default="DEEP", example="DEEP")  # QUICK, STANDARD, DEEP
     company_limit: int = Field(default=0, ge=0, le=1000000)

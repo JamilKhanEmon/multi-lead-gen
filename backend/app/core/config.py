@@ -75,8 +75,8 @@ class Settings(BaseSettings):
         description="Native macOS Ollama instance",
     )
     OLLAMA_MODEL: str = Field(
-        default="gemma3:4b",
-        description="Lightweight high-speed B2B reasoning model (Gemma 3 4B, low thermal footprint)",
+        default="qwen2.5:7b",
+        description="High-speed B2B reasoning model (Qwen 2.5 7B, precise JSON and cold outreach copy)",
     )
 
     # Workers & Resource Controls (Optimized for 16GB RAM)

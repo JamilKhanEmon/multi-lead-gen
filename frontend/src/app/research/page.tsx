@@ -108,7 +108,7 @@ export default function ResearchInitiatorPage() {
               value={country}
               onChange={(e) => setCountry(e.target.value)}
               required
-              placeholder="e.g. Bangladesh, United Arab Emirates, United Kingdom, United States"
+              placeholder="e.g. United States, United Kingdom, Canada, Australia, UAE"
               className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
             />
             {country && (
@@ -149,7 +149,7 @@ export default function ResearchInitiatorPage() {
               value={city}
               onChange={(e) => setCity(e.target.value)}
               required
-              placeholder="e.g. Dhaka, Dubai, London, New York, Toronto"
+              placeholder="e.g. New York, London, Toronto, Sydney, Dubai"
               className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
             />
             {city && (
@@ -189,7 +189,7 @@ export default function ResearchInitiatorPage() {
               type="text"
               value={subCity}
               onChange={(e) => setSubCity(e.target.value)}
-              placeholder="e.g. Savar, Uttara, Gulshan, Marina, Downtown (Leave empty to scan entire city)"
+              placeholder="e.g. Manhattan, Brooklyn, SoHo, Downtown, Marina (Leave empty to scan entire city)"
               className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
             />
             {subCity && (

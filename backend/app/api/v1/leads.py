@@ -2,6 +2,7 @@
 Qualified Lead Pipeline & Dossier Endpoints
 """
 import uuid
+import urllib.parse
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from app.models.business import Business
 from app.models.evidence import Evidence
 from app.models.research import ResearchJob
 from app.models.audit import User
+from app.engine.discovery_optimizer import DiscoveryOptimizer
 from app.schemas.lead import (
     LeadResponse,
     LeadDetailResponse,
@@ -39,7 +41,9 @@ async def list_leads(
     """Filter and list potential leads."""
     stmt = (
         select(Lead)
-        .options(selectinload(Lead.business))
+        .options(
+            selectinload(Lead.business).selectinload(Business.locations)
+        )
     )
 
     if tier:
@@ -53,26 +57,58 @@ async def list_leads(
     res = await db.execute(stmt)
     leads = res.scalars().all()
 
-    return [
-        LeadResponse(
-            id=l.id,
-            business_id=l.business_id,
-            tier=l.tier,
-            final_score=l.final_score,
-            is_qualified=l.is_qualified,
-            primary_gap_summary=l.primary_gap_summary,
-            created_at=l.created_at,
-            business_name=l.business.canonical_name if l.business else "Candidate Business",
-            domain=l.business.domain if l.business else None,
-            phone=l.business.phone if l.business else None,
-            email=l.business.email if l.business else None,
-            contact_person=l.business.contact_person if l.business else None,
-            contact_title=l.business.contact_title if l.business else None,
-            address=l.business.address if l.business else None,
-            business_type=l.business.business_type if l.business else "other",
+    lead_items = []
+    for l in leads:
+        biz = l.business
+        meta = (biz.metadata_json or {}) if biz else {}
+        loc = biz.locations[0] if (biz and biz.locations) else None
+        lat = (loc.latitude if loc and loc.latitude is not None else None) or meta.get("latitude")
+        lon = (loc.longitude if loc and loc.longitude is not None else None) or meta.get("longitude")
+        address = (biz.address if biz and biz.address else None) or (loc.address if loc else None) or meta.get("address")
+
+        if lat is not None and lon is not None:
+            gmaps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+        elif meta.get("google_maps_url"):
+            gmaps_url = meta.get("google_maps_url")
+        else:
+            name_addr = f"{biz.canonical_name if biz else ''} {address or ''}".strip()
+            gmaps_url = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(name_addr)}" if name_addr else None
+
+        gsearch_url = meta.get("google_search_url") or (
+            f"https://www.google.com/search?q={urllib.parse.quote(biz.canonical_name)}" if biz else None
         )
-        for l in leads
-    ]
+
+        btype = (
+            DiscoveryOptimizer.classify_entity(biz.canonical_name, biz.domain, biz.business_type)
+            if (biz and biz.canonical_name)
+            else (biz.business_type if biz else "Commercial Entity")
+        )
+
+        lead_items.append(
+            LeadResponse(
+                id=l.id,
+                business_id=l.business_id,
+                tier=l.tier,
+                final_score=l.final_score,
+                is_qualified=l.is_qualified,
+                primary_gap_summary=l.primary_gap_summary,
+                created_at=l.created_at,
+                business_name=biz.canonical_name if biz else "Candidate Business",
+                domain=biz.domain if biz else None,
+                phone=biz.phone if biz else None,
+                email=biz.email if biz else None,
+                contact_person=biz.contact_person if biz else None,
+                contact_title=biz.contact_title if biz else None,
+                address=address,
+                business_type=btype,
+                google_maps_url=gmaps_url,
+                google_search_url=gsearch_url,
+                latitude=lat,
+                longitude=lon,
+            )
+        )
+
+    return lead_items
 
 
 @router.get("/{lead_id}", response_model=LeadDetailResponse)
@@ -87,6 +123,7 @@ async def get_lead_detail(
         .options(
             selectinload(Lead.scores),
             selectinload(Lead.feedback_entries),
+            selectinload(Lead.business).selectinload(Business.locations),
             selectinload(Lead.business)
             .selectinload(Business.evidence)
             .selectinload(Evidence.parameter),
@@ -188,18 +225,47 @@ async def get_lead_detail(
                 "is_active_gap": False,
             })
 
+    biz = lead.business
+    meta = (biz.metadata_json or {}) if biz else {}
+    loc = biz.locations[0] if (biz and biz.locations) else None
+    lat = (loc.latitude if loc and loc.latitude is not None else None) or meta.get("latitude")
+    lon = (loc.longitude if loc and loc.longitude is not None else None) or meta.get("longitude")
+    address = (biz.address if biz and biz.address else None) or (loc.address if loc else None) or meta.get("address")
+
+    if lat is not None and lon is not None:
+        gmaps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+    elif meta.get("google_maps_url"):
+        gmaps_url = meta.get("google_maps_url")
+    else:
+        name_addr = f"{biz.canonical_name if biz else ''} {address or ''}".strip()
+        gmaps_url = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(name_addr)}" if name_addr else None
+
+    gsearch_url = meta.get("google_search_url") or (
+        f"https://www.google.com/search?q={urllib.parse.quote(biz.canonical_name)}" if biz else None
+    )
+
+    btype = (
+        DiscoveryOptimizer.classify_entity(biz.canonical_name, biz.domain, biz.business_type)
+        if (biz and biz.canonical_name)
+        else (biz.business_type if biz else "Commercial Entity")
+    )
+
     return LeadDetailResponse(
         id=lead.id,
         business_id=lead.business_id,
         business_name=lead.business.canonical_name if lead.business else "Business",
         domain=lead.business.domain if lead.business else None,
-        business_type=lead.business.business_type if lead.business else "other",
+        business_type=btype,
         phone=lead.business.phone if lead.business else None,
         email=lead.business.email or (f"contact@{lead.business.domain}" if lead.business and lead.business.domain else None),
         contact_person=lead.business.contact_person if lead.business else None,
         contact_title=lead.business.contact_title if lead.business else None,
-        address=lead.business.address if lead.business else None,
+        address=address,
         linkedin_url=lead.business.linkedin_url if lead.business else None,
+        google_maps_url=gmaps_url,
+        google_search_url=gsearch_url,
+        latitude=lat,
+        longitude=lon,
         tier=lead.tier,
         final_score=lead.final_score,
         is_qualified=lead.is_qualified,
