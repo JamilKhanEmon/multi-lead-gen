@@ -90,3 +90,24 @@ def test_weak_lead_rejection_gates():
     tier = QualificationEngine.assign_tier(score, passed)
     assert tier == "Rejected"
 
+
+def test_contactability_gate_rejection():
+    # Lead has strong evidence and high service fit, but zero contact details (no phone, no email)
+    passed, failures = QualificationEngine.evaluate_gates(
+        max_evidence_level=3,
+        max_recency=85,
+        is_relevant_to_business_type=True,
+        best_service_fit_score=90.0,
+        inferable_sources_count=2,
+        has_primary_conflict=False,
+        has_direct_contact=False,  # Neither phone nor email found
+    )
+    assert passed is False
+    assert any("Unreachable: No direct phone number or email address" in f for f in failures)
+
+    # Even with 95 score, tier must be Rejected if unreachable
+    score = QualificationEngine.calculate_score(90.0, 90.0, 90.0, 90.0, 90.0, 90.0)
+    tier = QualificationEngine.assign_tier(score, passed)
+    assert tier == "Rejected"
+
+

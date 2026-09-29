@@ -61,6 +61,7 @@ class QualificationEngine:
         inferable_sources_count: int,
         has_primary_conflict: bool,
         has_inferable_gaps: bool = False,
+        has_direct_contact: bool = True,
     ) -> Tuple[bool, List[str]]:
         """
         Validates all mandatory hard qualification gates.
@@ -91,6 +92,10 @@ class QualificationEngine:
         # Gate 6: No unresolved active contradictions
         if has_primary_conflict:
             failed_reasons.append("Active unresolved contradiction between primary sources.")
+
+        # Gate 7: Direct Contact Channel Required (At least one phone number or email address must exist)
+        if not has_direct_contact:
+            failed_reasons.append("Unreachable: No direct phone number or email address available for outreach.")
 
         passed = len(failed_reasons) == 0
         return passed, failed_reasons

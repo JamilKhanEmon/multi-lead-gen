@@ -152,7 +152,7 @@ Provide a JSON object with:
                     "engagement_signal": "High (Active in Multiple Markets)",
                 },
                 {
-                    "brand_or_domain": f"Apex {industry} Solutions",
+                    "brand_or_domain": f"Enterprise {industry} Leader",
                     "headline": f"Enterprise-grade {service_name} for forward-thinking businesses",
                     "video_hook": f"Watch how this system automates {service_name} in real-time.",
                     "core_offer": core_offer or "Schedule a 15-minute direct WhatsApp briefing.",

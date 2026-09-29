@@ -1,0 +1,55 @@
+"""
+Global Outreach Email Template & Signature Model
+"""
+import uuid
+from typing import Optional
+from sqlalchemy import String, Text, Boolean
+from sqlalchemy.orm import Mapped, mapped_column
+from .base import Base, TimestampMixin, UUIDMixin
+
+
+class EmailTemplate(Base, UUIDMixin, TimestampMixin):
+    """Global outreach email template and signature configured by administrators."""
+    __tablename__ = "email_templates"
+
+    name: Mapped[str] = mapped_column(String(100), unique=True, default="default", nullable=False, index=True)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Signature attributes
+    sender_name: Mapped[str] = mapped_column(String(150), default="Jamil Khan", nullable=False)
+    sender_title: Mapped[str] = mapped_column(String(150), default="Senior Solutions Consultant", nullable=False)
+    sender_company: Mapped[str] = mapped_column(String(150), default="Multi-Lead Gen AI", nullable=False)
+    sender_email: Mapped[str] = mapped_column(String(255), default="contact@leadgen.local", nullable=False)
+    sender_phone: Mapped[str] = mapped_column(String(100), default="+880 1700-000000", nullable=False)
+    sender_website: Mapped[Optional[str]] = mapped_column(String(255), default="https://leadgen.local", nullable=True)
+    sign_off: Mapped[str] = mapped_column(String(100), default="Sincerely,", nullable=False)
+    signature_text: Mapped[Optional[str]] = mapped_column(Text, default="", nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    def render_signature(self) -> str:
+        """Renders either the custom signature text or the structured signature block."""
+        if self.signature_text and self.signature_text.strip():
+            return self.signature_text.strip()
+        
+        parts = [self.sign_off or "Sincerely,"]
+        name_line = self.sender_name
+        if self.sender_title:
+            name_line += f"\n{self.sender_title}"
+        if self.sender_company:
+            name_line += f", {self.sender_company}"
+        parts.append(name_line)
+
+        contact_line = []
+        if self.sender_email:
+            contact_line.append(f"Email: {self.sender_email}")
+        if self.sender_phone:
+            contact_line.append(f"Phone: {self.sender_phone}")
+        if contact_line:
+            parts.append(" | ".join(contact_line))
+
+        if self.sender_website:
+            parts.append(self.sender_website)
+
+        return "\n".join(parts)

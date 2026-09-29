@@ -16,6 +16,7 @@ from app.models.evidence import Evidence
 from app.models.research import ResearchJob
 from app.models.audit import User
 from app.engine.discovery_optimizer import DiscoveryOptimizer
+from app.engine.deduplication import DeduplicationEngine, GENERIC_PLATFORM_DOMAINS
 from app.schemas.lead import (
     LeadResponse,
     LeadDetailResponse,
@@ -33,6 +34,7 @@ async def list_leads(
     skip: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=10000),
     tier: Optional[str] = None,  # Strong Potential, Review Needed, Rejected
+    run_id: Optional[uuid.UUID] = None,
     is_qualified: Optional[bool] = None,
     min_score: Optional[float] = Query(None, ge=0.0, le=100.0),
     db: AsyncSession = Depends(get_db),
@@ -48,6 +50,8 @@ async def list_leads(
 
     if tier:
         stmt = stmt.where(Lead.tier == tier)
+    if run_id:
+        stmt = stmt.where(Lead.run_id == run_id)
     if is_qualified is not None:
         stmt = stmt.where(Lead.is_qualified == is_qualified)
     if min_score is not None:
@@ -57,10 +61,71 @@ async def list_leads(
     res = await db.execute(stmt)
     leads = res.scalars().all()
 
+    # Auto-clean legacy generic platform records & dummy/test records from DB
+    try:
+        cleanup_stmt = select(Lead).join(Business).where(
+            (Business.canonical_name.ilike("%facebook.com%")) |
+            (Business.canonical_name.ilike("%instagram.com%")) |
+            (Business.canonical_name.ilike("%google.com%")) |
+            (Business.canonical_name.ilike("%sample%")) |
+            (Business.canonical_name.ilike("%demo business%")) |
+            (Business.canonical_name.ilike("%dummy%")) |
+            (Business.canonical_name.ilike("%test company%")) |
+            (Business.canonical_name == "Facebook") |
+            (Business.canonical_name == "facebook") |
+            (Business.canonical_name == "Google") |
+            (Business.canonical_name == "google")
+        )
+        c_res = await db.execute(cleanup_stmt)
+        bad_leads = c_res.scalars().all()
+        if bad_leads:
+            for bl in bad_leads:
+                await db.delete(bl)
+            await db.commit()
+    except Exception:
+        pass
+
     lead_items = []
     for l in leads:
         biz = l.business
+        if not biz:
+            continue
+        biz_name_l = (biz.canonical_name or "").lower().strip()
+        biz_dom_l = (biz.domain or "").lower().strip()
+
+        # Reject generic social platform entities (e.g. facebook.com)
+        if any(bad in biz_name_l for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "twitter.com"]) or biz_name_l in ["facebook", "instagram", "google", "meta"]:
+            continue
+
+        clean_dom = biz.domain
+        if DeduplicationEngine.is_generic_platform(clean_dom):
+            clean_dom = None
+
         meta = (biz.metadata_json or {}) if biz else {}
+        has_scraped_email = bool(meta.get("extracted_email") or (biz.email and not biz.email.startswith("contact@")))
+        if biz.email:
+            resolved_email = biz.email
+            email_status = "VERIFIED" if has_scraped_email else "SUGGESTED"
+        elif clean_dom and not DeduplicationEngine.is_generic_platform(clean_dom):
+            resolved_email = f"contact@{clean_dom}"
+            email_status = "SUGGESTED"
+        else:
+            resolved_email = None
+            email_status = "NOT_FOUND"
+
+        if not biz.email and resolved_email:
+            biz.email = resolved_email
+
+        has_contact = bool(biz.phone or resolved_email)
+        # If lead has neither phone nor email, it cannot be qualified for outreach
+        if l.is_qualified and not has_contact:
+            l.is_qualified = False
+            if l.tier != "Rejected":
+                l.tier = "Rejected"
+
+        if is_qualified is True and not has_contact:
+            continue
+
         loc = biz.locations[0] if (biz and biz.locations) else None
         lat = (loc.latitude if loc and loc.latitude is not None else None) or meta.get("latitude")
         lon = (loc.longitude if loc and loc.longitude is not None else None) or meta.get("longitude")
@@ -79,7 +144,7 @@ async def list_leads(
         )
 
         btype = (
-            DiscoveryOptimizer.classify_entity(biz.canonical_name, biz.domain, biz.business_type)
+            DiscoveryOptimizer.classify_entity(biz.canonical_name, clean_dom, biz.business_type)
             if (biz and biz.canonical_name)
             else (biz.business_type if biz else "Commercial Entity")
         )
@@ -88,15 +153,17 @@ async def list_leads(
             LeadResponse(
                 id=l.id,
                 business_id=l.business_id,
+                run_id=l.run_id,
                 tier=l.tier,
                 final_score=l.final_score,
                 is_qualified=l.is_qualified,
                 primary_gap_summary=l.primary_gap_summary,
                 created_at=l.created_at,
                 business_name=biz.canonical_name if biz else "Candidate Business",
-                domain=biz.domain if biz else None,
+                domain=clean_dom,
                 phone=biz.phone if biz else None,
-                email=biz.email if biz else None,
+                email=resolved_email,
+                email_status=email_status,
                 contact_person=biz.contact_person if biz else None,
                 contact_title=biz.contact_title if biz else None,
                 address=address,
@@ -107,6 +174,11 @@ async def list_leads(
                 longitude=lon,
             )
         )
+
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
 
     return lead_items
 
@@ -250,14 +322,37 @@ async def get_lead_detail(
         else (biz.business_type if biz else "Commercial Entity")
     )
 
+    clean_biz_dom = lead.business.domain if lead.business else None
+    if DeduplicationEngine.is_generic_platform(clean_biz_dom):
+        clean_biz_dom = None
+
+    has_scraped_email = bool(meta.get("extracted_email") or (lead.business and lead.business.email and not lead.business.email.startswith("contact@")))
+    if lead.business and lead.business.email:
+        resolved_email = lead.business.email
+        email_status = "VERIFIED" if has_scraped_email else "SUGGESTED"
+    elif clean_biz_dom:
+        resolved_email = f"contact@{clean_biz_dom}"
+        email_status = "SUGGESTED"
+    else:
+        resolved_email = None
+        email_status = "NOT_FOUND"
+
+    if lead.business and not lead.business.email and resolved_email:
+        lead.business.email = resolved_email
+        try:
+            await db.commit()
+        except Exception:
+            pass
+
     return LeadDetailResponse(
         id=lead.id,
         business_id=lead.business_id,
         business_name=lead.business.canonical_name if lead.business else "Business",
-        domain=lead.business.domain if lead.business else None,
+        domain=clean_biz_dom,
         business_type=btype,
         phone=lead.business.phone if lead.business else None,
-        email=lead.business.email or (f"contact@{lead.business.domain}" if lead.business and lead.business.domain else None),
+        email=resolved_email,
+        email_status=email_status,
         contact_person=lead.business.contact_person if lead.business else None,
         contact_title=lead.business.contact_title if lead.business else None,
         address=address,

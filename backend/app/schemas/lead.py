@@ -38,6 +38,7 @@ class LeadFeedbackResponse(BaseModel):
 class LeadResponse(BaseModel):
     id: uuid.UUID
     business_id: uuid.UUID
+    run_id: Optional[uuid.UUID] = None
     tier: str
     final_score: float
     is_qualified: bool
@@ -47,6 +48,7 @@ class LeadResponse(BaseModel):
     domain: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    email_status: Optional[str] = "VERIFIED"  # VERIFIED, SUGGESTED, NOT_FOUND
     contact_person: Optional[str] = None
     contact_title: Optional[str] = None
     address: Optional[str] = None

@@ -50,7 +50,20 @@ async def handle_discover_businesses(
     deduplicates against database, and enqueues research jobs for new candidates.
     """
     payload = task_payload.get("payload", {})
-    run_id = uuid.UUID(task_payload["run_id"])
+    try:
+        run_id = uuid.UUID(task_payload["run_id"])
+    except Exception:
+        logger.error(f"TaskDiscover: Invalid run_id '{task_payload.get('run_id')}'. Aborting.")
+        return {"discovered": 0, "enqueued": 0}
+
+    # Admin Run Cancellation Check
+    async with AsyncSessionLocal() as session:
+        r_chk = await session.execute(select(ResearchRun.status).where(ResearchRun.id == run_id))
+        cur_status = r_chk.scalar_one_or_none()
+        if cur_status == "CANCELLED":
+            logger.info(f"TaskDiscover: Run {run_id} was CANCELLED by admin. Aborting discovery.")
+            return {"discovered": 0, "enqueued": 0, "status": "CANCELLED"}
+
     industry = payload.get("industry", "Business").strip()
     location = payload.get("location", "").strip()
     company_limit = payload.get("company_limit", 20)
@@ -102,6 +115,17 @@ async def handle_discover_businesses(
 
             if not raw_name:
                 continue
+
+            # Strict rejection: Generic social platforms or search engines (facebook.com, instagram.com, etc.)
+            raw_name_l = raw_name.lower().strip()
+            if any(bad in raw_name_l for bad in ["facebook.com", "instagram.com", "google.com", "youtube.com", "linkedin.com", "twitter.com"]) or raw_name_l in ["facebook", "instagram", "google", "meta"]:
+                logger.info(f"TaskDiscover: Discarding generic platform candidate '{raw_name}'")
+                continue
+
+            if DeduplicationEngine.is_generic_platform(raw_domain):
+                logger.info(f"TaskDiscover: Stripping generic platform website '{raw_domain}' from '{raw_name}'")
+                raw_domain = None
+                comp["website"] = None
 
             # Strict semantic check against negative keywords and non-commercial markers
             is_valid, reason = DiscoveryOptimizer.validate_candidate(comp, val_plan)
@@ -178,12 +202,12 @@ async def handle_discover_businesses(
                 seen_biz_ids.add(target_biz.id)
                 candidate_businesses.append(target_biz)
 
-        # Update run counters
+        # Update run counters with exact enqueued candidate count
         stmt = select(ResearchRun).where(ResearchRun.id == run_id)
         run_res = await session.execute(stmt)
         run = run_res.scalar_one_or_none()
         if run:
-            run.discovered_count = len(companies)
+            run.discovered_count = len(candidate_businesses)
             run.researched_count = len(candidate_businesses)
             if len(candidate_businesses) == 0:
                 run.status = "COMPLETED"
@@ -230,17 +254,70 @@ async def handle_research_and_qualify(
     ollama_client: OllamaClient,
 ) -> Dict[str, Any]:
     """
+    Crash-immune dispatcher for research and qualification.
+    Checks cancellation before execution and catches all unexpected errors.
+    """
+    payload = task_payload.get("payload", {})
+    try:
+        business_id = uuid.UUID(payload["business_id"])
+        run_id = uuid.UUID(task_payload["run_id"])
+    except Exception as e:
+        logger.warning(f"TaskResearch: Invalid UUID in payload: {e}. Skipping safely.")
+        return {"status": "SKIPPED", "reason": "INVALID_UUID"}
+
+    business_name = payload.get("business_name", "Unknown Business")
+
+    # Admin Run Cancellation Check: Skip company instantly if run was cancelled
+    async with AsyncSessionLocal() as session:
+        r_chk = await session.execute(select(ResearchRun.status).where(ResearchRun.id == run_id))
+        cur_status = r_chk.scalar_one_or_none()
+        if cur_status == "CANCELLED":
+            logger.info(f"TaskResearch: Run {run_id} is CANCELLED by admin. Skipping company '{business_name}'.")
+            return {"status": "CANCELLED", "reason": "RUN_CANCELLED"}
+
+    try:
+        return await _execute_research_and_qualify(
+            task_payload, openclaw_client, ollama_client, business_id, run_id
+        )
+    except Exception as unhandled_err:
+        logger.error(
+            f"TaskResearch: Non-fatal error evaluating '{business_name}': {unhandled_err}. "
+            "Skipping cleanly to prevent worker crash.",
+            exc_info=True,
+        )
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(ResearchRun).where(ResearchRun.id == run_id)
+                res = await session.execute(stmt)
+                run = res.scalar_one_or_none()
+                if run and run.status != "CANCELLED":
+                    run.failed_count += 1
+                    processed = run.qualified_count + run.rejected_count + run.failed_count
+                    if processed >= run.discovered_count and run.discovered_count > 0:
+                        run.status = "COMPLETED"
+                    await session.commit()
+        except Exception:
+            pass
+        return {"status": "SKIPPED", "reason": str(unhandled_err)}
+
+
+async def _execute_research_and_qualify(
+    task_payload: Dict[str, Any],
+    openclaw_client: OpenClawClient,
+    ollama_client: OllamaClient,
+    business_id: uuid.UUID,
+    run_id: uuid.UUID,
+) -> Dict[str, Any]:
+    """
     Executes deep research across website and social, gathers evidence,
     runs parameter and service matching, and deterministically qualifies the lead.
     """
     payload = task_payload.get("payload", {})
-    business_id = uuid.UUID(payload["business_id"])
-    business_name = payload["business_name"]
+    business_name = payload.get("business_name", "Unknown Business")
     domain = payload.get("domain")
     business_type = payload.get("business_type", "other")
     location = payload.get("location", "Target Market")
     depth = payload.get("depth", "STANDARD").upper()
-    run_id = uuid.UUID(task_payload["run_id"])
 
     logger.info(f"Researching & Qualifying: {business_name} ({business_type}) [Depth: {depth}]")
 
@@ -259,11 +336,56 @@ async def handle_research_and_qualify(
     if domain:
         target_url = f"https://{domain}"
         try:
-            website_data = await openclaw_client.run_skill("website-research", {"url": target_url, "canonical_name": business_name})
+            website_data = await openclaw_client.run_skill(
+                "website-research",
+                {"url": target_url, "canonical_name": business_name, "location": location}
+            )
         except Exception as e:
             logger.warning(f"OpenClaw website research fallback for {domain}: {e}")
-            mock_oc = MockOpenClawClient()
-            website_data = await mock_oc.run_skill("website-research", {"url": target_url, "canonical_name": business_name})
+            website_data = {
+                "url": target_url,
+                "status": 500,
+                "is_accessible": False,
+                "title": business_name,
+                "mobile_responsive": None,
+                "has_whatsapp": False,
+                "has_online_booking": False,
+                "has_contact_form": False,
+                "broken_links_count": 0,
+                "extracted_phone": payload.get("phone"),
+                "extracted_email": payload.get("email"),
+                "facebook_url": None,
+                "instagram_url": None,
+                "linkedin_url": None,
+                "cms_platform": "Unknown",
+                "has_meta_pixel": False,
+                "has_google_analytics": False,
+                "contact_person": None,
+                "contact_title": None,
+                "rendered_by": "fallback",
+            }
+
+    # If domain was missing entirely and contacts are still missing, try quick deep contact hunt
+    current_phone = website_data.get("extracted_phone") or payload.get("phone")
+    current_email = website_data.get("extracted_email") or payload.get("email")
+
+    if not domain and (not current_phone or not current_email):
+        logger.info(f"TaskResearch: Missing direct contacts for '{business_name}'. Initiating live contact hunt...")
+        from app.services.openclaw_client import LiveResearchEngine
+        deep_hunt = await LiveResearchEngine.deep_contact_hunt(
+            canonical_name=business_name,
+            domain=domain,
+            location=location,
+            existing_phone=current_phone,
+            existing_email=current_email,
+            facebook_url=website_data.get("facebook_url"),
+        )
+        if deep_hunt.get("phone") and not current_phone:
+            website_data["extracted_phone"] = deep_hunt["phone"]
+            logger.info(f"TaskResearch: Discovered phone on deep retry for '{business_name}': {deep_hunt['phone']}")
+        if deep_hunt.get("email") and not current_email:
+            website_data["extracted_email"] = deep_hunt["email"]
+            logger.info(f"TaskResearch: Discovered email on deep retry for '{business_name}': {deep_hunt['email']}")
 
     # 2. Build observable evidence items with multi-source corroboration
     maps_query = urllib.parse.quote(f"{business_name} {location}")
@@ -481,6 +603,10 @@ async def handle_research_and_qualify(
     # Evaluate Hard Gates
     is_relevant = len(relevant_detected) > 0
     has_inferable = any(e.get("classification") == "INFERABLE" for e in evidence_records)
+    has_contact = bool(
+        (website_data.get("extracted_phone") or payload.get("phone"))
+        or (website_data.get("extracted_email") or payload.get("email"))
+    )
     passed_gates, gate_failures = QualificationEngine.evaluate_gates(
         max_evidence_level=evidence_level,
         max_recency=max_recency,
@@ -489,6 +615,7 @@ async def handle_research_and_qualify(
         inferable_sources_count=sources_cnt,
         has_primary_conflict=has_conflict,
         has_inferable_gaps=has_inferable,
+        has_direct_contact=has_contact,
     )
 
     # Calculate 6-Factor Score
@@ -542,6 +669,8 @@ async def handle_research_and_qualify(
                 biz_obj.email = website_data.get("extracted_email")
             elif not biz_obj.email and payload.get("email"):
                 biz_obj.email = payload.get("email")
+            elif not biz_obj.email and domain and not DeduplicationEngine.is_generic_platform(domain):
+                biz_obj.email = f"contact@{domain}"
             if website_data.get("contact_person"):
                 biz_obj.contact_person = website_data.get("contact_person")
             if website_data.get("contact_title"):

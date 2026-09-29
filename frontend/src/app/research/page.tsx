@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createResearchRun } from "@/lib/api";
+import { createResearchRun, fetchResearchRun, cancelResearchRun, ResearchRun } from "@/lib/api";
 import {
   Compass,
   Sparkles,
@@ -13,7 +13,13 @@ import {
   Briefcase,
   Layers,
   X,
+  XCircle,
   CheckCircle2,
+  Loader2,
+  ArrowRight,
+  RefreshCw,
+  Search,
+  ShieldCheck,
 } from "lucide-react";
 
 export default function ResearchInitiatorPage() {
@@ -24,12 +30,65 @@ export default function ResearchInitiatorPage() {
   const [industry, setIndustry] = useState("");
   const [depth, setDepth] = useState("DEEP");
   const [submitting, setSubmitting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Live Research Progress Tracking
+  const [activeRun, setActiveRun] = useState<ResearchRun | null>(null);
+  const [progressPct, setProgressPct] = useState(15);
+
+  const handleCancelRun = async () => {
+    if (!activeRun) return;
+    if (!confirm("Are you sure you want to stop and cancel this autonomous research run?")) return;
+    setCancelling(true);
+    try {
+      const res = await cancelResearchRun(activeRun.id);
+      if (res) {
+        setActiveRun(res);
+      } else {
+        setActiveRun((prev) => (prev ? { ...prev, status: "CANCELLED" } : null));
+      }
+    } catch (err: any) {
+      alert("Failed to cancel run: " + err.message);
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  // Poll active run every 2 seconds
+  useEffect(() => {
+    if (!activeRun || activeRun.status === "COMPLETED" || activeRun.status === "FAILED") return;
+    const runId = activeRun.id;
+
+    const interval = setInterval(async () => {
+      try {
+        const updated = await fetchResearchRun(runId);
+        if (updated) {
+          setActiveRun(updated);
+          if (updated.status === "COMPLETED") {
+            setProgressPct(100);
+            clearInterval(interval);
+          } else if (updated.discovered_count > 0) {
+            const processed = updated.qualified_count + updated.rejected_count + updated.failed_count;
+            const pct = Math.min(98, Math.max(30, Math.round((processed / updated.discovered_count) * 100)));
+            setProgressPct(pct);
+          } else {
+            setProgressPct((prev) => Math.min(30, prev + 3));
+          }
+        }
+      } catch (e) {
+        console.debug("Poll run error:", e);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [activeRun?.id, activeRun?.status]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    setProgressPct(15);
 
     try {
       const cleanOverride =
@@ -42,7 +101,7 @@ export default function ResearchInitiatorPage() {
       const locationParts = [subCity.trim(), city.trim(), country.trim()].filter(Boolean);
       const computedLocation = locationParts.join(", ");
 
-      await createResearchRun({
+      const run = await createResearchRun({
         country: country.trim(),
         city: city.trim(),
         sub_city: subCity.trim(),
@@ -53,13 +112,217 @@ export default function ResearchInitiatorPage() {
         business_type_override: cleanOverride,
       });
 
-      router.push("/");
+      setActiveRun(run);
     } catch (err: any) {
       setError(err.message || "Failed to trigger research run");
     } finally {
       setSubmitting(false);
     }
   };
+
+  const processedCount = activeRun
+    ? activeRun.qualified_count + activeRun.rejected_count + activeRun.failed_count
+    : 0;
+
+  // ==============================================================================
+  // LIVE PROGRESS VIEW (Shown when a research run is active or completed)
+  // ==============================================================================
+  if (activeRun) {
+    const isCompleted = activeRun.status === "COMPLETED";
+    const isCancelled = activeRun.status === "CANCELLED";
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+              <Compass
+                className={`w-6 h-6 ${
+                  isCancelled
+                    ? "text-rose-400"
+                    : isCompleted
+                    ? "text-emerald-400"
+                    : "text-sky-400 animate-spin"
+                }`}
+              />
+              {isCancelled
+                ? "Autonomous Research Cancelled"
+                : isCompleted
+                ? "Autonomous Research Completed"
+                : "Autonomous Research in Progress"}
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Target: <span className="text-sky-300 font-semibold">{activeRun.industry}</span> in{" "}
+              <span className="text-emerald-300 font-semibold">{activeRun.location}</span>
+            </p>
+          </div>
+          <span
+            className={`text-xs font-mono px-3 py-1 rounded-full font-bold uppercase border ${
+              isCancelled
+                ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                : isCompleted
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                : "bg-sky-500/10 text-sky-400 border-sky-500/30 animate-pulse"
+            }`}
+          >
+            {activeRun.status}
+          </span>
+        </div>
+
+        {/* Live Percentage Card */}
+        <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-6 relative overflow-hidden shadow-2xl">
+          <div className="flex items-end justify-between">
+            <div>
+              <span className="text-xs font-mono text-slate-400 uppercase tracking-wider">
+                Overall Progress
+              </span>
+              <div className="text-4xl font-extrabold text-white mt-1 flex items-baseline gap-2">
+                <span className={isCompleted ? "text-emerald-400" : "text-sky-400"}>
+                  {progressPct}%
+                </span>
+                <span className="text-xs font-normal text-slate-400">
+                  {isCompleted ? "Completed" : "Executing..."}
+                </span>
+              </div>
+            </div>
+            <div className="text-right text-xs font-mono text-slate-400">
+              {activeRun.discovered_count > 0 ? (
+                <span>
+                  {processedCount} of {activeRun.discovered_count} Companies Audited
+                </span>
+              ) : (
+                <span>Discovering verified commercial entities...</span>
+              )}
+            </div>
+          </div>
+
+          {/* Glowing Animated Progress Bar */}
+          <div className="w-full bg-slate-950/80 rounded-full h-3.5 p-0.5 border border-slate-800 overflow-hidden shadow-inner">
+            <div
+              className={`h-full rounded-full transition-all duration-700 ease-out ${
+                isCompleted
+                  ? "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-lg shadow-emerald-500/30"
+                  : "bg-gradient-to-r from-sky-500 via-indigo-500 to-sky-400 shadow-lg shadow-sky-500/30"
+              }`}
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+
+          {/* 4 Real-time Metrics Counters */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 text-center">
+              <span className="text-[10px] uppercase font-mono text-slate-400 block">Discovered</span>
+              <span className="text-lg font-bold text-white mt-0.5 block">{activeRun.discovered_count}</span>
+            </div>
+            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 text-center">
+              <span className="text-[10px] uppercase font-mono text-slate-400 block">Audited</span>
+              <span className="text-lg font-bold text-slate-200 mt-0.5 block">{processedCount}</span>
+            </div>
+            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 text-center">
+              <span className="text-[10px] uppercase font-mono text-emerald-400 block">Qualified</span>
+              <span className="text-lg font-bold text-emerald-400 mt-0.5 block">{activeRun.qualified_count}</span>
+            </div>
+            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 text-center">
+              <span className="text-[10px] uppercase font-mono text-rose-400 block">Unreachable</span>
+              <span className="text-lg font-bold text-rose-400 mt-0.5 block">{activeRun.rejected_count}</span>
+            </div>
+          </div>
+
+          {/* Interactive Pipeline Execution Stages */}
+          <div className="pt-4 border-t border-slate-800/80 space-y-3">
+            <div className="text-xs font-semibold text-slate-300">Live Execution Stages:</div>
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center gap-2.5 text-emerald-400">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>AI Search Expansion & Geo-Boundary Filtering (Completed)</span>
+              </div>
+              <div
+                className={`flex items-center gap-2.5 ${
+                  activeRun.discovered_count > 0 ? "text-emerald-400" : "text-sky-400"
+                }`}
+              >
+                {activeRun.discovered_count > 0 ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                ) : (
+                  <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
+                )}
+                <span>
+                  Hostinger OpenClaw Directory & Web Discovery (
+                  {activeRun.discovered_count > 0
+                    ? `${activeRun.discovered_count} commercial entities found`
+                    : "Searching..."}
+                  )
+                </span>
+              </div>
+              <div
+                className={`flex items-center gap-2.5 ${
+                  isCompleted
+                    ? "text-emerald-400"
+                    : activeRun.discovered_count > 0
+                    ? "text-sky-400"
+                    : "text-slate-500"
+                }`}
+              >
+                {isCompleted ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                ) : activeRun.discovered_count > 0 ? (
+                  <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
+                ) : (
+                  <div className="w-4 h-4 rounded-full border border-slate-700 shrink-0" />
+                )}
+                <span>
+                  Multi-page Deep Crawling, Contact Extraction & Retries (
+                  {processedCount}/{activeRun.discovered_count})
+                </span>
+              </div>
+              <div
+                className={`flex items-center gap-2.5 ${
+                  isCompleted ? "text-emerald-400" : "text-slate-500"
+                }`}
+              >
+                {isCompleted ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                ) : (
+                  <div className="w-4 h-4 rounded-full border border-slate-700 shrink-0" />
+                )}
+                <span>Deterministic 135-Parameter Mathematical Qualification & Scoring</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row items-center gap-3">
+            <button
+              onClick={() => router.push(`/leads?run_id=${activeRun.id}`)}
+              className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-500/20"
+            >
+              <span>View Leads in Pipeline ({activeRun.qualified_count} Qualified)</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            {!isCompleted && !isCancelled && (
+              <button
+                type="button"
+                onClick={handleCancelRun}
+                disabled={cancelling}
+                className="w-full sm:w-auto py-3 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+              >
+                <XCircle className="w-4 h-4" />
+                <span>{cancelling ? "Cancelling..." : "Cancel Run"}</span>
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setActiveRun(null);
+                setIndustry("");
+              }}
+              className="w-full sm:w-auto py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition"
+            >
+              Start Another Run
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-5 sm:space-y-6">

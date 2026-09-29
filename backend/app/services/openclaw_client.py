@@ -27,11 +27,24 @@ class LiveResearchEngine:
 
     USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
-    # Search engines and social platforms to exclude from canonical business domain detection
+    # Search engines, document archives, directories, and review platforms to exclude from business detection
     EXCLUDED_ROOT_DOMAINS = {
+        # Search & Social Platforms
         "duckduckgo.com", "google.com", "bing.com", "yahoo.com", "wikipedia.org", "youtube.com",
         "twitter.com", "x.com", "pinterest.com", "reddit.com", "quora.com", "medium.com", "github.com",
-        "play.google.com", "apps.apple.com"
+        "play.google.com", "apps.apple.com", "facebook.com", "instagram.com", "linkedin.com", "tiktok.com",
+
+        # Document & Slides Sharing Platforms (Prevent PDFs/Docs from becoming "businesses")
+        "scribd.com", "slideshare.net", "docplayer.net", "academia.edu", "researchgate.net",
+        "issuu.com", "pdfdrive.com", "archive.org", "scribdassets.com",
+
+        # General Aggregators, Directories, Review Platforms & Job Boards (Not target clients)
+        "goodfirms.co", "clutch.co", "tripadvisor.com", "trustpilot.com", "yelp.com", "glassdoor.com",
+        "indeed.com", "bdjobs.com", "bdtradeinfo.com", "yellowpages.com", "dnb.com", "kompass.com",
+        "indiamart.com", "justdial.com", "zoominfo.com", "crunchbase.com", "pitchbook.com", "expat.com",
+
+        # Free blogging subdomains / generic website builders without custom domain
+        "wixsite.com", "blogspot.com", "wordpress.com", "weebly.com", "sites.google.com", "tumblr.com"
     }
 
     @classmethod
@@ -527,9 +540,20 @@ class LiveResearchEngine:
                     lat = float(item["lat"]) if item.get("lat") else None
                     lon = float(item["lon"]) if item.get("lon") else None
 
-                    # Filter website url
-                    if website and not website.startswith("http"):
-                        website = f"https://{website}"
+                    name_l = name.lower().strip()
+                    if name_l in ["facebook", "facebook.com", "meta", "instagram", "google", "youtube", "twitter"] or "facebook.com" in name_l:
+                        continue
+
+                    # Filter website url (do NOT treat facebook.com, instagram.com, etc. as official company website)
+                    if website:
+                        if not website.startswith("http"):
+                            website = f"https://{website}"
+                        try:
+                            w_dom = urllib.parse.urlparse(website).netloc.lower().replace("www.", "")
+                            if any(bad in w_dom for bad in ["facebook.com", "instagram.com", "twitter.com", "x.com", "youtube.com", "google.com", "linkedin.com", "wikipedia.org"]):
+                                website = None
+                        except Exception:
+                            pass
 
                     results.append({
                         "name": name.strip(),
@@ -624,7 +648,16 @@ class LiveResearchEngine:
         if not domain or domain in seen_domains:
             return None
 
-        if any(x in domain for x in cls.EXCLUDED_ROOT_DOMAINS):
+        # Reject document file URLs directly
+        if re.search(r'\.(pdf|docx?|pptx?|xlsx?|zip|rar|csv)(\?.*)?$', actual_url, re.I):
+            return None
+
+        # Reject non-commercial associations, governmental, or educational sites
+        if domain.endswith((".gov", ".edu", ".mil", ".org")):
+            return None
+
+        # Reject path fragments representing document downloads or public forum threads
+        if any(bad in actual_url.lower() for bad in ["/pdf/", ".pdf", "/download/", "/document/", "/presentation/", "/threads/", "/forum/"]):
             return None
 
         company_name, detected_btype = cls._clean_company_identity(title, domain, snippet, industry, business_type_override)
@@ -677,29 +710,127 @@ class LiveResearchEngine:
         b_type = (business_type_override or search_industry).lower().replace(" ", "_").replace("-", "_")
         dom_name = domain.split(".")[0].replace("-", " ").replace("_", " ").title()
 
+        GENERIC_TAGLINES = [
+            "leading", "find your dream", "welcome to", "best real estate",
+            "top real estate", "real estate company", "real estate developer",
+            "properties in", "property in", "apartments for sale"
+        ]
+        GENERIC_STOP_WORDS = {"real", "estate", "pdf", "developer", "properties", "property", "company", "ltd", "limited"}
+
         parts = re.split(r'\||-|—|@|:', raw_title)
-        best_name = dom_name
+        candidate_names = []
 
         for p in parts:
             clean = p.strip()
-            if len(clean) >= 3 and not any(k in clean.lower() for k in ["best", "top", "ranked", "reviews", "directory", "near me", "list", "guide", "2026", "2025", "home", "official"]):
-                if not re.search(r'(https?://|www\.|\.[a-zA-Z]{2,})', clean.lower()):
-                    best_name = clean
-                    break
+            clean_l = clean.lower()
+            if len(clean) >= 3 and not any(k in clean_l for k in ["best", "top", "ranked", "reviews", "directory", "near me", "list", "guide", "2026", "2025", "home", "official", ".pdf"]):
+                if not re.search(r'(https?://|www\.|\.[a-zA-Z]{2,})', clean_l):
+                    if not any(tag in clean_l for tag in GENERIC_TAGLINES) and clean_l not in GENERIC_STOP_WORDS:
+                        candidate_names.append(clean)
+
+        best_name = candidate_names[0] if candidate_names else dom_name
+        if best_name.lower() in GENERIC_STOP_WORDS or len(best_name) < 3:
+            best_name = dom_name
 
         return best_name, b_type
 
     @classmethod
-    async def fetch_page_with_browser(cls, target_url: str) -> Optional[str]:
-        """Attempts to render dynamic SPA/JavaScript page using Playwright Chromium with graceful fallback."""
+    def extract_contacts_from_text(cls, text: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Extracts clean, verified phone numbers and emails from raw HTML or text.
+        Applies strict sanitization against false positives (dates, dimensions, asset files, dummy emails).
+        """
+        if not text:
+            return None, None
+
+        extracted_phone = None
+        extracted_email = None
+
+        # 1. Phone Extraction
+        # A. Priority: tel: links
+        tel_matches = re.findall(r'tel:([+\d\s\-\(\)\.]{8,25})', text, re.IGNORECASE)
+        for cand in tel_matches:
+            clean_digits = re.sub(r'\D', '', cand)
+            if 8 <= len(clean_digits) <= 15 and not clean_digits.startswith(('000', '123456')):
+                extracted_phone = cand.strip()
+                break
+
+        # B. Regex international / domestic phones
+        if not extracted_phone:
+            raw_phone_patterns = [
+                r'(?:\+|00)[1-9]\d{0,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{0,4}',
+                r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
+                r'(?:01[3-9]\d{8})',  # Bangladesh local mobile
+                r'(?:0[1-9]\d{8,10})',  # UK/European local format
+            ]
+            for pattern in raw_phone_patterns:
+                matches = re.findall(pattern, text)
+                for p in matches:
+                    clean_str = p.strip()
+                    digits = re.sub(r'\D', '', clean_str)
+                    if 9 <= len(digits) <= 15:
+                        # Filter out dates, years, dimensions (e.g. 1920x1080)
+                        if not any(clean_str.startswith(yr) for yr in ["2020", "2021", "2022", "2023", "2024", "2025", "2026"]):
+                            if not re.search(r'^\d{4}[-/]\d{2}[-/]\d{2}$', clean_str) and "x" not in clean_str.lower():
+                                extracted_phone = clean_str
+                                break
+                if extracted_phone:
+                    break
+
+        # 2. Email Extraction
+        # A. Priority: mailto: links
+        mailto_matches = re.findall(r'mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', text, re.IGNORECASE)
+        for em in mailto_matches:
+            em_clean = em.strip().lower()
+            if not any(em_clean.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.css', '.js']):
+                if not any(dummy in em_clean for dummy in ['example.com', 'domain.com', 'yourdomain', 'sentry.io', 'wixpress.com']):
+                    extracted_email = em_clean
+                    break
+
+        # B. Standard regex email
+        if not extracted_email:
+            email_matches = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+            for em in email_matches:
+                em_clean = em.strip().lower()
+                if not any(em_clean.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.css', '.js']):
+                    if not any(dummy in em_clean for dummy in ['example.com', 'domain.com', 'yourdomain', 'sentry.io', 'wixpress.com', 'bootstrap', 'wordpress', 'cloudflare']):
+                        extracted_email = em_clean
+                        break
+
+        # C. Obfuscated emails (e.g. info [at] domain.com or info(at)domain.com)
+        if not extracted_email:
+            obf_matches = re.findall(r'([a-zA-Z0-9._%+-]+)\s*(?:\[at\]|\(at\)|@)\s*([a-zA-Z0-9.-]+)\s*(?:\[dot\]|\(dot\)|\.)\s*([a-zA-Z]{2,})', text, re.IGNORECASE)
+            for user, dom, tld in obf_matches:
+                reconstructed = f"{user}@{dom}.{tld}".lower()
+                if not any(dummy in reconstructed for dummy in ['example.com', 'domain.com']):
+                    extracted_email = reconstructed
+                    break
+
+        return extracted_phone, extracted_email
+
+    @classmethod
+    async def fetch_page_with_browser(cls, target_url: str, human_scroll: bool = True) -> Optional[str]:
+        """Attempts to render dynamic SPA/JavaScript page using Playwright Chromium with human-like wait and scroll."""
         try:
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page(
-                    user_agent=cls.USER_AGENT
+                    user_agent=cls.USER_AGENT,
+                    viewport={"width": 1280, "height": 800},
                 )
-                await page.goto(target_url, timeout=10000, wait_until="domcontentloaded")
+                await page.goto(target_url, timeout=12000, wait_until="domcontentloaded")
+                # Human wait for dynamic scripts/hydration
+                await page.wait_for_timeout(1500)
+                if human_scroll:
+                    # Scroll down smoothly to trigger lazy footer contact elements
+                    try:
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+                        await page.wait_for_timeout(500)
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        await page.wait_for_timeout(800)
+                    except Exception:
+                        pass
                 content = await page.content()
                 await browser.close()
                 return content
@@ -708,11 +839,102 @@ class LiveResearchEngine:
             return None
 
     @classmethod
-    async def audit_website(cls, url: str, canonical_name: str = "Business") -> Dict[str, Any]:
+    async def deep_contact_hunt(
+        cls,
+        canonical_name: str,
+        domain: Optional[str] = None,
+        location: str = "",
+        existing_phone: Optional[str] = None,
+        existing_email: Optional[str] = None,
+        facebook_url: Optional[str] = None,
+    ) -> Dict[str, Optional[str]]:
         """
-        Executes a real multi-page audit across Home, Contact, About, and Services.
+        Autonomous secondary contact hunting simulating human researcher behavior.
+        Takes time like a human:
+        1. Deep browser render with smooth scroll to uncover lazy footers.
+        2. Live targeted DuckDuckGo search queries for public phone/email snippets.
+        3. Social profile bio search (Facebook, LinkedIn).
+        Returns {'phone': ..., 'email': ...}
+        """
+        found_phone = existing_phone
+        found_email = existing_email
+
+        if found_phone and found_email:
+            return {"phone": found_phone, "email": found_email}
+
+        loop = asyncio.get_event_loop()
+
+        # Step 1: Headless browser with scroll on contact or home page
+        if domain:
+            for sub in ["/contact", "/contact-us", ""]:
+                if found_phone and found_email:
+                    break
+                target = f"https://{domain}{sub}"
+                try:
+                    logger.info(f"OpenClaw DeepHunt: Human-like browser inspection of {target}...")
+                    rendered_html = await cls.fetch_page_with_browser(target, human_scroll=True)
+                    if rendered_html:
+                        p, e = cls.extract_contacts_from_text(rendered_html)
+                        if p and not found_phone:
+                            found_phone = p
+                            logger.info(f"OpenClaw DeepHunt: Found phone via browser scroll for {canonical_name}: {p}")
+                        if e and not found_email:
+                            found_email = e
+                            logger.info(f"OpenClaw DeepHunt: Found email via browser scroll for {canonical_name}: {e}")
+                except Exception as ex:
+                    logger.debug(f"DeepHunt browser inspection error on {target}: {ex}")
+
+        # Step 2: Live Search Snippet Extraction (DuckDuckGo)
+        if not found_phone or not found_email:
+            search_query = f'"{canonical_name}" "{domain or location}" contact OR phone OR email'
+            logger.info(f"OpenClaw DeepHunt: Searching live web for contact snippets: {search_query}...")
+            try:
+                def _do_ddg():
+                    html, _ = cls._fetch_ddg_html(search_query)
+                    return cls._parse_ddg_items(html)
+
+                items = await loop.run_in_executor(None, _do_ddg)
+                aggregated_snippets = " ".join([f"{title} {snip}" for _, title, snip in items])
+                if aggregated_snippets:
+                    p, e = cls.extract_contacts_from_text(aggregated_snippets)
+                    if p and not found_phone:
+                        found_phone = p
+                        logger.info(f"OpenClaw DeepHunt: Found phone via web search snippet for {canonical_name}: {p}")
+                    if e and not found_email:
+                        found_email = e
+                        logger.info(f"OpenClaw DeepHunt: Found email via web search snippet for {canonical_name}: {e}")
+            except Exception as ex:
+                logger.debug(f"DeepHunt search snippet error: {ex}")
+
+        # Step 3: Social Profile Bio Check (Facebook / LinkedIn)
+        if not found_phone or not found_email:
+            fb_query = f'site:facebook.com "{canonical_name}" contact OR phone OR email'
+            try:
+                def _do_fb_search():
+                    html, _ = cls._fetch_ddg_html(fb_query)
+                    return cls._parse_ddg_items(html)
+
+                fb_items = await loop.run_in_executor(None, _do_fb_search)
+                fb_snippets = " ".join([f"{title} {snip}" for _, title, snip in fb_items])
+                if fb_snippets:
+                    p, e = cls.extract_contacts_from_text(fb_snippets)
+                    if p and not found_phone:
+                        found_phone = p
+                        logger.info(f"OpenClaw DeepHunt: Found phone via Facebook profile search for {canonical_name}: {p}")
+                    if e and not found_email:
+                        found_email = e
+                        logger.info(f"OpenClaw DeepHunt: Found email via Facebook profile search for {canonical_name}: {e}")
+            except Exception as ex:
+                logger.debug(f"DeepHunt social search error: {ex}")
+
+        return {"phone": found_phone, "email": found_email}
+
+    @classmethod
+    async def audit_website(cls, url: str, canonical_name: str = "Business", location: str = "") -> Dict[str, Any]:
+        """
+        Executes a real human-like multi-page audit across Home, Contact, About, and Services.
         Collects strictly observable evidence (phone, email, WhatsApp, booking, mobile viewport).
-        Zero fake or hash-simulated data.
+        If contacts are missing, takes human-like time to perform deep retries and scrolls.
         """
         if not url or not url.startswith("http"):
             return {
@@ -741,33 +963,71 @@ class LiveResearchEngine:
 
         loop = asyncio.get_event_loop()
         base_url = url.rstrip("/")
-        sub_paths = ["", "/contact", "/contact-us", "/about", "/about-us", "/services"]
-        aggregated_html = ""
-        status_code = 200
+        headers = {
+            "User-Agent": cls.USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": base_url,
+        }
+
+        # Step 1: Visit homepage like a human
+        homepage_html = ""
         visited_pages = 0
         broken_links_count = 0
         rendered_by = "http"
+        status_code = 200
 
-        headers = {
-            "User-Agent": cls.USER_AGENT,
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        import ssl
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
 
-        for path in sub_paths:
-            target_page_url = base_url + path
+        def _fetch_page(u):
+            req = urllib.request.Request(u, headers=headers)
+            with urllib.request.urlopen(req, timeout=6, context=ssl_ctx) as resp:
+                return resp.getcode(), resp.read().decode("utf-8", errors="ignore")
+
+        try:
+            code, homepage_html = await loop.run_in_executor(None, _fetch_page, base_url)
+            status_code = code
+            if code == 200:
+                visited_pages += 1
+            else:
+                broken_links_count += 1
+        except Exception:
+            status_code = 500
+            broken_links_count += 1
+
+        # Discover dynamic contact links from homepage like a human
+        discovered_paths = set()
+        if homepage_html:
+            raw_hrefs = re.findall(r'<a[^>]+href=["\']([^"\']+)["\']', homepage_html, re.I)
+            for href in raw_hrefs:
+                clean_href = href.strip()
+                if any(k in clean_href.lower() for k in ["contact", "reach", "touch", "about", "connect", "impressum", "team"]):
+                    if clean_href.startswith("/"):
+                        discovered_paths.add(clean_href.split("?")[0].split("#")[0])
+                    elif clean_href.startswith(base_url):
+                        rel = clean_href[len(base_url):].split("?")[0].split("#")[0]
+                        if rel:
+                            discovered_paths.add(rel)
+
+        default_contact_paths = ["/contact", "/contact-us", "/about", "/about-us", "/services", "/pages/contact-us"]
+        all_paths_to_visit = list(discovered_paths) + [p for p in default_contact_paths if p not in discovered_paths]
+        target_paths = all_paths_to_visit[:5]
+
+        aggregated_html = homepage_html
+        for path in target_paths:
+            target_page_url = base_url + (path if path.startswith("/") else f"/{path}")
             try:
-                def _fetch_page(u=target_page_url):
-                    req = urllib.request.Request(u, headers=headers)
-                    with urllib.request.urlopen(req, timeout=5) as resp:
-                        return resp.getcode(), resp.read().decode("utf-8", errors="ignore")
-
-                code, page_html = await loop.run_in_executor(None, _fetch_page)
+                # Human pacing between page clicks (0.3s)
+                await asyncio.sleep(0.3)
+                code, page_html = await loop.run_in_executor(None, _fetch_page, target_page_url)
                 if code == 200:
                     aggregated_html += f"\n--- PAGE: {path} ---\n" + page_html
                     visited_pages += 1
                 else:
                     broken_links_count += 1
-                await asyncio.sleep(0.15)
             except Exception:
                 if path in ("", "/contact"):
                     broken_links_count += 1
@@ -775,12 +1035,12 @@ class LiveResearchEngine:
 
         # If HTTP request failed or was empty, attempt headless browser execution with Playwright
         if not aggregated_html:
-            browser_html = await cls.fetch_page_with_browser(base_url)
+            browser_html = await cls.fetch_page_with_browser(base_url, human_scroll=True)
             if browser_html and len(browser_html) > 100:
                 aggregated_html = browser_html
                 visited_pages = 1
-                rendered_by = "playwright"
-                logger.info(f"LiveResearchEngine: Rendered {base_url} via Playwright Chromium headless")
+                rendered_by = "playwright-human-scroll"
+                logger.info(f"LiveResearchEngine: Rendered {base_url} via Playwright Chromium headless with scroll")
 
         if not aggregated_html:
             logger.info(f"LiveResearchEngine: Could not reach {url}")
@@ -811,29 +1071,10 @@ class LiveResearchEngine:
         html = aggregated_html
         html_lower = html.lower()
 
-        # 1. Extract Real Phone Number
-        tel_matches = re.findall(r'tel:([+\d\s\-\(\)]{8,20})', html, re.IGNORECASE)
-        extracted_phone = tel_matches[0].strip() if tel_matches else None
-        if not extracted_phone:
-            raw_phones = re.findall(r'\+?[\d\s\-\(\)]{9,18}', html)
-            valid_phones = [
-                p.strip() for p in raw_phones
-                if len(re.sub(r'\D', '', p)) >= 9 and not p.strip().startswith('202')
-            ]
-            extracted_phone = valid_phones[0] if valid_phones else None
+        # 1. Clean Verified Contact Extraction
+        extracted_phone, extracted_email = cls.extract_contacts_from_text(html)
 
-        # 2. Extract Real Email
-        mailto_matches = re.findall(r'mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', html, re.IGNORECASE)
-        extracted_email = mailto_matches[0].strip() if mailto_matches else None
-        if not extracted_email:
-            raw_emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', html)
-            valid_emails = [
-                e for e in raw_emails
-                if not any(e.lower().endswith(ext) for ext in ['.png', '.jpg', '.webp', '.svg', '.gif', '.css', '.js'])
-            ]
-            extracted_email = valid_emails[0] if valid_emails else None
-
-        # 3. Extract Real Social Profiles
+        # 2. Extract Real Social Profiles
         fb_matches = re.findall(r'https?://(?:www\.)?facebook\.com/[a-zA-Z0-9._-]+', html, re.IGNORECASE)
         ig_matches = re.findall(r'https?://(?:www\.)?instagram\.com/[a-zA-Z0-9._-]+', html, re.IGNORECASE)
         li_matches = re.findall(r'https?://(?:www\.)?linkedin\.com/(?:company|in)/[a-zA-Z0-9._-]+', html, re.IGNORECASE)
@@ -841,6 +1082,25 @@ class LiveResearchEngine:
         facebook_url = fb_matches[0] if fb_matches else None
         instagram_url = ig_matches[0] if ig_matches else None
         linkedin_url = li_matches[0] if li_matches else None
+
+        # 3. Autonomous Human Retry: If Phone OR Email is missing, trigger deep contact hunt!
+        parsed_domain = urllib.parse.urlparse(url).netloc or ""
+        if not extracted_phone or not extracted_email:
+            logger.info(f"LiveResearchEngine: Incomplete contacts on {url} (Phone: {bool(extracted_phone)}, Email: {bool(extracted_email)}). Triggering human-like deep contact hunt retry...")
+            hunt = await cls.deep_contact_hunt(
+                canonical_name=canonical_name,
+                domain=parsed_domain,
+                location=location,
+                existing_phone=extracted_phone,
+                existing_email=extracted_email,
+                facebook_url=facebook_url,
+            )
+            if hunt.get("phone") and not extracted_phone:
+                extracted_phone = hunt["phone"]
+                rendered_by = "deep-contact-hunt"
+            if hunt.get("email") and not extracted_email:
+                extracted_email = hunt["email"]
+                rendered_by = "deep-contact-hunt"
 
         # 4. Strictly Observable Technical Checks
         mobile_responsive = "viewport" in html_lower
@@ -964,6 +1224,58 @@ class OpenClawClient:
         self.gateway_token = gateway_token or settings.OPENCLAW_GATEWAY_TOKEN
         self.timeout = timeout
 
+    async def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.1,
+        response_json: bool = True,
+        session_id: str = "leadgen_pipeline",
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Invokes OpenClaw Gateway's OpenAI-compatible completions endpoint.
+        Does NOT hardcode any model name - allows OpenClaw to route to its active agent model.
+        Uses dedicated session_id and user header to ensure complete isolation from UI chats.
+        """
+        if not self.gateway_url:
+            return None
+
+        base = self.gateway_url.replace("ws://", "http://").replace("wss://", "https://").rstrip("/")
+        endpoint = f"{base}/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.gateway_token}",
+            "Content-Type": "application/json",
+            "x-openclaw-session": session_id,
+        }
+        payload = {
+            "model": "default",  # Dynamic server routing without hardcoded model name
+            "messages": messages,
+            "temperature": temperature,
+            "user": "leadgen_backend",
+        }
+        if response_json:
+            payload["response_format"] = {"type": "json_object"}
+
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(endpoint, json=payload, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+                    if response_json:
+                        try:
+                            return json.loads(content)
+                        except json.JSONDecodeError:
+                            clean_c = re.sub(r"^```(?:json)?\s*", "", content.strip())
+                            clean_c = re.sub(r"\s*```$", "", clean_c)
+                            return json.loads(clean_c)
+                    return {"content": content}
+                else:
+                    logger.debug(f"OpenClaw gateway completions returned HTTP {resp.status_code}")
+        except Exception as e:
+            logger.debug(f"OpenClaw gateway completions notice: {e}")
+        return None
+
     async def run_skill(
         self,
         skill_name: str,
@@ -994,7 +1306,8 @@ class OpenClawClient:
         elif skill_name == "website-research":
             url = parameters.get("url", "")
             canonical_name = parameters.get("canonical_name", "Business")
-            return await LiveResearchEngine.audit_website(url=url, canonical_name=canonical_name)
+            location = parameters.get("location", "")
+            return await LiveResearchEngine.audit_website(url=url, canonical_name=canonical_name, location=location)
 
         elif skill_name == "ads-research":
             canonical_name = parameters.get("company_name") or parameters.get("canonical_name", "Business")

@@ -14,9 +14,49 @@ CORPORATE_SUFFIXES = [
     r"\bllc\b", r"\bpvt\b", r"\bprivate\b", r"\bgroup\b"
 ]
 
+# Generic platform / social network domains that must NEVER be treated as a business's official website domain
+GENERIC_PLATFORM_DOMAINS = {
+    "facebook.com", "m.facebook.com", "fb.com", "fb.watch", "web.facebook.com",
+    "instagram.com", "instagr.am",
+    "twitter.com", "x.com", "t.co",
+    "linkedin.com", "lnkd.in",
+    "youtube.com", "youtu.be",
+    "tiktok.com",
+    "pinterest.com",
+    "reddit.com",
+    "google.com", "maps.google.com", "goo.gl", "g.page", "g.co",
+    "wikipedia.org", "wikimedia.org",
+    "yellowpages.com", "yellowpages.ca", "yelp.com",
+    "apple.com", "microsoft.com", "github.com",
+    "whatsapp.com", "wa.me", "telegram.org", "t.me",
+    "yahoo.com", "bing.com", "duckduckgo.com"
+}
+
 
 class DeduplicationEngine:
     """Computes normalized fingerprints for business deduplication."""
+
+    @staticmethod
+    def is_generic_platform(url_or_domain: Optional[str]) -> bool:
+        """Returns True if the domain/URL is an official social platform or search engine, not a business website."""
+        if not url_or_domain:
+            return False
+        cleaned = url_or_domain.lower().strip()
+        if cleaned.startswith(("http://", "https://")):
+            try:
+                cleaned = urlparse(cleaned).netloc
+            except Exception:
+                pass
+        if cleaned.startswith("www."):
+            cleaned = cleaned[4:]
+        # Remove any path/query if present
+        cleaned = cleaned.split("/")[0].split(":")[0]
+        if cleaned in GENERIC_PLATFORM_DOMAINS:
+            return True
+        for plat in GENERIC_PLATFORM_DOMAINS:
+            if cleaned == plat or cleaned.endswith("." + plat):
+                return True
+        return False
 
     @staticmethod
     def normalize_name(name: str) -> str:
@@ -31,9 +71,9 @@ class DeduplicationEngine:
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         return cleaned
 
-    @staticmethod
-    def normalize_domain(url: Optional[str]) -> Optional[str]:
-        """Extracts canonical domain name from URL."""
+    @classmethod
+    def normalize_domain(cls, url: Optional[str]) -> Optional[str]:
+        """Extracts canonical domain name from URL. Rejects generic social networks and search engines."""
         if not url:
             return None
         cleaned = url.lower().strip()
@@ -44,7 +84,14 @@ class DeduplicationEngine:
             netloc = parsed.netloc
             if netloc.startswith("www."):
                 netloc = netloc[4:]
-            return netloc if "." in netloc else None
+            if ":" in netloc:
+                netloc = netloc.split(":")[0]
+            if "." not in netloc:
+                return None
+            # Reject generic platforms (facebook.com, instagram.com, etc.)
+            if cls.is_generic_platform(netloc):
+                return None
+            return netloc
         except Exception:
             return None
 

@@ -143,6 +143,13 @@ class DiscoveryOptimizer:
         if len(name) < 3:
             return False, "Business name is too short"
 
+        # 2. Reject generic social media & tech platform homepages (e.g. facebook.com, instagram.com)
+        GENERIC_PLATFORMS = {"facebook", "facebook.com", "instagram", "google", "meta", "twitter", "linkedin", "youtube", "tiktok", "whatsapp"}
+        if name_lower in GENERIC_PLATFORMS:
+            return False, f"Candidate is a generic platform entity ({name}), not an actual business."
+        if any(bad in name_lower for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "google.com/maps", "twitter.com"]):
+            return False, f"Candidate name is a social media / platform URL: '{name}'"
+
         # 2. Strict Locality Match: If user specified a sub-city/area, enforce geographic boundary
         req_sub_city = (plan.get("sub_city") or "").lower().strip()
         if req_sub_city and len(req_sub_city) >= 3:

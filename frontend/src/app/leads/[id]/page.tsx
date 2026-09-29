@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { fetchLeadDetail, submitLeadFeedback, deleteLead } from "@/lib/api";
+import { fetchLeadDetail, submitLeadFeedback, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate } from "@/lib/api";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -36,6 +36,8 @@ import {
   Sparkles,
   Download,
   Trash2,
+  Send,
+  Edit3,
 } from "lucide-react";
 
 export default function LeadDetailPage() {
@@ -47,6 +49,13 @@ export default function LeadDetailPage() {
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
+
+  // Global email template & personalized outreach state
+  const [emailTemplate, setEmailTemplate] = useState<EmailTemplate | null>(null);
+  const [copiedEmail, setCopiedEmail] = useState(false);
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  const [customDraftSubject, setCustomDraftSubject] = useState("");
+  const [customDraftBody, setCustomDraftBody] = useState("");
 
   // OpenClaw parameter inspection state
   const [evidenceSearch, setEvidenceSearch] = useState("");
@@ -62,6 +71,10 @@ export default function LeadDetailPage() {
       .then((data) => setLead(data))
       .catch((e) => console.error("Error loading dossier:", e))
       .finally(() => setLoading(false));
+
+    fetchEmailTemplate()
+      .then((tpl) => setEmailTemplate(tpl))
+      .catch((e) => console.warn("Could not fetch global email template:", e));
   }, [leadId]);
 
   const handleFeedback = async (action: string) => {
@@ -113,6 +126,36 @@ export default function LeadDetailPage() {
       setIsDeleting(false);
     }
   };
+
+  // Computed dynamic email outreach draft from Admin template + verified lead data
+  const renderedOutreach = emailTemplate && lead
+    ? renderEmailTemplate(emailTemplate, lead)
+    : {
+        subject: `Quick inquiry regarding your office in ${lead?.address || "your area"}`,
+        body: `Dear Sir,\n\nI recently came across ${lead?.business_name || "your business"} located in ${lead?.address || "your area"}. I noticed you do not currently have an official corporate website or modern client booking portal.\n\nWould you be open to a quick 3-minute discussion or a sample preview prepared for your business?\n\nSincerely,\nGrowth Team`,
+        fullEmail: "",
+      };
+
+  const activeSubject = isEditingDraft ? customDraftSubject : renderedOutreach.subject;
+  const activeBody = isEditingDraft ? customDraftBody : renderedOutreach.body;
+
+  const handleToggleEditDraft = () => {
+    if (!isEditingDraft) {
+      setCustomDraftSubject(activeSubject);
+      setCustomDraftBody(activeBody);
+    }
+    setIsEditingDraft(!isEditingDraft);
+  };
+
+  const handleCopyOutreachEmail = () => {
+    const textToCopy = `Subject: ${activeSubject}\n\n${activeBody}`;
+    navigator.clipboard.writeText(textToCopy);
+    setCopiedEmail(true);
+    setTimeout(() => setCopiedEmail(false), 2000);
+  };
+
+  const targetEmail = lead?.email || "";
+  const mailtoHref = `mailto:${encodeURIComponent(targetEmail)}?subject=${encodeURIComponent(activeSubject)}&body=${encodeURIComponent(activeBody)}`;
 
   if (loading) {
     return <div className="p-8 text-slate-400 text-sm">Loading lead intelligence dossier...</div>;
@@ -259,11 +302,21 @@ export default function LeadDetailPage() {
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
               <Mail className="w-3 h-3 text-emerald-400" /> Email
             </span>
-            <div className="text-slate-200 truncate">
+            <div className="text-slate-200 truncate flex items-center gap-1.5 flex-wrap">
               {lead.email ? (
-                <a href={`mailto:${lead.email}`} className="hover:text-emerald-400 hover:underline">{lead.email}</a>
+                <>
+                  <a href={`mailto:${lead.email}`} className="hover:text-emerald-400 hover:underline">{lead.email}</a>
+                  {lead.email_status === "SUGGESTED" && (
+                    <span
+                      title="Inferred from corporate domain. Please verify before sending cold outreach."
+                      className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono font-medium"
+                    >
+                      Domain Suggested
+                    </span>
+                  )}
+                </>
               ) : (
-                <span className="text-slate-500">Not public</span>
+                <span className="text-slate-500">Not public on website</span>
               )}
             </div>
           </div>
@@ -490,22 +543,43 @@ export default function LeadDetailPage() {
             </div>
 
             {/* Quick Pitch Copy Template */}
-            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2">
+            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Recommended B2B Cold Outreach Draft
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-sky-400" />
+                  Admin-Synced B2B Cold Outreach Draft
                 </span>
-                <span className="text-[10px] text-sky-400 bg-sky-500/10 border border-sky-500/30 px-2 py-0.5 rounded font-mono">
-                  Subject: Quick inquiry
+                <span className="text-[10px] text-sky-400 bg-sky-500/10 border border-sky-500/30 px-2 py-0.5 rounded font-mono truncate max-w-[200px]">
+                  Subject: {activeSubject}
                 </span>
               </div>
-              <div className="text-[11px] text-slate-200 font-sans bg-slate-900/80 p-3 rounded-lg border border-slate-800 space-y-2 select-all leading-relaxed">
-                <p><strong>Subject:</strong> Quick inquiry regarding your office in {lead.address || "your area"}</p>
-                <p>Dear Sir,</p>
-                <p>I recently came across your business located in {lead.address || "your area"}. You have an active local presence, but while looking up your official services online, I noticed you do not currently have an official corporate website or digital client portal.</p>
-                <p>Today, over 70% of local customers look for a verified web portal before visiting or calling. Without one, valuable clients often end up contacting other alternatives in the area.</p>
-                <p>We build fast, mobile-friendly websites with direct WhatsApp and inquiry automation that bring 2x–3x more direct local clients. Would you be open to a quick 2-minute preview of a sample design we prepared for your business?</p>
-                <p className="text-slate-400 pt-1">Sincerely,<br />[Your Name / Agency]</p>
+              <div className="text-[11px] text-slate-200 font-sans bg-slate-900/80 p-3 rounded-lg border border-slate-800 whitespace-pre-wrap leading-relaxed select-all">
+                <div className="text-slate-400 font-mono text-[10px] pb-2 border-b border-slate-800/80 mb-2">
+                  Subject: {activeSubject}
+                </div>
+                {activeBody}
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[10px] text-slate-500">
+                  Global template configured by Admin &bull; Signature included
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyOutreachEmail}
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium flex items-center gap-1 transition border border-slate-700"
+                >
+                  {copiedEmail ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-400" />
+                      <span className="text-emerald-400">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>Copy Email</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -911,27 +985,102 @@ export default function LeadDetailPage() {
 
       {/* Recommended Agency Solution & Client Outreach Pitch */}
       <div className="glass-panel p-6 rounded-2xl border border-sky-500/30 bg-sky-950/10 space-y-4">
-        <h3 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          Recommended Agency Solution & Outreach Pitch
-        </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            Recommended Agency Solution & Outreach Pitch
+          </h3>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20">
+              Admin-Synced Outreach Template
+            </span>
+          </div>
+        </div>
+
         <p className="text-xs text-slate-300 leading-relaxed">
           <strong>Strategic Offer:</strong> {explanation.recommended_solution || "Full-stack digital presence modernization & customer inquiry automation."}
         </p>
-        <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2">
+
+        <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800/80 space-y-3">
           <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-            <span>Ready-to-Send Executive Outreach Draft</span>
-            <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded font-mono">
-              Subject: Observable friction points on your website ({lead.domain || "portal"})
+            <span className="flex items-center gap-1.5 text-slate-200">
+              <Mail className="w-4 h-4 text-sky-400" /> Ready-to-Send Executive Outreach Draft
             </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleToggleEditDraft}
+                className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-[10px] font-semibold transition flex items-center gap-1"
+              >
+                <Edit3 className="w-3 h-3 text-sky-400" />
+                <span>{isEditingDraft ? "Done Editing" : "Customize for this Lead"}</span>
+              </button>
+            </div>
           </div>
-          <div className="text-xs text-slate-200 font-sans bg-slate-900/80 p-3.5 rounded-lg border border-slate-800 space-y-2 select-all leading-relaxed">
-            <p><strong>Subject:</strong> Observable friction points on your website ({lead.domain || "portal"})</p>
-            <p>Dear Sir,</p>
-            <p>I was reviewing your official website ({lead.domain}) while researching active businesses in {lead.address || "the market"}. You have an established enterprise, but I noticed a couple of technical friction points—specifically regarding mobile responsiveness and automated lead capture.</p>
-            <p>Because most local clients browse from their smartphones, these layout and inquiry friction points can cause interested visitors to drop off before contacting you.</p>
-            <p>We help established firms resolve these technical gaps within 48 hours to significantly increase mobile inquiry conversion rates. Would you be open to a brief 5-minute discussion on how we can fix this for you?</p>
-            <p className="text-slate-400 pt-1">Sincerely,<br />[Your Name / Agency]</p>
+
+          {/* Subject Line Bar */}
+          <div className="p-2.5 bg-slate-900/90 border border-slate-800 rounded-lg flex items-center gap-2 text-xs">
+            <span className="text-slate-500 font-mono text-[11px] shrink-0">Subject:</span>
+            {isEditingDraft ? (
+              <input
+                type="text"
+                value={customDraftSubject}
+                onChange={(e) => setCustomDraftSubject(e.target.value)}
+                className="flex-1 bg-transparent border-none text-slate-100 font-medium focus:outline-none"
+              />
+            ) : (
+              <span className="text-slate-100 font-medium">{activeSubject}</span>
+            )}
+          </div>
+
+          {/* Email Body & Signature */}
+          {isEditingDraft ? (
+            <textarea
+              rows={8}
+              value={customDraftBody}
+              onChange={(e) => setCustomDraftBody(e.target.value)}
+              className="w-full p-3 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 leading-relaxed focus:outline-none focus:border-sky-500/50 resize-y font-sans"
+            />
+          ) : (
+            <div className="text-xs text-slate-200 font-sans bg-slate-900/80 p-3.5 rounded-lg border border-slate-800 whitespace-pre-wrap leading-relaxed select-all">
+              {activeBody}
+            </div>
+          )}
+
+          {/* Outreach Actions Bar */}
+          <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-t border-slate-800/80">
+            <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>Universal enterprise template configured by Admin &bull; Signature included</span>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleCopyOutreachEmail}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition border border-slate-700 shadow-sm"
+              >
+                {copiedEmail ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-400">Copied to Clipboard!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-300" />
+                    <span>Copy Full Email</span>
+                  </>
+                )}
+              </button>
+
+              <a
+                href={mailtoHref}
+                className="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 transition shadow-sm shadow-sky-500/20"
+              >
+                <Send className="w-3.5 h-3.5 text-slate-950" />
+                <span>Send via Email Client</span>
+              </a>
+            </div>
           </div>
         </div>
       </div>

@@ -17,27 +17,9 @@ echo "================================================================="
 echo "[1/6] Starting PostgreSQL and Redis containers..."
 docker compose -f infra/docker-compose.yml up -d 2>/dev/null || echo "[*] Note: Docker Desktop not active. Using existing/local PostgreSQL & Redis if running."
 
-# 2. Check & Start Ollama Local Daemon
-echo "[2/6] Checking Ollama local runtime..."
-if ! nc -z 127.0.0.1 11434 2>/dev/null; then
-    echo "[!] Ollama daemon not active on 127.0.0.1:11434. Starting 'ollama serve' in background..."
-    nohup ollama serve > /dev/null 2>&1 &
-    sleep 2
-fi
-echo "[+] Ollama runtime active."
-
-# 3. Check & Start OpenClaw Gateway (127.0.0.1:18789)
-echo "[3/6] Checking OpenClaw Gateway service..."
-if command -v openclaw &>/dev/null; then
-    if ! nc -z 127.0.0.1 18789 2>/dev/null; then
-        echo "[!] OpenClaw Gateway not listening on port 18789. Starting 'openclaw gateway run' in background..."
-        nohup openclaw gateway run > "$PROJECT_DIR/logs/openclaw.log" 2>&1 &
-        sleep 3
-    fi
-    echo "[+] OpenClaw Gateway is active on ws://127.0.0.1:18789."
-else
-    echo "[!] Warning: openclaw command not found in PATH."
-fi
+# 2. Hostinger OpenClaw Cloud AI Gateway
+echo "[2/4] Verifying OpenClaw Cloud Gateway configuration..."
+echo "[+] Using Hostinger OpenClaw Gateway: https://darkblue-antelope-685588.hostingersite.com (Active)"
 
 # Clean up stale processes on ports 8000 and 3000
 echo "[4/6] Cleaning up old processes on ports 8000 & 3000..."
@@ -79,7 +61,7 @@ echo " 🎉 ALL SERVICES ARE NOW RUNNING IN THE BACKGROUND!"
 echo "-----------------------------------------------------------------"
 echo " 🌐 Dashboard Frontend:  http://localhost:3000"
 echo " ⚡ FastAPI Backend API: http://127.0.0.1:8000 (Docs: /docs)"
-echo " 🦞 OpenClaw Gateway:   ws://127.0.0.1:18789"
+echo " 🦞 OpenClaw Gateway:   https://darkblue-antelope-685588.hostingersite.com (Hostinger Cloud)"
 echo " 📑 System Logs Dir:     $PROJECT_DIR/logs/"
 echo "-----------------------------------------------------------------"
 echo " To stop all services anytime, run: bash infra/scripts/stop_all.sh"

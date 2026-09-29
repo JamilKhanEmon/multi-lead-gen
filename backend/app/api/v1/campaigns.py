@@ -3,7 +3,8 @@ FastAPI Endpoints for B2B Meta Ads Campaigns & 2-Step Video Retargeting Funnel.
 """
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from app.db.session import get_db
 from app.models.campaign import MetaCampaign
 from app.schemas.campaign import (
@@ -137,7 +138,7 @@ async def generate_b2b_poster(payload: Dict[str, Any]):
 
 
 @router.post("", response_model=CampaignResponse)
-def create_campaign(payload: CampaignCreate, db: Session = Depends(get_db)):
+async def create_campaign(payload: CampaignCreate, db: AsyncSession = Depends(get_db)):
     """Creates a new B2B Meta campaign draft."""
     try:
         campaign = MetaCampaign(
@@ -157,35 +158,41 @@ def create_campaign(payload: CampaignCreate, db: Session = Depends(get_db)):
             status="READY",
         )
         db.add(campaign)
-        db.commit()
-        db.refresh(campaign)
+        await db.commit()
+        await db.refresh(campaign)
         return campaign.to_dict()
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         logger.error(f"Failed to create campaign: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("", response_model=List[CampaignResponse])
-def list_campaigns(limit: int = 50, db: Session = Depends(get_db)):
+async def list_campaigns(limit: int = 50, db: AsyncSession = Depends(get_db)):
     """Lists all saved B2B Meta campaigns."""
-    campaigns = db.query(MetaCampaign).order_by(MetaCampaign.created_at.desc()).limit(limit).all()
+    stmt = select(MetaCampaign).order_by(MetaCampaign.created_at.desc()).limit(limit)
+    res = await db.execute(stmt)
+    campaigns = res.scalars().all()
     return [c.to_dict() for c in campaigns]
 
 
 @router.get("/{campaign_id}", response_model=CampaignResponse)
-def get_campaign(campaign_id: str, db: Session = Depends(get_db)):
+async def get_campaign(campaign_id: str, db: AsyncSession = Depends(get_db)):
     """Retrieves a single campaign by ID."""
-    campaign = db.query(MetaCampaign).filter(MetaCampaign.id == campaign_id).first()
+    stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
+    res = await db.execute(stmt)
+    campaign = res.scalar_one_or_none()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     return campaign.to_dict()
 
 
 @router.post("/{campaign_id}/publish")
-async def publish_campaign(campaign_id: str, db: Session = Depends(get_db)):
+async def publish_campaign(campaign_id: str, db: AsyncSession = Depends(get_db)):
     """Publishes campaign to Meta Ads using 2-step retargeting funnel."""
-    campaign = db.query(MetaCampaign).filter(MetaCampaign.id == campaign_id).first()
+    stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
+    res = await db.execute(stmt)
+    campaign = res.scalar_one_or_none()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
@@ -204,8 +211,8 @@ async def publish_campaign(campaign_id: str, db: Session = Depends(get_db)):
     campaign.meta_adset_retarget_id = publish_result.get("meta_adset_retarget_id")
     campaign.status = "ACTIVE"
 
-    db.commit()
-    db.refresh(campaign)
+    await db.commit()
+    await db.refresh(campaign)
 
     return {
         "success": True,
@@ -215,9 +222,11 @@ async def publish_campaign(campaign_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{campaign_id}/toggle-status")
-async def toggle_campaign_status(campaign_id: str, db: Session = Depends(get_db)):
+async def toggle_campaign_status(campaign_id: str, db: AsyncSession = Depends(get_db)):
     """Toggles campaign status between ACTIVE and PAUSED and syncs to Meta."""
-    campaign = db.query(MetaCampaign).filter(MetaCampaign.id == campaign_id).first()
+    stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
+    res = await db.execute(stmt)
+    campaign = res.scalar_one_or_none()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
@@ -228,28 +237,32 @@ async def toggle_campaign_status(campaign_id: str, db: Session = Depends(get_db)
         client = MetaClient()
         await client.update_campaign_status(campaign.meta_campaign_id, new_status)
 
-    db.commit()
-    db.refresh(campaign)
+    await db.commit()
+    await db.refresh(campaign)
     return {"id": campaign.id, "status": campaign.status}
 
 
 @router.get("/{campaign_id}/metrics")
-def get_live_metrics(campaign_id: str, db: Session = Depends(get_db)):
+async def get_live_metrics(campaign_id: str, db: AsyncSession = Depends(get_db)):
     """Returns real-time live performance metrics for the campaign."""
-    campaign = db.query(MetaCampaign).filter(MetaCampaign.id == campaign_id).first()
+    stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
+    res = await db.execute(stmt)
+    campaign = res.scalar_one_or_none()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
     metrics = MetaClient.calculate_live_metrics(campaign)
     campaign.metrics = metrics
-    db.commit()
+    await db.commit()
     return metrics
 
 
 @router.delete("/{campaign_id}")
-async def delete_campaign(campaign_id: str, db: Session = Depends(get_db)):
+async def delete_campaign(campaign_id: str, db: AsyncSession = Depends(get_db)):
     """Deletes a campaign and stops/removes it from Meta."""
-    campaign = db.query(MetaCampaign).filter(MetaCampaign.id == campaign_id).first()
+    stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
+    res = await db.execute(stmt)
+    campaign = res.scalar_one_or_none()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
@@ -257,7 +270,7 @@ async def delete_campaign(campaign_id: str, db: Session = Depends(get_db)):
         client = MetaClient()
         await client.delete_meta_campaign(campaign.meta_campaign_id)
 
-    db.delete(campaign)
-    db.commit()
+    await db.delete(campaign)
+    await db.commit()
     return {"success": True, "deleted_id": campaign_id}
 

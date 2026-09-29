@@ -117,6 +117,14 @@ async def get_research_run(
     run = res.scalar_one_or_none()
     if not run:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Research run not found")
+
+    processed = run.qualified_count + run.rejected_count + run.failed_count
+    if run.status == "RUNNING" and run.discovered_count > 0 and processed >= run.discovered_count:
+        run.status = "COMPLETED"
+        run.completed_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(run)
+
     return run
 
 
