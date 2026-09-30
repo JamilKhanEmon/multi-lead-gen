@@ -1,0 +1,138 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: leadgen_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-leadgen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leadgen_secret_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-leadgen}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-leadgen} -d ${POSTGRES_DB:-leadgen}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - leadgen_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: leadgen_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - leadgen_network
+
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/nibiz-soft/leadgenai-backend:latest}
+    container_name: leadgen_backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      ENVIRONMENT: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-leadgen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leadgen_secret_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-leadgen}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-leadgen}:${POSTGRES_PASSWORD:-leadgen_secret_pw}@postgres:5432/${POSTGRES_DB:-leadgen}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379/0
+      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-https://darkblue-antelope-685588.hostingersite.com}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      OPENCLAW_WEBHOOK_TOKEN: ${OPENCLAW_WEBHOOK_TOKEN}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      RESEARCH_TIMEOUT_SECONDS: ${RESEARCH_TIMEOUT_SECONDS:-120}
+      MAX_RETRY_ATTEMPTS: ${MAX_RETRY_ATTEMPTS:-5}
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
+      META_AD_ACCOUNT_ID: ${META_AD_ACCOUNT_ID:-}
+      META_PAGE_ID: ${META_PAGE_ID:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - leadgen_network
+
+  worker:
+    image: ${BACKEND_IMAGE:-ghcr.io/nibiz-soft/leadgenai-backend:latest}
+    container_name: leadgen_worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.runner"]
+    environment:
+      ENVIRONMENT: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SECRET_KEY: ${SECRET_KEY}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-leadgen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leadgen_secret_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-leadgen}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-leadgen}:${POSTGRES_PASSWORD:-leadgen_secret_pw}@postgres:5432/${POSTGRES_DB:-leadgen}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_URL: redis://redis:6379/0
+      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-https://darkblue-antelope-685588.hostingersite.com}
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      OPENCLAW_WEBHOOK_TOKEN: ${OPENCLAW_WEBHOOK_TOKEN}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      RESEARCH_TIMEOUT_SECONDS: ${RESEARCH_TIMEOUT_SECONDS:-120}
+      MAX_RETRY_ATTEMPTS: ${MAX_RETRY_ATTEMPTS:-5}
+      META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
+      META_AD_ACCOUNT_ID: ${META_AD_ACCOUNT_ID:-}
+      META_PAGE_ID: ${META_PAGE_ID:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - leadgen_network
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/nibiz-soft/leadgenai-frontend:latest}
+    container_name: leadgen_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      BACKEND_INTERNAL_URL: http://backend:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+    depends_on:
+      - backend
+    networks:
+      - leadgen_network
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+
+networks:
+  leadgen_network:
+    driver: bridge

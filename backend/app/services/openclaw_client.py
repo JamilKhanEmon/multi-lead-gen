@@ -1144,10 +1144,29 @@ class LiveResearchEngine:
                     contact_title = lt
                     break
 
+        # Extract Real Page Metadata (Title, Description, Heading)
+        extracted_page_title = ""
+        extracted_meta_desc = ""
+        extracted_heading = ""
+
+        title_m = re.search(r'<title[^>]*>(.*?)</title>', html, re.IGNORECASE | re.DOTALL)
+        if title_m:
+            extracted_page_title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip()
+
+        meta_m = re.search(r'<meta[^>]+name=["\'](?:description|og:description)["\'][^>]+content=["\']([^"\']*)["\']', html, re.IGNORECASE)
+        if not meta_m:
+            meta_m = re.search(r'<meta[^>]+content=["\']([^"\']*)["\'][^>]+name=["\'](?:description|og:description)["\']', html, re.IGNORECASE)
+        if meta_m:
+            extracted_meta_desc = meta_m.group(1).strip()
+
+        h1_m = re.search(r'<h1[^>]*>(.*?)</h1>', html, re.IGNORECASE | re.DOTALL)
+        if h1_m:
+            extracted_heading = re.sub(r'<[^>]+>', '', h1_m.group(1)).strip()
+
         logger.info(
             f"LiveResearchEngine: Audited {url} ({visited_pages} pages) -> "
-            f"Phone: {extracted_phone}, Email: {extracted_email}, WhatsApp: {has_whatsapp}, "
-            f"CMS: {cms_platform}, Meta Pixel: {has_meta_pixel}, Lead: {contact_person} ({contact_title})"
+            f"Title: '{extracted_page_title[:40]}', Phone: {extracted_phone}, Email: {extracted_email}, "
+            f"WhatsApp: {has_whatsapp}, CMS: {cms_platform}, Meta Pixel: {has_meta_pixel}, Lead: {contact_person} ({contact_title})"
         )
 
         return {
@@ -1155,7 +1174,10 @@ class LiveResearchEngine:
             "status": status_code,
             "is_accessible": True,
             "visited_pages_count": visited_pages,
-            "title": f"Audited Website - {canonical_name}",
+            "title": extracted_page_title or f"Audited Website - {canonical_name}",
+            "page_title": extracted_page_title,
+            "meta_description": extracted_meta_desc,
+            "heading": extracted_heading,
             "mobile_responsive": mobile_responsive,
             "has_whatsapp": has_whatsapp,
             "has_online_booking": has_online_booking,

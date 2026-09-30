@@ -600,8 +600,21 @@ async def _execute_research_and_qualify(
             else f"Identified issues do not align with agency service capabilities."
         )
 
-    # Evaluate Hard Gates
-    is_relevant = len(relevant_detected) > 0
+    # Evaluate Hard Gates & Semantic Industry Relevance
+    target_ind = business_type or payload.get("industry") or "Commercial"
+    is_industry_fit, fit_reason = await DiscoveryOptimizer.verify_industry_fit(
+        target_industry=target_ind,
+        business_name=business_name,
+        domain=domain or "",
+        page_title=website_data.get("page_title") or website_data.get("title") or "",
+        meta_description=website_data.get("meta_description") or "",
+        heading=website_data.get("heading") or "",
+        ollama_client=ollama_client,
+    )
+    if not is_industry_fit:
+        logger.warning(f"Industry Gate: Entity '{business_name}' failed relevance check for '{target_ind}': {fit_reason}")
+
+    is_relevant = len(relevant_detected) > 0 and is_industry_fit
     has_inferable = any(e.get("classification") == "INFERABLE" for e in evidence_records)
     has_contact = bool(
         (website_data.get("extracted_phone") or payload.get("phone"))
@@ -616,15 +629,17 @@ async def _execute_research_and_qualify(
         has_primary_conflict=has_conflict,
         has_inferable_gaps=has_inferable,
         has_direct_contact=has_contact,
+        is_industry_verified=is_industry_fit,
+        industry_mismatch_reason=fit_reason if not is_industry_fit else "",
     )
 
-    # Calculate 6-Factor Score
+    # Calculate 6-Factor Score (zeros out problem relevance and business impact on industry mismatch)
     eq_score = avg_confidence * 100.0
-    pr_score = 85.0 if is_relevant else 10.0
+    pr_score = 85.0 if is_relevant else 0.0
     rep_score = min(100.0, len(evidence_records) * 35.0)
     rec_score = float(max_recency)
-    bi_score = 75.0 if relevant_detected else 10.0
-    sf_score = best_service_fit
+    bi_score = 75.0 if (relevant_detected and is_industry_fit) else 0.0
+    sf_score = best_service_fit if is_industry_fit else 0.0
 
     final_score = QualificationEngine.calculate_score(
         evidence_quality=eq_score,

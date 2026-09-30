@@ -18,10 +18,7 @@ class DiscoveryOptimizer:
     UNIVERSAL_NEGATIVE_KEYWORDS = [
         "housing society", "residential society", "hostel", "dormitory",
         "pharmacy", "drug store",
-        "restaurant", "cafe", "fast food",
         "salon", "barber",
-        "grocery", "supermarket",
-        "school", "college",
         "cemetery", "graveyard", "place of worship",
         "courier", "bus station",
     ]
@@ -40,7 +37,7 @@ class DiscoveryOptimizer:
         - High-precision search queries (for browser & web search)
         - Clean OSM search targets
         - Positive keywords indicating real operating businesses
-        - Negative keywords to discard noisy/unrelated results
+        - Negative keywords to discard noisy/unrelated results dynamically for ANY industry worldwide.
         """
         loc_parts = [p for p in [sub_city, city, country] if p]
         full_loc = ", ".join(loc_parts) if loc_parts else location.strip()
@@ -53,9 +50,8 @@ class DiscoveryOptimizer:
                 "You are an expert B2B Lead Generation Discovery Query Optimizer.\n"
                 "Given any target industry and any location worldwide, generate broad, high-coverage search queries, "
                 "OSM directory queries, positive keywords indicating real operating commercial businesses, and negative keywords "
-                "(unrelated retail, residential neighborhoods, public infrastructure, or irrelevant entities) to filter out.\n"
-                "IMPORTANT: DO NOT restrict queries to 'top' or 'leading' companies. Capture ALL local businesses, growing firms, "
-                "and SME offices across the location so our audit engine can detect operational and digital gaps.\n"
+                "(unrelated industries, non-commercial entities, retail shops, or common search noise for this specific industry) to filter out.\n"
+                "IMPORTANT: In 'negative_keywords', dynamically include distinct, unrelated industries that frequently appear as false positive noise when searching for this target industry.\n"
                 "Return pure JSON with keys: 'search_queries' (list of 4 strings), 'osm_queries' (list of 3 strings), "
                 "'positive_keywords' (list of 6 strings), 'negative_keywords' (list of 10 strings)."
             )
@@ -72,10 +68,10 @@ class DiscoveryOptimizer:
                 and isinstance(result["search_queries"], list)
                 and len(result["search_queries"]) > 0
             ):
-                logger.info(f"DiscoveryOptimizer: Successfully generated LLM search plan for '{ind_clean}' in '{full_loc}'.")
+                logger.info(f"DiscoveryOptimizer: Successfully generated dynamic LLM search plan for '{ind_clean}' in '{full_loc}'.")
                 # Merge universal negative keywords for safety (excluding the target industry itself)
                 base_negs = [w for w in cls.UNIVERSAL_NEGATIVE_KEYWORDS if w not in ind_clean.lower()]
-                neg = list(set(result.get("negative_keywords", []) + base_negs))
+                neg = list(dict.fromkeys(result.get("negative_keywords", []) + base_negs))
                 result["negative_keywords"] = neg
                 result["industry"] = ind_clean
                 result["location"] = full_loc
@@ -129,9 +125,9 @@ class DiscoveryOptimizer:
     def validate_candidate(cls, candidate: Dict[str, Any], plan: Dict[str, Any]) -> Tuple[bool, str]:
         """
         Pure dynamic AI-driven candidate validation.
-        No hardcoded industry, real estate, or regional rules.
-        Rejection is driven entirely by the LLM-generated search plan negative keywords
-        and strict geographic locality matching.
+        No hardcoded industry or regional rules.
+        Rejection is driven entirely by the search plan negative keywords,
+        snippet semantics, and strict geographic locality matching.
         """
         name = (candidate.get("canonical_name") or candidate.get("name") or "").strip()
         domain = (candidate.get("domain") or candidate.get("website") or "").lower()
@@ -150,21 +146,20 @@ class DiscoveryOptimizer:
         if any(bad in name_lower for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "google.com/maps", "twitter.com"]):
             return False, f"Candidate name is a social media / platform URL: '{name}'"
 
-        # 2. Strict Locality Match: If user specified a sub-city/area, enforce geographic boundary
+        # 3. Strict Locality Match: If user specified a sub-city/area, enforce geographic boundary
         req_sub_city = (plan.get("sub_city") or "").lower().strip()
         if req_sub_city and len(req_sub_city) >= 3:
             cand_full_loc = f"{cand_address} {snippet} {candidate.get('location', '')}".lower()
             if cand_address and req_sub_city not in cand_full_loc:
                 return False, f"Candidate location does not match requested area '{req_sub_city}'"
 
-        # 3. Disqualify if candidate name is merely the generic industry category name itself
+        # 4. Disqualify if candidate name is merely the generic industry category name itself
         target_ind = (plan.get("industry") or "").lower().strip()
         if target_ind and name_lower == target_ind:
             return False, f"Candidate name is identical to the target industry category: '{name}'"
 
-        # 4. Pure Dynamic AI Filter:
-        # Every negative keyword is dynamically generated by the LLM (qwen2.5:7b)
-        # specifically for the user's chosen industry and location.
+        # 5. Semantic Negative Keyword Filter:
+        # Checked against name, domain, and snippet description
         negatives = plan.get("negative_keywords", [])
         for neg in negatives:
             neg_l = neg.lower().strip()
@@ -174,8 +169,84 @@ class DiscoveryOptimizer:
                 return False, f"Candidate matched AI negative filter '{neg}': '{name}'"
             if neg_l.replace(" ", "") in domain:
                 return False, f"Domain matched AI negative filter '{neg}': '{domain}'"
+            if len(neg_l) >= 4 and neg_l in snippet:
+                return False, f"Candidate snippet matched AI negative filter '{neg}': '{name}'"
 
         return True, "Valid commercial entity"
+
+    @classmethod
+    async def verify_industry_fit(
+        cls,
+        target_industry: str,
+        business_name: str,
+        domain: str = "",
+        page_title: str = "",
+        meta_description: str = "",
+        heading: str = "",
+        negative_keywords: Optional[List[str]] = None,
+        ollama_client: Optional[Any] = None,
+    ) -> Tuple[bool, str]:
+        """
+        100% Dynamic, Multi-Business Industry Relevance Gate (Worldwide, No Hardcoding):
+        Works for ANY vertical (Roofing, Dental, Solar, SaaS, Gym, Maritime, Bakery, etc.)
+        Phase 1 (0 Tokens): Dynamic keyword matching from target_industry + rejection of dynamic negative filters.
+        Phase 2 (~50 Tokens): Micro LLM verification ONLY for ambiguous candidates.
+        Phase 3 (0 Tokens): Safe fallback if AI is unavailable.
+        """
+        ind_clean = (target_industry or "commercial").lower().strip()
+        page_title_l = (page_title or "").lower()
+        business_name_l = (business_name or "").lower()
+        domain_l = (domain or "").lower()
+        meta_desc_l = (meta_description or "").lower()
+
+        # Step 1: Reject if content matches dynamically generated AI negative keywords (0 Tokens)
+        if negative_keywords:
+            for neg in negative_keywords:
+                neg_l = neg.lower().strip()
+                if len(neg_l) >= 4 and (neg_l in page_title_l or neg_l in business_name_l or neg_l in meta_desc_l):
+                    return False, f"Matched dynamic negative filter: '{neg}'"
+
+        # Step 2: Dynamic Positive Semantic Match (0 Tokens)
+        # Extract meaningful root keywords from user's target_industry (skipping generic suffixes)
+        GENERIC_STOPWORDS = {"and", "the", "for", "with", "service", "services", "company", "firm", "agency", "solutions", "group", "ltd", "inc", "co"}
+        target_words = [
+            w for w in re.split(r'[\s\-_/,]+', ind_clean)
+            if len(w) >= 3 and w not in GENERIC_STOPWORDS
+        ]
+        if target_words:
+            matched_words = [
+                w for w in target_words
+                if w in page_title_l or w in business_name_l or w in domain_l
+            ]
+            if matched_words:
+                return True, f"Direct dynamic industry keyword matched: {matched_words}"
+
+        # Step 3: Ambiguous Candidate AI Verification (~50-80 Tokens)
+        # LLM evaluates ANY industry dynamically without predefined verticals
+        if ollama_client and (page_title or meta_description or business_name):
+            try:
+                system_prompt = (
+                    "You are a strict B2B industry relevance validator.\n"
+                    "Analyze the business name and website to determine if it directly belongs to the specified target industry.\n"
+                    "Respond ONLY with a JSON object: {\"is_relevant\": true/false, \"reason\": \"<under 10 words>\"}"
+                )
+                user_prompt = (
+                    f"Target Industry: {target_industry}\n"
+                    f"Business Name: {business_name}\n"
+                    f"Website Title: {page_title[:120]}\n"
+                    f"Website Description: {meta_description[:200]}\n"
+                    f"Question: Does this company operate in or provide products/services for '{target_industry}'?"
+                )
+                res = await ollama_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+                if isinstance(res, dict) and "is_relevant" in res:
+                    is_rel = bool(res.get("is_relevant"))
+                    reason = res.get("reason", "AI industry verification")
+                    return is_rel, reason
+            except Exception as e:
+                logger.debug(f"Dynamic AI industry micro-verification notice: {e}")
+
+        # Step 4: Fallback Acceptance (0 Tokens)
+        return True, "Passed basic filter (dynamic industry fallback)"
 
     @classmethod
     def classify_entity(cls, name: str, domain: Optional[str] = None, business_type: str = "general") -> str:

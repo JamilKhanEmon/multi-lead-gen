@@ -62,6 +62,8 @@ class QualificationEngine:
         has_primary_conflict: bool,
         has_inferable_gaps: bool = False,
         has_direct_contact: bool = True,
+        is_industry_verified: bool = True,
+        industry_mismatch_reason: str = "",
     ) -> Tuple[bool, List[str]]:
         """
         Validates all mandatory hard qualification gates.
@@ -96,6 +98,10 @@ class QualificationEngine:
         # Gate 7: Direct Contact Channel Required (At least one phone number or email address must exist)
         if not has_direct_contact:
             failed_reasons.append("Unreachable: No direct phone number or email address available for outreach.")
+
+        # Gate 8: Target Industry Semantic Verification (Prevents cross-vertical bleed e.g. Dental vs Real Estate)
+        if not is_industry_verified:
+            failed_reasons.append(f"Industry mismatch: {industry_mismatch_reason or 'Website content does not align with target industry'}.")
 
         passed = len(failed_reasons) == 0
         return passed, failed_reasons

@@ -103,3 +103,58 @@ def test_classify_entity_multi_industry():
     assert DiscoveryOptimizer.classify_entity("Baker Chambers", "bakerlaw.com", "legal_firm") == "Legal Firm"
     assert DiscoveryOptimizer.classify_entity("Apex Solutions", "apexsoft.com", "software_agency") == "Software Agency"
     assert DiscoveryOptimizer.classify_entity("Precision Services", "precision.com", "plumbing_contractor") == "Plumbing Contractor"
+
+
+@pytest.mark.asyncio
+async def test_verify_industry_fit_accepts_matching_industry():
+    # Direct dynamic match for any vertical worldwide (0 token execution)
+    test_cases = [
+        ("Dental Clinic", "Smile Dental Surgery", "smiledental.com", "Smile Dental Clinic & Orthodontics"),
+        ("Solar Energy Installation", "SunPower Systems", "sunpowersolar.com", "SunPower Solar Energy & Panel Installation"),
+        ("Roofing Contractor", "Apex Roofers Ltd", "apexroofers.com", "Premier Roofing Contractor & Roof Replacement"),
+        ("Gym & Fitness Studio", "Iron Pulse Gym", "ironpulsefit.com", "Iron Pulse Fitness Studio and Training"),
+    ]
+
+    for ind, bname, dom, title in test_cases:
+        is_fit, reason = await DiscoveryOptimizer.verify_industry_fit(
+            target_industry=ind,
+            business_name=bname,
+            domain=dom,
+            page_title=title,
+            meta_description="Providing professional commercial services.",
+        )
+        assert is_fit is True, f"Failed for {ind}: {reason}"
+        assert "Direct dynamic industry keyword matched" in reason
+
+
+@pytest.mark.asyncio
+async def test_verify_industry_fit_rejects_negative_keywords():
+    # Dynamic rejection using negative keywords generated for the search
+    is_fit, reason = await DiscoveryOptimizer.verify_industry_fit(
+        target_industry="Dental Clinic",
+        business_name="Apex Holdings & Realty",
+        domain="apexrealty.com",
+        page_title="Apex Real Estate | Luxury Apartments for Sale",
+        meta_description="Find your dream home or commercial property with prime real estate developer.",
+        negative_keywords=["apartments for sale", "real estate developer", "housing society"],
+    )
+    assert is_fit is False
+    assert "Matched dynamic negative filter" in reason
+
+
+def test_validate_candidate_snippet_negative_rejection():
+    plan = {
+        "industry": "Dental Clinic",
+        "location": "Dhaka",
+        "negative_keywords": ["apartments for sale", "housing society", "real estate"],
+    }
+    cand = {
+        "canonical_name": "Gulshan Modern Center",
+        "domain": "gulshancenter.com",
+        "snippet": "Exclusive real estate agency offering commercial plots and apartments for sale.",
+    }
+    is_valid, reason = DiscoveryOptimizer.validate_candidate(cand, plan)
+    assert is_valid is False
+    assert "matched AI negative filter" in reason
+
+
