@@ -17,9 +17,9 @@ echo "================================================================="
 echo "[1/6] Starting PostgreSQL and Redis containers..."
 docker compose -f infra/docker-compose.yml up -d 2>/dev/null || echo "[*] Note: Docker Desktop not active. Using existing/local PostgreSQL & Redis if running."
 
-# 2. Hostinger OpenClaw Cloud AI Gateway
-echo "[2/4] Verifying OpenClaw Cloud Gateway configuration..."
-echo "[+] Using Hostinger OpenClaw Gateway: https://darkblue-antelope-685588.hostingersite.com (Active)"
+# 2. OpenClaw AI Gateway
+echo "[2/4] Verifying OpenClaw Gateway configuration..."
+echo "[+] Gateway URL: ${OPENCLAW_GATEWAY_URL:-Configured in .env}"
 
 # Clean up stale processes on ports 8000 and 3000
 echo "[4/6] Cleaning up old processes on ports 8000 & 3000..."
@@ -61,7 +61,7 @@ echo " 🎉 ALL SERVICES ARE NOW RUNNING IN THE BACKGROUND!"
 echo "-----------------------------------------------------------------"
 echo " 🌐 Dashboard Frontend:  http://localhost:3000"
 echo " ⚡ FastAPI Backend API: http://127.0.0.1:8000 (Docs: /docs)"
-echo " 🦞 OpenClaw Gateway:   https://darkblue-antelope-685588.hostingersite.com (Hostinger Cloud)"
+echo " 🦞 OpenClaw Gateway:   ${OPENCLAW_GATEWAY_URL:-Configured in .env}"
 echo " 📑 System Logs Dir:     $PROJECT_DIR/logs/"
 echo "-----------------------------------------------------------------"
 echo " To stop all services anytime, run: bash infra/scripts/stop_all.sh"

@@ -52,7 +52,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_URL: redis://redis:6379/0
-      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-https://darkblue-antelope-685588.hostingersite.com}
+      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL}
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
       OPENCLAW_WEBHOOK_TOKEN: ${OPENCLAW_WEBHOOK_TOKEN}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
@@ -90,7 +90,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_URL: redis://redis:6379/0
-      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL:-https://darkblue-antelope-685588.hostingersite.com}
+      OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL}
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
       OPENCLAW_WEBHOOK_TOKEN: ${OPENCLAW_WEBHOOK_TOKEN}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
