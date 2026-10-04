@@ -92,6 +92,14 @@ class Settings(BaseSettings):
     # Google Pro / Gemini / Imagen 3 / Veo API
     GOOGLE_API_KEY: Optional[str] = Field(default=None, description="Google Gemini/Imagen/Veo API key")
 
+    # Email Outreach (SMTP Configuration)
+    SMTP_HOST: Optional[str] = Field(default=None, description="SMTP Server Host (e.g., smtp.gmail.com)")
+    SMTP_PORT: int = Field(default=587, description="SMTP Port (587 for TLS, 465 for SSL)")
+    SMTP_USER: Optional[str] = Field(default=None, description="SMTP Authentication Username/Email")
+    SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP Authentication Password or App Password")
+    SMTP_FROM_EMAIL: Optional[str] = Field(default=None, description="Sender Email Address")
+    SMTP_FROM_NAME: str = Field(default="LeadGen Sales Team", description="Sender Name displayed in email clients")
+
     # CORS configuration
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",

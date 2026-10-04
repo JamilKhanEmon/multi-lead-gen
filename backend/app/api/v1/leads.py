@@ -3,14 +3,20 @@ Qualified Lead Pipeline & Dossier Endpoints
 """
 import uuid
 import urllib.parse
+import csv
+import io
+import json
+from datetime import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import desc
-from app.api.deps import get_db, get_current_user
+from sqlalchemy import desc, text
+from app.api.deps import get_db, get_current_user, get_current_user_optional
 from app.models.lead import Lead, LeadScore, LeadFeedback
+from app.models.service import ServiceMatch, Service
 from app.models.business import Business
 from app.models.evidence import Evidence
 from app.models.research import ResearchJob
@@ -20,10 +26,12 @@ from app.engine.deduplication import DeduplicationEngine, GENERIC_PLATFORM_DOMAI
 from app.schemas.lead import (
     LeadResponse,
     LeadDetailResponse,
+    LeadUpdate,
     LeadFeedbackCreate,
     LeadFeedbackResponse,
     EvidenceItemResponse,
     ResearchJobSummaryResponse,
+    StaggeredDispatchCreate,
 )
 
 router = APIRouter(prefix="/leads", tags=["Leads"])
@@ -37,10 +45,20 @@ async def list_leads(
     run_id: Optional[uuid.UUID] = None,
     is_qualified: Optional[bool] = None,
     min_score: Optional[float] = Query(None, ge=0.0, le=100.0),
+    outreach_status: Optional[str] = None,
+    deal_status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Filter and list potential leads."""
+    if current_user and current_user.role != "super_admin":
+        perms = current_user.permissions_json or {}
+        if perms.get("can_view_leads") is False:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission Denied: You do not have permission to view leads.",
+            )
+
     stmt = (
         select(Lead)
         .options(
@@ -56,6 +74,10 @@ async def list_leads(
         stmt = stmt.where(Lead.is_qualified == is_qualified)
     if min_score is not None:
         stmt = stmt.where(Lead.final_score >= min_score)
+    if outreach_status:
+        stmt = stmt.where(Lead.outreach_status == outreach_status)
+    if deal_status:
+        stmt = stmt.where(Lead.deal_status == deal_status)
 
     stmt = stmt.order_by(desc(Lead.final_score)).offset(skip).limit(limit)
     res = await db.execute(stmt)
@@ -163,7 +185,12 @@ async def list_leads(
                 domain=clean_dom,
                 phone=biz.phone if biz else None,
                 email=resolved_email,
-                email_status=email_status,
+                email_status=getattr(l, "email_status", None) or email_status,
+                verification_notes=getattr(l, "verification_notes", None),
+                outreach_status=getattr(l, "outreach_status", "PENDING") or "PENDING",
+                deal_status=getattr(l, "deal_status", "COLD") or "COLD",
+                followup_step=getattr(l, "followup_step", 0) or 0,
+                last_contacted_at=getattr(l, "last_contacted_at", None),
                 contact_person=biz.contact_person if biz else None,
                 contact_title=biz.contact_title if biz else None,
                 address=address,
@@ -181,6 +208,584 @@ async def list_leads(
         await db.rollback()
 
     return lead_items
+
+
+@router.get("/export/csv")
+async def export_leads_csv(
+    tier: Optional[str] = None,
+    run_id: Optional[uuid.UUID] = None,
+    is_qualified: Optional[bool] = None,
+    min_score: Optional[float] = Query(None, ge=0.0, le=100.0),
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Export filtered leads to a CSV spreadsheet with all fields, AI suggestions, parameters, and evidence from A to Z."""
+    if current_user and current_user.role != "super_admin":
+        perms = current_user.permissions_json or {}
+        if perms.get("can_export_leads") is False:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission Denied: You do not have permission to export leads.",
+            )
+
+    stmt = (
+        select(Lead)
+        .options(
+            selectinload(Lead.scores),
+            selectinload(Lead.service_matches).selectinload(ServiceMatch.service),
+            selectinload(Lead.business).selectinload(Business.locations),
+            selectinload(Lead.business).selectinload(Business.evidence).selectinload(Evidence.parameter),
+            selectinload(Lead.business).selectinload(Business.evidence).selectinload(Evidence.source),
+        )
+    )
+    if tier and tier != "ALL":
+        stmt = stmt.where(Lead.tier == tier)
+    if run_id:
+        stmt = stmt.where(Lead.run_id == run_id)
+    if is_qualified is not None:
+        stmt = stmt.where(Lead.is_qualified == is_qualified)
+    if min_score is not None:
+        stmt = stmt.where(Lead.final_score >= min_score)
+
+    stmt = stmt.order_by(desc(Lead.final_score))
+    res = await db.execute(stmt)
+    leads = res.scalars().all()
+
+    output = io.StringIO()
+    # Write UTF-8 BOM so Microsoft Excel & Google Sheets correctly render special characters
+    output.write("\ufeff")
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+
+    headers = [
+        "Company Name",
+        "Domain",
+        "Website URL",
+        "Phone Number",
+        "Email Address",
+        "Email Status",
+        "AI Identified Problems & Weaknesses (A to Z Details)",
+        "Primary Gap Summary",
+        "Overall Lead Score",
+        "Qualification Tier",
+        "Is Qualified",
+        "Business Type",
+        "Contact Person",
+        "Contact Title",
+        "Full Address",
+        "City",
+        "State",
+        "Country",
+        "Latitude",
+        "Longitude",
+        "Google Maps URL",
+        "Google Search URL",
+        "Facebook URL",
+        "Instagram URL",
+        "LinkedIn URL",
+        "Website CMS Platform",
+        "Meta Pixel Active",
+        "Google Analytics Active",
+        "Mobile Responsive",
+        "SSL Active (HTTPS)",
+        "AI Suggested Services",
+        "AI Service Match Rationale",
+        "AI Pitch Recommendation",
+        "AI Outreach Email Subject",
+        "AI Outreach Email Body",
+        "AI Detected Strengths",
+        "AI Detected Weaknesses",
+        "AI Evidence Quality Score",
+        "AI Problem Relevance Score",
+        "AI Problem Repetition Score",
+        "AI Recency Score",
+        "AI Business Impact Score",
+        "AI Service Fit Score",
+        "Total Parameters Evaluated",
+        "Parameters Passed Count",
+        "Parameters Failed / Gaps Count",
+        "Parameters Passed List",
+        "Parameters Failed / Gaps List",
+        "All Parameters & Evidence Details (A to Z)",
+        "Discovered / Created At",
+        "Lead ID",
+        "Batch Run ID",
+    ]
+    writer.writerow(headers)
+
+    for l in leads:
+        biz = l.business
+        if not biz:
+            continue
+        biz_name_l = (biz.canonical_name or "").lower().strip()
+        if any(bad in biz_name_l for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "twitter.com"]) or biz_name_l in ["facebook", "instagram", "google", "meta"]:
+            continue
+
+        clean_dom = biz.domain
+        if DeduplicationEngine.is_generic_platform(clean_dom):
+            clean_dom = None
+
+        meta = (biz.metadata_json or {}) if biz else {}
+        has_scraped_email = bool(meta.get("extracted_email") or (biz.email and not biz.email.startswith("contact@")))
+        if biz.email:
+            resolved_email = biz.email
+            email_status = "VERIFIED" if has_scraped_email else "SUGGESTED"
+        elif clean_dom and not DeduplicationEngine.is_generic_platform(clean_dom):
+            resolved_email = f"contact@{clean_dom}"
+            email_status = "SUGGESTED"
+        else:
+            resolved_email = None
+            email_status = "NOT_FOUND"
+
+        loc = biz.locations[0] if (biz and biz.locations) else None
+        lat = (loc.latitude if loc and loc.latitude is not None else None) or meta.get("latitude")
+        lon = (loc.longitude if loc and loc.longitude is not None else None) or meta.get("longitude")
+        address = (biz.address if biz and biz.address else None) or (loc.address if loc else None) or meta.get("address")
+
+        if lat is not None and lon is not None:
+            gmaps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+        elif meta.get("google_maps_url"):
+            gmaps_url = meta.get("google_maps_url")
+        else:
+            name_addr = f"{biz.canonical_name if biz else ''} {address or ''}".strip()
+            gmaps_url = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(name_addr)}" if name_addr else ""
+
+        gsearch_url = meta.get("google_search_url") or (
+            f"https://www.google.com/search?q={urllib.parse.quote(biz.canonical_name)}" if biz else ""
+        )
+
+        fb_url = meta.get("facebook_url") or (
+            f"https://www.facebook.com/search/top?q={urllib.parse.quote(biz.canonical_name)}" if biz else ""
+        )
+        insta_url = meta.get("instagram_url") or (
+            f"https://www.instagram.com/explore/tags/{urllib.parse.quote(clean_dom.split('.')[0])}" if clean_dom else ""
+        )
+
+        btype = (
+            DiscoveryOptimizer.classify_entity(biz.canonical_name, clean_dom, biz.business_type)
+            if (biz and biz.canonical_name)
+            else (biz.business_type if biz else "Commercial Entity")
+        )
+
+        website_url = f"https://{clean_dom}" if clean_dom else ""
+
+        # Tech stack & crawler audits
+        cms_platform = meta.get("cms_platform") or ("WordPress" if meta.get("is_wordpress") else ("Custom Web App" if clean_dom else "No Website"))
+        has_pixel = "YES" if meta.get("has_meta_pixel") else "NO"
+        has_analytics = "YES" if meta.get("has_google_analytics") else "NO"
+        has_mobile = "YES" if meta.get("has_viewport") else ("YES" if clean_dom else "NO")
+        has_ssl = "YES" if meta.get("has_ssl") else ("YES" if clean_dom else "NO")
+
+        # Score Pillar Breakdown
+        sc = l.scores[0] if (l.scores and len(l.scores) > 0) else None
+        eq_score = f"{sc.evidence_quality:.1f}" if sc else ""
+        pr_score = f"{sc.problem_relevance:.1f}" if sc else ""
+        prep_score = f"{sc.problem_repetition:.1f}" if sc else ""
+        rec_score = f"{sc.recency:.1f}" if sc else ""
+        bi_score = f"{sc.business_impact:.1f}" if sc else ""
+        sf_score = f"{sc.service_fit:.1f}" if sc else ""
+
+        # AI Service Matches
+        suggested_services = []
+        services_why = []
+        if l.service_matches:
+            for sm in l.service_matches:
+                s_name = sm.service.name if sm.service else "Service"
+                fit_pct = f"{int(sm.hybrid_fit_score * 100)}%" if sm.hybrid_fit_score is not None else ""
+                suggested_services.append(f"{s_name} ({fit_pct})")
+                if sm.why_selected:
+                    services_why.append(f"{s_name}: {sm.why_selected}")
+
+        suggested_services_str = ", ".join(suggested_services)
+        services_why_str = " | ".join(services_why)
+
+        # AI Explanation JSON & Outreach Pitch
+        exp = l.explanation_json or {}
+        ai_pitch = exp.get("recommended_pitch") or exp.get("pitch") or ""
+        ai_strengths = ", ".join(exp.get("strengths", [])) if isinstance(exp.get("strengths"), list) else str(exp.get("strengths") or "")
+        ai_weaknesses = ", ".join(exp.get("weaknesses", [])) if isinstance(exp.get("weaknesses"), list) else str(exp.get("weaknesses") or "")
+
+        # Dynamic Email Outreach
+        email_subj = f"Quick inquiry regarding {biz.canonical_name if biz else 'your office'} in {address or 'your area'}"
+        email_body = (
+            f"Hello {biz.contact_person or 'Team'},\n\n"
+            f"I recently reviewed {biz.canonical_name if biz else 'your business'} in {address or 'your city'}. "
+            f"We noticed that {l.primary_gap_summary or 'there are major growth opportunities in your online presence'}. "
+            f"We have prepared tailored solutions ({suggested_services_str or 'Digital Growth System'}) that could help resolve this.\n\n"
+            f"Would you be open to a quick 3-minute discussion this week?\n\n"
+            f"Best regards,\nGrowth Team"
+        )
+
+        # Evidence & 135 Parameters A to Z breakdown
+        passed_params = []
+        failed_params = []
+        all_evidence_details = []
+
+        if biz and biz.evidence:
+            for ev in biz.evidence:
+                p_name = ev.parameter.name if ev.parameter else f"Parameter #{ev.parameter_id}"
+                p_cat = ev.parameter.category if ev.parameter else "Audit"
+                p_status = ev.status or "UNKNOWN"
+                clean_text = (ev.evidence_text or "").replace("\r", " ").replace("\n", " ").strip()
+
+                if p_status in ["PASS", "STRONG"]:
+                    passed_params.append(f"{p_name} ({p_status})")
+                elif p_status in ["FAIL", "WEAK", "MISSING"]:
+                    failed_params.append(f"{p_name} ({p_status})")
+
+                all_evidence_details.append(f"[{p_cat}] {p_name} -> {p_status}: {clean_text}")
+
+        total_eval = len(biz.evidence) if (biz and biz.evidence) else 0
+
+        # Compile exhaustive, numbered A-to-Z list of all issues & weaknesses in ONE detailed column
+        problems_list = []
+        if l.primary_gap_summary:
+            problems_list.append(f"[Core Primary Issue]: {l.primary_gap_summary}")
+
+        if not clean_dom:
+            problems_list.append("[Missing Website]: No official corporate website found; operating solely via third-party directory listings or maps.")
+        else:
+            if not meta.get("has_ssl"):
+                problems_list.append("[Security Flaw]: Missing active SSL Certificate (HTTPS); browser flags the site as 'Not Secure' to visitors.")
+            if not meta.get("has_meta_pixel"):
+                problems_list.append("[Marketing Gap]: Missing Meta/Facebook Advertising Pixel; losing retargeting traffic and ad attribution.")
+            if not meta.get("has_google_analytics"):
+                problems_list.append("[Analytics Gap]: Missing Google Analytics tag; zero visibility into website visitor traffic or conversion funnel.")
+            if not meta.get("has_viewport"):
+                problems_list.append("[Mobile UX Failure]: Missing mobile-responsive viewport; page layout breaks on mobile smartphones.")
+
+        # Business contact gaps
+        if not biz.email and email_status == "NOT_FOUND":
+            problems_list.append("[Contact Gap]: No direct public email address detected on website or listings.")
+        if not biz.phone:
+            problems_list.append("[Contact Gap]: No telephone or direct call number listed.")
+
+        # AI Weaknesses from reasoning engine
+        if isinstance(exp.get("weaknesses"), list):
+            for w in exp.get("weaknesses"):
+                if w and str(w).strip():
+                    problems_list.append(f"[AI Audit Weakness]: {str(w).strip()}")
+        elif exp.get("weaknesses"):
+            problems_list.append(f"[AI Audit Weakness]: {str(exp.get('weaknesses')).strip()}")
+
+        # Failed/Weak Parameters from live evidence (135 parameters)
+        if biz and biz.evidence:
+            for ev in biz.evidence:
+                p_status = ev.status or "UNKNOWN"
+                if p_status in ["FAIL", "WEAK", "MISSING", "GAP"]:
+                    p_name = ev.parameter.name if ev.parameter else f"Parameter #{ev.parameter_id}"
+                    p_cat = ev.parameter.category if ev.parameter else "Audit"
+                    clean_text = (ev.evidence_text or "").replace("\r", " ").replace("\n", " ").strip()
+                    problems_list.append(f"[{p_cat} - {p_name}]: {clean_text}")
+
+        if problems_list:
+            all_problems_one_column = "\n".join([f"{i+1}. {item}" for i, item in enumerate(problems_list)])
+        else:
+            all_problems_one_column = f"1. [Core Primary Issue]: {l.primary_gap_summary or 'No critical public defects detected.'}"
+
+        writer.writerow([
+            biz.canonical_name if biz else "",
+            clean_dom or "",
+            website_url,
+            biz.phone or "",
+            resolved_email or "",
+            email_status,
+            all_problems_one_column,
+            l.primary_gap_summary or "",
+            f"{l.final_score:.1f}",
+            l.tier,
+            "YES" if l.is_qualified else "NO",
+            btype,
+            biz.contact_person or "",
+            biz.contact_title or "",
+            address or "",
+            (loc.city if loc else "") or "",
+            (loc.state if loc else "") or "",
+            (loc.country if loc else "") or "",
+            str(lat) if lat is not None else "",
+            str(lon) if lon is not None else "",
+            gmaps_url,
+            gsearch_url,
+            fb_url,
+            insta_url,
+            biz.linkedin_url or "",
+            cms_platform,
+            has_pixel,
+            has_analytics,
+            has_mobile,
+            has_ssl,
+            suggested_services_str,
+            services_why_str,
+            ai_pitch,
+            email_subj,
+            email_body,
+            ai_strengths,
+            ai_weaknesses,
+            eq_score,
+            pr_score,
+            prep_score,
+            rec_score,
+            bi_score,
+            sf_score,
+            total_eval,
+            len(passed_params),
+            len(failed_params),
+            "; ".join(passed_params),
+            "; ".join(failed_params),
+            " | ".join(all_evidence_details),
+            l.created_at.strftime("%Y-%m-%d %H:%M:%S") if l.created_at else "",
+            str(l.id),
+            str(l.run_id) if l.run_id else "",
+        ])
+
+    csv_data = output.getvalue()
+    filename = f"leads_sheet_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        content=csv_data,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+@router.get("/export/json")
+async def export_leads_json(
+    tier: Optional[str] = None,
+    run_id: Optional[uuid.UUID] = None,
+    is_qualified: Optional[bool] = None,
+    min_score: Optional[float] = Query(None, ge=0.0, le=100.0),
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Export filtered leads to a downloadable JSON file with complete information from A to Z."""
+    if current_user and current_user.role != "super_admin":
+        perms = current_user.permissions_json or {}
+        if perms.get("can_export_leads") is False:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission Denied: You do not have permission to export leads.",
+            )
+
+    stmt = (
+        select(Lead)
+        .options(
+            selectinload(Lead.scores),
+            selectinload(Lead.service_matches).selectinload(ServiceMatch.service),
+            selectinload(Lead.business).selectinload(Business.locations),
+            selectinload(Lead.business).selectinload(Business.evidence).selectinload(Evidence.parameter),
+            selectinload(Lead.business).selectinload(Business.evidence).selectinload(Evidence.source),
+        )
+    )
+    if tier and tier != "ALL":
+        stmt = stmt.where(Lead.tier == tier)
+    if run_id:
+        stmt = stmt.where(Lead.run_id == run_id)
+    if is_qualified is not None:
+        stmt = stmt.where(Lead.is_qualified == is_qualified)
+    if min_score is not None:
+        stmt = stmt.where(Lead.final_score >= min_score)
+
+    stmt = stmt.order_by(desc(Lead.final_score))
+    res = await db.execute(stmt)
+    leads = res.scalars().all()
+
+    items = []
+    for l in leads:
+        biz = l.business
+        if not biz:
+            continue
+        biz_name_l = (biz.canonical_name or "").lower().strip()
+        if any(bad in biz_name_l for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "twitter.com"]) or biz_name_l in ["facebook", "instagram", "google", "meta"]:
+            continue
+
+        clean_dom = biz.domain
+        if DeduplicationEngine.is_generic_platform(clean_dom):
+            clean_dom = None
+
+        meta = (biz.metadata_json or {}) if biz else {}
+        has_scraped_email = bool(meta.get("extracted_email") or (biz.email and not biz.email.startswith("contact@")))
+        if biz.email:
+            resolved_email = biz.email
+            email_status = "VERIFIED" if has_scraped_email else "SUGGESTED"
+        elif clean_dom and not DeduplicationEngine.is_generic_platform(clean_dom):
+            resolved_email = f"contact@{clean_dom}"
+            email_status = "SUGGESTED"
+        else:
+            resolved_email = None
+            email_status = "NOT_FOUND"
+
+        loc = biz.locations[0] if (biz and biz.locations) else None
+        lat = (loc.latitude if loc and loc.latitude is not None else None) or meta.get("latitude")
+        lon = (loc.longitude if loc and loc.longitude is not None else None) or meta.get("longitude")
+        address = (biz.address if biz and biz.address else None) or (loc.address if loc else None) or meta.get("address")
+
+        if lat is not None and lon is not None:
+            gmaps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+        elif meta.get("google_maps_url"):
+            gmaps_url = meta.get("google_maps_url")
+        else:
+            name_addr = f"{biz.canonical_name if biz else ''} {address or ''}".strip()
+            gmaps_url = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(name_addr)}" if name_addr else None
+
+        gsearch_url = meta.get("google_search_url") or (
+            f"https://www.google.com/search?q={urllib.parse.quote(biz.canonical_name)}" if biz else None
+        )
+
+        btype = (
+            DiscoveryOptimizer.classify_entity(biz.canonical_name, clean_dom, biz.business_type)
+            if (biz and biz.canonical_name)
+            else (biz.business_type if biz else "Commercial Entity")
+        )
+
+        # Full score breakdown
+        sc = l.scores[0] if (l.scores and len(l.scores) > 0) else None
+        score_breakdown = {
+            "evidence_quality": sc.evidence_quality if sc else None,
+            "problem_relevance": sc.problem_relevance if sc else None,
+            "problem_repetition": sc.problem_repetition if sc else None,
+            "recency": sc.recency if sc else None,
+            "business_impact": sc.business_impact if sc else None,
+            "service_fit": sc.service_fit if sc else None,
+            "final_score": l.final_score,
+        }
+
+        # Full service matches
+        service_matches_list = []
+        if l.service_matches:
+            for sm in l.service_matches:
+                service_matches_list.append({
+                    "service_name": sm.service.name if sm.service else None,
+                    "category": sm.service.category if sm.service else None,
+                    "hybrid_fit_score": sm.hybrid_fit_score,
+                    "why_selected": sm.why_selected,
+                })
+
+        # Full evidence & parameters evaluated
+        evidence_items_list = []
+        if biz and biz.evidence:
+            for ev in biz.evidence:
+                evidence_items_list.append({
+                    "parameter_id": ev.parameter_id,
+                    "parameter_name": ev.parameter.name if ev.parameter else f"Parameter #{ev.parameter_id}",
+                    "parameter_category": ev.parameter.category if ev.parameter else "General",
+                    "status": ev.status,
+                    "confidence": ev.confidence,
+                    "evidence_text": ev.evidence_text,
+                    "source_url": ev.source.url if ev.source else None,
+                    "screenshot_path": ev.screenshot_path,
+                })
+
+        # Compile exhaustive, numbered A-to-Z list of all issues & weaknesses
+        problems_list = []
+        if l.primary_gap_summary:
+            problems_list.append(f"[Core Primary Issue]: {l.primary_gap_summary}")
+
+        if not clean_dom:
+            problems_list.append("[Missing Website]: No official corporate website found; operating solely via third-party directory listings or maps.")
+        else:
+            if not meta.get("has_ssl"):
+                problems_list.append("[Security Flaw]: Missing active SSL Certificate (HTTPS); browser flags the site as 'Not Secure' to visitors.")
+            if not meta.get("has_meta_pixel"):
+                problems_list.append("[Marketing Gap]: Missing Meta/Facebook Advertising Pixel; losing retargeting traffic and ad attribution.")
+            if not meta.get("has_google_analytics"):
+                problems_list.append("[Analytics Gap]: Missing Google Analytics tag; zero visibility into website visitor traffic or conversion funnel.")
+            if not meta.get("has_viewport"):
+                problems_list.append("[Mobile UX Failure]: Missing mobile-responsive viewport; page layout breaks on mobile smartphones.")
+
+        # Business contact gaps
+        if not biz.email and email_status == "NOT_FOUND":
+            problems_list.append("[Contact Gap]: No direct public email address detected on website or listings.")
+        if not biz.phone:
+            problems_list.append("[Contact Gap]: No telephone or direct call number listed.")
+
+        # AI Weaknesses from reasoning engine
+        exp_json = l.explanation_json or {}
+        if isinstance(exp_json.get("weaknesses"), list):
+            for w in exp_json.get("weaknesses"):
+                if w and str(w).strip():
+                    problems_list.append(f"[AI Audit Weakness]: {str(w).strip()}")
+        elif exp_json.get("weaknesses"):
+            problems_list.append(f"[AI Audit Weakness]: {str(exp_json.get('weaknesses')).strip()}")
+
+        # Failed/Weak Parameters from live evidence (135 parameters)
+        if biz and biz.evidence:
+            for ev in biz.evidence:
+                p_status = ev.status or "UNKNOWN"
+                if p_status in ["FAIL", "WEAK", "MISSING", "GAP"]:
+                    p_name = ev.parameter.name if ev.parameter else f"Parameter #{ev.parameter_id}"
+                    p_cat = ev.parameter.category if ev.parameter else "Audit"
+                    clean_text = (ev.evidence_text or "").replace("\r", " ").replace("\n", " ").strip()
+                    problems_list.append(f"[{p_cat} - {p_name}]: {clean_text}")
+
+        all_problems_one_column = "\n".join([f"{i+1}. {item}" for i, item in enumerate(problems_list)]) if problems_list else f"1. [Core Primary Issue]: {l.primary_gap_summary or 'No critical public defects detected.'}"
+
+        items.append({
+            "id": str(l.id),
+            "business_id": str(l.business_id),
+            "run_id": str(l.run_id) if l.run_id else None,
+            "company_name": biz.canonical_name if biz else "",
+            "domain": clean_dom,
+            "website_url": f"https://{clean_dom}" if clean_dom else None,
+            "business_type": btype,
+            "phone": biz.phone,
+            "email": resolved_email,
+            "email_status": email_status,
+            "ai_identified_problems_details": all_problems_one_column,
+            "ai_identified_problems_list": problems_list,
+            "contact_person": biz.contact_person,
+            "contact_title": biz.contact_title,
+            "address": address,
+            "city": loc.city if loc else None,
+            "state": loc.state if loc else None,
+            "country": loc.country if loc else None,
+            "latitude": lat,
+            "longitude": lon,
+            "google_maps_url": gmaps_url,
+            "google_search_url": gsearch_url,
+            "facebook_url": meta.get("facebook_url"),
+            "instagram_url": meta.get("instagram_url"),
+            "linkedin_url": biz.linkedin_url,
+            "tech_stack": {
+                "cms_platform": meta.get("cms_platform") or ("WordPress" if meta.get("is_wordpress") else ("Custom Web App" if clean_dom else "No Website")),
+                "has_meta_pixel": bool(meta.get("has_meta_pixel")),
+                "has_google_analytics": bool(meta.get("has_google_analytics")),
+                "has_viewport": bool(meta.get("has_viewport")),
+                "has_ssl": bool(meta.get("has_ssl")),
+            },
+            "final_score": l.final_score,
+            "tier": l.tier,
+            "is_qualified": l.is_qualified,
+            "primary_gap_summary": l.primary_gap_summary,
+            "score_breakdown": score_breakdown,
+            "ai_explanation": l.explanation_json,
+            "suggested_services": service_matches_list,
+            "evidence_parameters": evidence_items_list,
+            "email_outreach_draft": {
+                "subject": f"Quick inquiry regarding {biz.canonical_name if biz else 'your office'} in {address or 'your area'}",
+                "body": (
+                    f"Hello {biz.contact_person or 'Team'},\n\n"
+                    f"I recently reviewed {biz.canonical_name if biz else 'your business'} in {address or 'your city'}. "
+                    f"We noticed that {l.primary_gap_summary or 'there are major growth opportunities in your online presence'}. "
+                    f"We have prepared tailored solutions that could help resolve this.\n\n"
+                    f"Would you be open to a quick 3-minute discussion this week?\n\n"
+                    f"Best regards,\nGrowth Team"
+                ),
+            },
+            "metadata": meta,
+            "created_at": l.created_at.isoformat() if l.created_at else None,
+        })
+
+    json_data = json.dumps(items, indent=2, ensure_ascii=False)
+    filename = f"leads_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    return Response(
+        content=json_data,
+        media_type="application/json; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
 
 
 @router.get("/{lead_id}", response_model=LeadDetailResponse)
@@ -221,6 +826,30 @@ async def get_lead_detail(
     )
     res_jobs = await db.execute(stmt_jobs)
     research_jobs = res_jobs.scalars().all()
+
+    # Fetch associated email outreach logs (sent emails & incoming client replies)
+    from app.models.autopilot import EmailOutreachLog
+    stmt_logs = (
+        select(EmailOutreachLog)
+        .where(EmailOutreachLog.lead_id == lead.id)
+        .order_by(EmailOutreachLog.sent_at.desc(), EmailOutreachLog.created_at.desc())
+    )
+    res_logs = await db.execute(stmt_logs)
+    raw_logs = res_logs.scalars().all()
+    outreach_logs_list = [
+        {
+            "id": str(log.id),
+            "step": log.step,
+            "recipient_email": log.recipient_email,
+            "subject": log.subject,
+            "body_snippet": log.body_snippet,
+            "status": log.status,
+            "sent_at": log.sent_at.isoformat() if log.sent_at else None,
+            "reply_content": log.reply_content,
+            "reply_sentiment": log.reply_sentiment,
+        }
+        for log in raw_logs
+    ]
 
     evidence_list = []
     if lead.business and lead.business.evidence:
@@ -383,6 +1012,9 @@ async def get_lead_detail(
         ],
         all_parameters_matrix=all_parameters_matrix,
         metadata_json=lead.business.metadata_json or {} if lead.business else {},
+        outreach_logs=outreach_logs_list,
+        outreach_status=lead.outreach_status,
+        deal_status=lead.deal_status,
         created_at=lead.created_at,
     )
 
@@ -408,6 +1040,19 @@ async def submit_lead_feedback(
         notes=data.notes,
     )
     db.add(feedback)
+
+    act = data.action.upper()
+    if act == "APPROVED":
+        lead.outreach_status = "READY_FOR_OUTREACH"
+        lead.tier = "Strong Potential"
+        lead.is_qualified = True
+        if lead.email_status == "NEEDS_REVIEW" or not lead.email_status:
+            lead.email_status = "VALID"
+    elif act in ["REJECTED", "DISCARDED"]:
+        lead.outreach_status = "DISCARDED"
+        lead.tier = "Rejected"
+        lead.is_qualified = False
+
     await db.commit()
     await db.refresh(feedback)
     return feedback
@@ -420,6 +1065,15 @@ async def delete_single_lead(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a specific lead from the pipeline."""
+    # Human team members (sales, QA, admin, super_admin) can delete leads manually
+    # unless super_admin explicitly set can_delete_leads = False in permissions
+    if current_user.role not in ["super_admin", "admin"]:
+        perms = current_user.permissions_json or {}
+        if perms.get("can_delete_leads") is False:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission Denied: You do not have permission to delete leads.",
+            )
     stmt = select(Lead).where(Lead.id == lead_id)
     res = await db.execute(stmt)
     lead = res.scalar_one_or_none()
@@ -435,14 +1089,196 @@ async def delete_single_lead(
 async def clear_all_leads(
     tier: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_optional),
+):
+    """Clear all leads or leads matching a specific tier and clean up research runs, businesses, and history."""
+    from sqlalchemy import delete
+    from app.models.research import ResearchRun, ResearchJob
+    from app.models.autopilot import EmailOutreachLog, AutopilotCampaign
+    from app.models.business import Business, BusinessLocation
+    from app.models.evidence import Evidence
+    from app.models.service import ServiceMatch
+
+    if tier and tier.upper() != "ALL":
+        stmt = delete(Lead).where(Lead.tier == tier)
+        result = await db.execute(stmt)
+        await db.commit()
+        return {"status": "SUCCESS", "deleted_count": result.rowcount}
+
+    # Complete purge of operational demo/test data
+    await db.execute(delete(EmailOutreachLog))
+    await db.execute(delete(LeadFeedback))
+    await db.execute(delete(LeadScore))
+    await db.execute(delete(ServiceMatch))
+    await db.execute(delete(Lead))
+    await db.execute(delete(ResearchJob))
+    await db.execute(delete(ResearchRun))
+    await db.execute(delete(AutopilotCampaign))
+    await db.execute(delete(Evidence))
+    await db.execute(delete(BusinessLocation))
+    await db.execute(delete(Business))
+
+    try:
+        r = aioredis.from_url(settings.REDIS_URL)
+        await r.delete("leadgen:tasks")
+        await r.aclose()
+    except Exception:
+        pass
+
+    await db.commit()
+    return {"status": "SUCCESS", "message": "All demo/test data, leads, research runs, campaigns, and history purged successfully."}
+
+
+@router.patch("/{lead_id}", response_model=LeadDetailResponse)
+async def update_lead_details(
+    lead_id: uuid.UUID,
+    data: LeadUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_optional),
+):
+    """Manually update lead & business details (email, phone, contact person, address, gap summary, approval)."""
+    stmt = select(Lead).options(selectinload(Lead.business)).where(Lead.id == lead_id)
+    res = await db.execute(stmt)
+    lead = res.scalar_one_or_none()
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+    biz = lead.business
+    if biz:
+        if data.email is not None:
+            biz.email = data.email.strip() if data.email.strip() else None
+            if biz.email:
+                lead.email_status = "VALID"
+                lead.verification_notes = "Manually updated by reviewer"
+            else:
+                lead.email_status = "NOT_FOUND"
+
+        if data.phone is not None:
+            biz.phone = data.phone.strip() if data.phone.strip() else None
+        if data.contact_person is not None:
+            biz.contact_person = data.contact_person.strip() if data.contact_person.strip() else None
+        if data.contact_title is not None:
+            biz.contact_title = data.contact_title.strip() if data.contact_title.strip() else None
+        if data.address is not None:
+            biz.address = data.address.strip() if data.address.strip() else None
+
+    if data.primary_gap_summary is not None:
+        lead.primary_gap_summary = data.primary_gap_summary.strip()
+    if data.tier is not None:
+        lead.tier = data.tier
+    if data.outreach_status is not None:
+        lead.outreach_status = data.outreach_status
+
+    if data.approve_for_outreach is True:
+        lead.outreach_status = "READY_FOR_OUTREACH"
+        lead.tier = "Strong Potential"
+        lead.is_qualified = True
+        if lead.email_status == "NEEDS_REVIEW" or not lead.email_status:
+            lead.email_status = "VALID"
+
+    await db.commit()
+    return await get_lead_detail(lead_id=lead.id, db=db, current_user=current_user)
+
+
+@router.post("/dispatch-staggered")
+async def dispatch_staggered_outreach(
+    data: StaggeredDispatchCreate,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Clear all leads or leads matching a specific tier."""
-    from sqlalchemy import delete
-    stmt = delete(Lead)
-    if tier and tier.upper() != "ALL":
-        stmt = stmt.where(Lead.tier == tier)
+    """
+    Human-Paced Staggered Cold Email Dispatcher.
+    Dispatches selected (or all ready/hold) leads with anti-spam randomized delays between sends.
+    """
+    import os
+    import random
+    import asyncio
+    from datetime import timezone
+    from app.engine.outreach_engine import OutreachEngine
+    from app.models.autopilot import EmailOutreachLog
 
-    result = await db.execute(stmt)
-    await db.commit()
-    return {"status": "SUCCESS", "deleted_count": result.rowcount}
+    stmt = select(Lead).options(selectinload(Lead.business))
+    if data.lead_ids and len(data.lead_ids) > 0:
+        stmt = stmt.where(Lead.id.in_(data.lead_ids))
+    else:
+        stmt = stmt.where(
+            Lead.outreach_status.in_(["READY_FOR_OUTREACH", "HOLD", "PENDING"]),
+            Lead.is_qualified == True
+        )
+
+    res = await db.execute(stmt)
+    leads_to_send = res.scalars().all()
+
+    if not leads_to_send:
+        return {
+            "status": "COMPLETED",
+            "dispatched_count": 0,
+            "results": [],
+            "message": "No valid leads found to dispatch."
+        }
+
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_user = os.getenv("SMTP_USER")
+    is_live = bool(smtp_host and smtp_user)
+
+    dispatched = 0
+    results = []
+
+    for idx, lead in enumerate(leads_to_send):
+        biz = lead.business
+        if not biz or not biz.email:
+            continue
+
+        recipient = biz.email.strip()
+        subject, body = OutreachEngine.render_email(
+            step=1,
+            lead_data={
+                "company_name": biz.canonical_name,
+                "contact_person": biz.contact_person or "Executive",
+                "city": biz.address or "Dhaka",
+                "primary_gap": lead.primary_gap_summary
+            }
+        )
+
+        success, note = await OutreachEngine.dispatch_smtp_email(
+            recipient_email=recipient,
+            subject=subject,
+            body=body,
+            dry_run=not is_live
+        )
+
+        if success:
+            lead.outreach_status = "SENT"
+            lead.followup_step = 1
+            lead.last_contacted_at = datetime.now(timezone.utc)
+
+            log = EmailOutreachLog(
+                lead_id=lead.id,
+                step=1,
+                recipient_email=recipient,
+                subject=subject,
+                body_snippet=body[:300],
+                status="SENT",
+                sent_at=datetime.now(timezone.utc)
+            )
+            db.add(log)
+            dispatched += 1
+            results.append({"lead_id": str(lead.id), "company": biz.canonical_name, "email": recipient, "status": "SENT", "note": note})
+        else:
+            results.append({"lead_id": str(lead.id), "company": biz.canonical_name, "email": recipient, "status": "FAILED", "note": note})
+
+        await db.commit()
+
+        # Human-paced anti-spam delay between emails if not the last item
+        if idx < len(leads_to_send) - 1:
+            delay = random.uniform(data.min_delay_sec, data.max_delay_sec)
+            await asyncio.sleep(delay)
+
+    return {
+        "status": "COMPLETED",
+        "mode": "LIVE SMTP" if is_live else "SIMULATED (DRY-RUN)",
+        "dispatched_count": dispatched,
+        "results": results,
+        "message": f"Successfully dispatched {dispatched} emails with human-paced anti-spam timing."
+    }
+

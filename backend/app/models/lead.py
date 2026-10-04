@@ -2,8 +2,9 @@
 Lead, Scoring, and Feedback Models
 """
 import uuid
+from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Text, Float, Boolean, ForeignKey, Index
+from sqlalchemy import String, Text, Float, Boolean, Integer, DateTime, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin, UUIDMixin
@@ -20,6 +21,15 @@ class Lead(Base, UUIDMixin, TimestampMixin):
     is_qualified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     primary_gap_summary: Mapped[str] = mapped_column(Text, nullable=False)
     explanation_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+
+    # Email & Autonomous Outreach Pipeline Fields
+    email_status: Mapped[str] = mapped_column(String(50), default="UNVERIFIED", nullable=False, index=True)  # VALID, NEEDS_REVIEW, INVALID, UNVERIFIED
+    verification_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    outreach_status: Mapped[str] = mapped_column(String(50), default="PENDING", nullable=False, index=True)  # PENDING, READY_FOR_OUTREACH, NEEDS_REVIEW, SENT, FOLLOWUP_SENT, REPLIED_HOT, REPLIED_NEUTRAL, DISCARDED
+    deal_status: Mapped[str] = mapped_column(String(50), default="COLD", nullable=False, index=True)  # COLD, IN_PIPELINE, HOT_LEAD, CLOSED_WON, CLOSED_LOST
+    last_contacted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    followup_step: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    outreach_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     business: Mapped["Business"] = relationship("Business", back_populates="leads")
     scores: Mapped[List["LeadScore"]] = relationship("LeadScore", back_populates="lead", cascade="all, delete-orphan")

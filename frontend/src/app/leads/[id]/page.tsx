@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { fetchLeadDetail, submitLeadFeedback, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate } from "@/lib/api";
+import { fetchLeadDetail, submitLeadFeedback, updateLeadDetails, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate } from "@/lib/api";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -38,6 +38,8 @@ import {
   Trash2,
   Send,
   Edit3,
+  MessageSquare,
+  Flame,
 } from "lucide-react";
 
 export default function LeadDetailPage() {
@@ -66,6 +68,50 @@ export default function LeadDetailPage() {
   const [showJsonModal, setShowJsonModal] = useState(false);
   const [copiedFullJson, setCopiedFullJson] = useState(false);
 
+  // Manual Lead Edit Modal State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editContactPerson, setEditContactPerson] = useState("");
+  const [editContactTitle, setEditContactTitle] = useState("");
+  const [editAddress, setEditAddress] = useState("");
+  const [editPrimaryGap, setEditPrimaryGap] = useState("");
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
+  const openEditModal = () => {
+    if (!lead) return;
+    setEditEmail(lead.email || "");
+    setEditPhone(lead.phone || "");
+    setEditContactPerson(lead.contact_person || "");
+    setEditContactTitle(lead.contact_title || "");
+    setEditAddress(lead.address || "");
+    setEditPrimaryGap(lead.primary_gap_summary || "");
+    setShowEditModal(true);
+  };
+
+  const handleSaveLeadEdit = async (approveForOutreach: boolean = false) => {
+    if (!lead) return;
+    setIsSubmittingEdit(true);
+    try {
+      const updated = await updateLeadDetails(lead.id, {
+        email: editEmail,
+        phone: editPhone,
+        contact_person: editContactPerson,
+        contact_title: editContactTitle,
+        address: editAddress,
+        primary_gap_summary: editPrimaryGap,
+        approve_for_outreach: approveForOutreach,
+      });
+      setLead(updated);
+      setShowEditModal(false);
+      alert(approveForOutreach ? "✓ Lead updated and approved for Outreach Queue!" : "✓ Lead details updated successfully!");
+    } catch (err: any) {
+      alert("Failed to update lead: " + err.message);
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  };
+
   useEffect(() => {
     fetchLeadDetail(leadId)
       .then((data) => setLead(data))
@@ -81,6 +127,8 @@ export default function LeadDetailPage() {
     try {
       await submitLeadFeedback(leadId, action);
       setFeedbackSuccess(`Feedback '${action}' recorded.`);
+      const updated = await fetchLeadDetail(leadId);
+      setLead(updated);
     } catch (e: any) {
       alert("Failed to submit feedback: " + e.message);
     }
@@ -223,6 +271,12 @@ export default function LeadDetailPage() {
         </Link>
         <div className="flex items-center gap-2">
           <button
+            onClick={openEditModal}
+            className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+          >
+            <Edit3 className="w-3.5 h-3.5 text-emerald-400" /> Edit Lead Details
+          </button>
+          <button
             onClick={() => setShowJsonModal(true)}
             className="px-3 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
           >
@@ -233,14 +287,6 @@ export default function LeadDetailPage() {
             className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition border border-slate-700"
           >
             <Download className="w-3.5 h-3.5" /> Export JSON
-          </button>
-          <button
-            onClick={handleDeleteLead}
-            disabled={isDeleting}
-            className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
-            title="Delete this lead permanently from the database"
-          >
-            <Trash2 className="w-3.5 h-3.5" /> {isDeleting ? "Deleting..." : "Delete Lead"}
           </button>
           <Link
             href="/parameters"
@@ -291,7 +337,21 @@ export default function LeadDetailPage() {
             </span>
             <div className="text-slate-200 font-mono">
               {lead.phone ? (
-                <a href={`tel:${lead.phone}`} className="hover:text-sky-400 hover:underline">{lead.phone}</a>
+                <div className="space-y-1">
+                  <a href={`tel:${lead.phone}`} className="hover:text-sky-400 hover:underline">{lead.phone}</a>
+                  <div>
+                    <a
+                      href={`https://wa.me/${lead.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
+                        `Hello ${lead.contact_person || lead.business_name}, I am reaching out from our business growth team regarding your business.`
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30 transition"
+                    >
+                      <MessageSquare className="w-2.5 h-2.5" /> WhatsApp
+                    </a>
+                  </div>
+                </div>
               ) : (
                 <span className="text-slate-500">Not public</span>
               )}
@@ -404,6 +464,102 @@ export default function LeadDetailPage() {
         </div>
         {feedbackSuccess && (
           <div className="text-xs text-emerald-400 font-medium">{feedbackSuccess}</div>
+        )}
+      </div>
+
+      {/* Client Outreach & Inbound Reply Audit History */}
+      <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+              <Mail className="w-4 h-4 text-emerald-400" />
+              Outreach Activity & Inbound Client Replies ({lead.outreach_logs?.length || 0} Records)
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Live audit history of sent cold emails and direct client replies with AI sentiment classification.
+            </p>
+          </div>
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+            lead.deal_status === "HOT_LEAD" || lead.outreach_status === "REPLIED_HOT"
+              ? "bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5"
+              : "bg-sky-500/20 text-sky-300 border border-sky-500/30"
+          }`}>
+            {(lead.deal_status === "HOT_LEAD" || lead.outreach_status === "REPLIED_HOT") && (
+              <Flame className="w-3.5 h-3.5 text-rose-400 fill-rose-400 animate-pulse" />
+            )}
+            {lead.outreach_status || "PENDING"}
+          </span>
+        </div>
+
+        {!lead.outreach_logs || lead.outreach_logs.length === 0 ? (
+          <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 text-xs text-slate-400 text-center space-y-1">
+            <div className="font-semibold text-slate-300">No email outreach logs sent yet for this lead.</div>
+            <p className="text-[11px] text-slate-500">When an outreach email is sent or a client replies, the complete message transcript will appear here.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {lead.outreach_logs.map((log: any, idx: number) => {
+              const isReply = Boolean(log.reply_content || log.status?.startsWith("REPLIED"));
+
+              return (
+                <div
+                  key={log.id || idx}
+                  className={`p-4 rounded-xl border transition space-y-2.5 ${
+                    isReply
+                      ? "bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-slate-900/70 border-emerald-500/40 shadow-lg shadow-emerald-500/5"
+                      : "bg-slate-900/60 border-slate-800"
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {isReply ? (
+                        <span className="px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold text-[10px] flex items-center gap-1.5">
+                          <Flame className="w-3 h-3 fill-emerald-400 text-emerald-400" /> INBOUND CLIENT REPLY ({log.reply_sentiment || "POSITIVE"})
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/30 text-[10px] font-mono">
+                          OUTBOUND EMAIL (STEP {log.step || 1})
+                        </span>
+                      )}
+                      <span className="text-slate-300 font-mono text-[11px] truncate">
+                        Recipient: {log.recipient_email}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {log.sent_at ? new Date(log.sent_at).toLocaleString() : "Recently"}
+                    </span>
+                  </div>
+
+                  <div className="text-xs font-semibold text-white font-sans">
+                    Subject: {log.subject}
+                  </div>
+
+                  {/* Inbound Reply Content Box */}
+                  {isReply ? (
+                    <div className="p-3.5 rounded-xl bg-slate-950/90 border border-emerald-500/30 space-y-2 text-xs">
+                      <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                        Received Client Response Message:
+                      </div>
+                      <div className="text-slate-100 font-sans text-xs leading-relaxed whitespace-pre-wrap select-all font-medium bg-slate-900/90 p-3 rounded-lg border border-emerald-900/50 shadow-inner">
+                        "{log.reply_content || log.body_snippet}"
+                      </div>
+                      {log.reply_sentiment && (
+                        <div className="text-[11px] text-emerald-300 font-mono pt-1 flex items-center gap-1.5">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>AI Sentiment: <strong>{log.reply_sentiment}</strong> — Automated sequence paused. Moved to Hot Deals CRM.</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-300 font-mono bg-slate-950/60 p-3 rounded-lg border border-slate-800/80 whitespace-pre-wrap leading-relaxed select-all">
+                      {log.body_snippet}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -1157,6 +1313,136 @@ export default function LeadDetailPage() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal Overlay: Edit Lead & Business Contact Information */}
+      {showEditModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6"
+          onClick={() => setShowEditModal(false)}
+        >
+          <div
+            className="glass-panel bg-slate-950/95 border border-slate-700/80 rounded-2xl w-full max-w-xl flex flex-col shadow-2xl overflow-hidden space-y-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Edit Lead Dossier & Contact Information</h3>
+                  <p className="text-[11px] text-slate-400">{lead.business_name}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Target Contact Email:</label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="e.g. contact@company.com"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Direct Phone Number / WhatsApp:</label>
+                <input
+                  type="text"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="e.g. +8801700000000"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Key Decision Maker Name:</label>
+                  <input
+                    type="text"
+                    value={editContactPerson}
+                    onChange={(e) => setEditContactPerson(e.target.value)}
+                    placeholder="e.g. Tanvir Ahmed"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Designation / Title:</label>
+                  <input
+                    type="text"
+                    value={editContactTitle}
+                    onChange={(e) => setEditContactTitle(e.target.value)}
+                    placeholder="e.g. Managing Director"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Address / Metro Location:</label>
+                <input
+                  type="text"
+                  value={editAddress}
+                  onChange={(e) => setEditAddress(e.target.value)}
+                  placeholder="e.g. Gulshan 1, Dhaka"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Primary Gap / Opportunity Summary:</label>
+                <textarea
+                  rows={2}
+                  value={editPrimaryGap}
+                  onChange={(e) => setEditPrimaryGap(e.target.value)}
+                  placeholder="Summarize the core weakness or service gap..."
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 resize-y font-sans"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300"
+              >
+                Cancel
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isSubmittingEdit}
+                  onClick={() => handleSaveLeadEdit(false)}
+                  className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition border border-slate-700"
+                >
+                  Save Changes
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isSubmittingEdit}
+                  onClick={() => handleSaveLeadEdit(true)}
+                  className="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-500/20"
+                >
+                  <Send className="w-3.5 h-3.5 text-slate-950" />
+                  Approve for Outreach Queue
+                </button>
+              </div>
             </div>
           </div>
         </div>

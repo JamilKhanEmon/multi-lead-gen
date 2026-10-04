@@ -2,7 +2,15 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createResearchRun, fetchResearchRun, cancelResearchRun, ResearchRun } from "@/lib/api";
+import {
+  createResearchRun,
+  fetchResearchRun,
+  cancelResearchRun,
+  ResearchRun,
+  getStoredUser,
+  hasPermission,
+  AuthUser,
+} from "@/lib/api";
 import {
   Compass,
   Sparkles,
@@ -20,15 +28,19 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Lock,
+  Send,
 } from "lucide-react";
 
 export default function ResearchInitiatorPage() {
   const router = useRouter();
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
   const [subCity, setSubCity] = useState("");
   const [industry, setIndustry] = useState("");
   const [depth, setDepth] = useState("DEEP");
+  const [autoMailEnabled, setAutoMailEnabled] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +48,10 @@ export default function ResearchInitiatorPage() {
   // Live Research Progress Tracking
   const [activeRun, setActiveRun] = useState<ResearchRun | null>(null);
   const [progressPct, setProgressPct] = useState(15);
+
+  useEffect(() => {
+    setCurrentUser(getStoredUser());
+  }, []);
 
   const handleCancelRun = async () => {
     if (!activeRun) return;
@@ -110,6 +126,7 @@ export default function ResearchInitiatorPage() {
         depth,
         company_limit: 0, // Auto-exhaustion loop (no artificial limit)
         business_type_override: cleanOverride,
+        auto_mail_enabled: autoMailEnabled,
       });
 
       setActiveRun(run);
@@ -324,6 +341,8 @@ export default function ResearchInitiatorPage() {
     );
   }
 
+  const canRunResearch = hasPermission(currentUser, "can_run_research", false);
+
   return (
     <div className="max-w-2xl mx-auto space-y-5 sm:space-y-6">
       {/* Page Header */}
@@ -336,6 +355,13 @@ export default function ResearchInitiatorPage() {
           OpenClaw autonomously discovers real local businesses, audits their live websites, and qualifies high-intent B2B leads.
         </p>
       </div>
+
+      {!canRunResearch && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2.5">
+          <Lock className="w-4 h-4 shrink-0 text-amber-400" />
+          <span>Your account does not have permission to launch autonomous research runs. Please contact an administrator to request discovery access.</span>
+        </div>
+      )}
 
       {error && (
         <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm flex items-center gap-2">
@@ -528,6 +554,35 @@ export default function ResearchInitiatorPage() {
           </select>
         </div>
 
+        {/* Auto Cold Mail Dispatch Toggle */}
+        <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
+              <Send className="w-4 h-4 text-sky-400" />
+              <span>Auto-Send Cold Outreach Emails</span>
+            </label>
+            <input
+              type="checkbox"
+              checked={autoMailEnabled}
+              onChange={(e) => setAutoMailEnabled(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-sky-500 focus:ring-sky-500 cursor-pointer"
+            />
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            {autoMailEnabled ? (
+              <span className="text-emerald-400 font-medium flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                ON: Step-1 cold outreach email will automatically be sent to valid leads as soon as discovered.
+              </span>
+            ) : (
+              <span className="text-amber-400 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                OFF: Emails won't send automatically. Valid leads will be held in the Outreach Queue for human-paced batch mailing.
+              </span>
+            )}
+          </p>
+        </div>
+
         {/* Autonomous Exhaustion Loop Badge */}
         <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
@@ -540,11 +595,20 @@ export default function ResearchInitiatorPage() {
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !canRunResearch}
           className="w-full py-3 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-sm transition shadow-lg shadow-sky-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
         >
-          <Sparkles className="w-4 h-4" />
-          {submitting ? "Initiating Research Run..." : "Start Autonomous Research"}
+          {canRunResearch ? (
+            <>
+              <Sparkles className="w-4 h-4" />
+              {submitting ? "Initiating Research Run..." : "Start Autonomous Research"}
+            </>
+          ) : (
+            <>
+              <Lock className="w-4 h-4" />
+              <span>Research Run Locked (No Permission)</span>
+            </>
+          )}
         </button>
       </form>
     </div>

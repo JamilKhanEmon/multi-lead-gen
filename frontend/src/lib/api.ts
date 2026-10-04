@@ -2,7 +2,14 @@
  * Typed API Client for FastAPI backend
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+export function getApiBase(): string {
+  if (typeof window !== "undefined") {
+    return "/api/v1";
+  }
+  return process.env.NEXT_PUBLIC_API_URL || process.env.BACKEND_INTERNAL_URL || "http://127.0.0.1:8000/api/v1";
+}
+
+const API_BASE = typeof window !== "undefined" ? "/api/v1" : (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1");
 
 export interface ResearchRun {
   id: string;
@@ -33,7 +40,12 @@ export interface Lead {
   business_type?: string;
   phone?: string;
   email?: string;
-  email_status?: "VERIFIED" | "SUGGESTED" | "NOT_FOUND";
+  email_status?: "VALID" | "NEEDS_REVIEW" | "INVALID" | "UNVERIFIED" | "VERIFIED" | "SUGGESTED" | "NOT_FOUND";
+  verification_notes?: string;
+  outreach_status?: "PENDING" | "READY_FOR_OUTREACH" | "NEEDS_REVIEW" | "SENT" | "FOLLOWUP_SENT" | "REPLIED_HOT" | "REPLIED_NEUTRAL" | "DISCARDED";
+  deal_status?: "COLD" | "IN_PIPELINE" | "HOT_LEAD" | "CLOSED_WON" | "CLOSED_LOST";
+  followup_step?: number;
+  last_contacted_at?: string;
   contact_person?: string;
   contact_title?: string;
   address?: string;
@@ -105,7 +117,10 @@ export async function fetchHealth(): Promise<SystemHealth | null> {
 
 export async function fetchRuns(): Promise<ResearchRun[]> {
   try {
-    const res = await fetch(`${API_BASE}/research`, { cache: "no-store" });
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/research`, { cache: "no-store", headers });
     if (!res.ok) return [];
     return await res.json();
   } catch (err) {
@@ -116,7 +131,10 @@ export async function fetchRuns(): Promise<ResearchRun[]> {
 
 export async function fetchResearchRun(id: string): Promise<ResearchRun | null> {
   try {
-    const res = await fetch(`${API_BASE}/research/${id}`, { cache: "no-store" });
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/research/${id}`, { cache: "no-store", headers });
     if (!res.ok) return null;
     return await res.json();
   } catch (err) {
@@ -127,9 +145,12 @@ export async function fetchResearchRun(id: string): Promise<ResearchRun | null> 
 
 export async function cancelResearchRun(id: string): Promise<ResearchRun | null> {
   try {
+    const token = getStoredToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
     const res = await fetch(`${API_BASE}/research/${id}/cancel`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
     });
     if (!res.ok) return null;
     return await res.json();
@@ -139,14 +160,27 @@ export async function cancelResearchRun(id: string): Promise<ResearchRun | null>
   }
 }
 
-export async function fetchLeads(tier?: string, runId?: string): Promise<Lead[]> {
+export async function fetchLeads(
+  tier?: string,
+  runId?: string,
+  outreachStatus?: string,
+  dealStatus?: string
+): Promise<Lead[]> {
   try {
     const params = new URLSearchParams();
     if (tier && tier !== "ALL") params.append("tier", tier);
     if (runId && runId !== "ALL") params.append("run_id", runId);
+    if (outreachStatus && outreachStatus !== "ALL") params.append("outreach_status", outreachStatus);
+    if (dealStatus && dealStatus !== "ALL") params.append("deal_status", dealStatus);
     const queryString = params.toString() ? `?${params.toString()}` : "";
-    const res = await fetch(`${API_BASE}/leads${queryString}`, { cache: "no-store" });
-    if (!res.ok) return [];
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/leads${queryString}`, { cache: "no-store", headers });
+    if (!res.ok) {
+      console.warn("fetchLeads non-ok status:", res.status);
+      return [];
+    }
     return await res.json();
   } catch (err) {
     console.error("fetchLeads error:", err);
@@ -156,7 +190,10 @@ export async function fetchLeads(tier?: string, runId?: string): Promise<Lead[]>
 
 export async function fetchLeadDetail(id: string): Promise<any> {
   try {
-    const res = await fetch(`${API_BASE}/leads/${id}`, { cache: "no-store" });
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/leads/${id}`, { cache: "no-store", headers });
     if (!res.ok) return null;
     return await res.json();
   } catch (err) {
@@ -174,16 +211,38 @@ export async function createResearchRun(data: {
   depth: string;
   company_limit?: number;
   business_type_override?: string;
+  auto_mail_enabled?: boolean;
 }): Promise<ResearchRun> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${API_BASE}/research`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       ...data,
       company_limit: data.company_limit ?? 0,
+      auto_mail_enabled: data.auto_mail_enabled ?? true,
     }),
   });
   if (!res.ok) throw new Error("Failed to start research run");
+  return res.json();
+}
+
+export async function dispatchStaggeredOutreach(data: {
+  lead_ids?: string[];
+  min_delay_sec?: number;
+  max_delay_sec?: number;
+}): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/leads/dispatch-staggered`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to dispatch staggered outreach emails");
   return res.json();
 }
 
@@ -197,27 +256,71 @@ export async function submitLeadFeedback(leadId: string, action: string, notes?:
   return res.json();
 }
 
+export async function updateLeadDetails(leadId: string, data: {
+  email?: string;
+  phone?: string;
+  contact_person?: string;
+  contact_title?: string;
+  address?: string;
+  primary_gap_summary?: string;
+  tier?: string;
+  approve_for_outreach?: boolean;
+  outreach_status?: string;
+}): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/leads/${leadId}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to update lead details");
+  }
+  return res.json();
+}
+
 export async function deleteLead(leadId: string): Promise<any> {
-  const res = await fetch(`${API_BASE}/leads/${leadId}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Failed to delete lead");
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/leads/${leadId}`, { method: "DELETE", headers });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to delete lead");
+  }
   return res.json();
 }
 
 export async function clearAllLeads(tier?: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   const url = tier && tier !== "ALL" ? `${API_BASE}/leads?tier=${encodeURIComponent(tier)}` : `${API_BASE}/leads`;
-  const res = await fetch(url, { method: "DELETE" });
-  if (!res.ok) throw new Error("Failed to clear leads");
+  const res = await fetch(url, { method: "DELETE", headers });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to clear leads");
+  }
   return res.json();
 }
 
 export async function deleteResearchRun(runId: string): Promise<any> {
-  const res = await fetch(`${API_BASE}/research/${runId}`, { method: "DELETE" });
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/research/${runId}`, { method: "DELETE", headers });
   if (!res.ok) throw new Error("Failed to delete research run");
   return res.json();
 }
 
 export async function clearAllResearchRuns(): Promise<any> {
-  const res = await fetch(`${API_BASE}/research`, { method: "DELETE" });
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/research`, { method: "DELETE", headers });
   if (!res.ok) throw new Error("Failed to clear research runs");
   return res.json();
 }
@@ -638,18 +741,61 @@ export async function checkOfficeHours(): Promise<{
 // Authentication & Role-Based Access Control (Super Admin, Admin, Sales)
 // ==============================================================================
 
+export interface DashboardPermissions {
+  can_view_dashboard?: boolean;
+  can_view_leads?: boolean;
+  can_delete_leads?: boolean;               // Human sales/QA team lead deletion
+  can_export_leads?: boolean;
+  can_run_research?: boolean;
+  can_access_autopilot?: boolean;
+  can_create_autopilot_campaigns?: boolean; // Controls search input & campaign configuration
+  can_run_autopilot_cycle?: boolean;        // Controls manual trigger of discovery/outreach batches
+  can_verify_autopilot_leads?: boolean;     // Controls human quality verification & email approvals
+  can_edit_campaigns?: boolean;
+  can_access_voice?: boolean;
+  can_manage_templates?: boolean;
+  can_manage_users?: boolean;
+  all?: boolean;
+  [key: string]: any;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
   full_name: string;
-  role: "super_admin" | "admin" | "sales" | "reviewer";
+  role: "super_admin" | "admin" | "member" | "sales" | "reviewer";
   is_active: boolean;
+  permissions_json?: DashboardPermissions;
+  created_by_id?: string;
+  created_at?: string;
 }
 
 export interface AuthTokenResponse {
   access_token: string;
   token_type: string;
   role: string;
+}
+
+export function hasPermission(
+  user: AuthUser | null,
+  permissionKey: keyof DashboardPermissions,
+  defaultValue = true
+): boolean {
+  if (!user) return false;
+  if (user.role === "super_admin") return true;
+  if (user.permissions_json?.all) return true;
+  const val = user.permissions_json?.[permissionKey];
+  if (val !== undefined) return Boolean(val);
+  // Autonomous Cold Email & Autopilot search/cycle/verification permissions are strictly Super Admin controlled
+  if (
+    permissionKey === "can_access_autopilot" ||
+    permissionKey === "can_create_autopilot_campaigns" ||
+    permissionKey === "can_run_autopilot_cycle" ||
+    permissionKey === "can_verify_autopilot_leads"
+  ) {
+    return false;
+  }
+  return defaultValue;
 }
 
 export function getStoredToken(): string | null {
@@ -827,7 +973,7 @@ export async function updateEmailTemplate(
 }
 
 export function renderEmailTemplate(
-  template: EmailTemplate,
+  template: Partial<EmailTemplate>,
   lead: Partial<Lead>
 ): { subject: string; body: string; fullEmail: string } {
   const sender_name = template.sender_name || "Growth Advisory Team";
@@ -893,6 +1039,322 @@ export function renderEmailTemplate(
   const fullEmail = `Subject: ${renderedSubject}\n\n${renderedBody}`;
   return { subject: renderedSubject, body: renderedBody, fullEmail };
 }
+
+// ==============================================================================
+// User Management & Role-Based Access Control API Functions
+// ==============================================================================
+
+export async function fetchUsers(): Promise<AuthUser[]> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/auth/users`, {
+    headers,
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load team users");
+  }
+  return res.json();
+}
+
+export async function createUser(data: {
+  email: string;
+  password: string;
+  full_name: string;
+  role: string;
+  permissions_json?: DashboardPermissions;
+}): Promise<AuthUser> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/auth/users`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to create user account");
+  }
+  return res.json();
+}
+
+export async function updateUser(
+  userId: string,
+  data: Partial<{
+    full_name: string;
+    role: string;
+    is_active: boolean;
+    password: string;
+    permissions_json: DashboardPermissions;
+  }>
+): Promise<AuthUser> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/auth/users/${userId}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update user account");
+  }
+  return res.json();
+}
+
+export async function updateMemberPermissions(
+  userId: string,
+  permissions_json: DashboardPermissions
+): Promise<AuthUser> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/auth/users/${userId}/permissions`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ permissions_json }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update member permissions");
+  }
+  return res.json();
+}
+
+export async function deleteUser(userId: string): Promise<{ status: string; message: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/auth/users/${userId}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to delete user account");
+  }
+  return res.json();
+}
+
+// ============================================================================
+// AUTOPILOT CAMPAIGNS & AUTONOMOUS COLD EMAIL OUTREACH
+// ============================================================================
+
+export interface AutopilotCampaign {
+  id: string;
+  name: string;
+  keywords: string[];
+  country: string;
+  sub_cities: string[];
+  daily_lead_limit: number;
+  daily_email_limit: number;
+  is_unlimited_leads: boolean;
+  auto_mail_enabled: boolean;
+  is_active: boolean;
+  status: "IDLE" | "RUNNING" | "PAUSED" | "COMPLETED";
+  current_city_index: number;
+  last_run_at: string | null;
+  total_leads_found: number;
+  total_emails_sent: number;
+  total_replies_count: number;
+  total_hot_deals_count: number;
+  created_at: string;
+}
+
+export interface AutopilotAnalytics {
+  total_leads: number;
+  today_leads: number;
+  ready_for_mail: number;
+  needs_review: number;
+  total_sent: number;
+  sent_today: number;
+  hot_deals: number;
+  total_replies: number;
+  response_rate: number;
+  anti_spam_delay_seconds: string;
+}
+
+export interface AutopilotActivityItem {
+  id: string;
+  step: number;
+  business_name: string;
+  recipient_email: string;
+  subject: string;
+  status: string;
+  sent_at: string;
+  reply_sentiment?: string;
+}
+
+export async function fetchAutopilotCampaigns(): Promise<AutopilotCampaign[]> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/campaigns`, { headers, cache: "no-store" });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function createAutopilotCampaign(data: {
+  name: string;
+  keywords: string[];
+  country: string;
+  sub_cities: string[];
+  daily_lead_limit: number;
+  daily_email_limit: number;
+  is_unlimited_leads: boolean;
+  auto_mail_enabled: boolean;
+}): Promise<AutopilotCampaign> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/campaigns`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to create autopilot campaign");
+  }
+  return res.json();
+}
+
+export async function toggleAutopilotCampaign(
+  campaignId: string,
+  isActive: boolean
+): Promise<AutopilotCampaign> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/campaigns/${campaignId}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ is_active: isActive }),
+  });
+  if (!res.ok) throw new Error("Failed to update campaign status");
+  return res.json();
+}
+
+export async function runAutopilotBatch(campaignId: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/campaigns/${campaignId}/run-now`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to trigger autopilot batch");
+  }
+  return res.json();
+}
+
+export async function deleteAutopilotCampaign(campaignId: string): Promise<void> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/campaigns/${campaignId}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) throw new Error("Failed to delete campaign");
+}
+
+export async function fetchAutopilotAnalytics(): Promise<AutopilotAnalytics> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/analytics`, { headers, cache: "no-store" });
+  if (!res.ok) {
+    return {
+      total_leads: 0,
+      today_leads: 0,
+      ready_for_mail: 0,
+      needs_review: 0,
+      total_sent: 0,
+      sent_today: 0,
+      hot_deals: 0,
+      total_replies: 0,
+      response_rate: 0,
+      anti_spam_delay_seconds: "120-240s",
+    };
+  }
+  return res.json();
+}
+
+export async function fetchAutopilotActivity(): Promise<AutopilotActivityItem[]> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/activity`, { headers, cache: "no-store" });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function humanVerifyLeadEmail(
+  leadId: string,
+  data: { new_email?: string; approve_for_outreach?: boolean; notes?: string }
+): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/leads/${leadId}/verify-email`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to verify lead email");
+  }
+  return res.json();
+}
+
+export async function markLeadHotDeal(leadId: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/leads/${leadId}/mark-hot`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) throw new Error("Failed to mark lead as hot deal");
+  return res.json();
+}
+
+export async function simulateLeadReply(leadId: string, replyText: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/leads/${leadId}/simulate-reply`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ reply_text: replyText }),
+  });
+  if (!res.ok) throw new Error("Failed to simulate reply");
+  return res.json();
+}
+
 
 
 
