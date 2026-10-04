@@ -31,6 +31,7 @@ import {
   ChevronDown,
   ChevronUp,
   Trash2,
+  Lock,
 } from "lucide-react";
 import {
   conductCampaignResearch,
@@ -513,6 +514,35 @@ export default function MetaCampaignsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {/* MODULE LOCKED — COMING SOON BANNER */}
+      <div className="p-8 rounded-2xl bg-gradient-to-r from-slate-900 via-pink-950/20 to-slate-900 border border-pink-500/30 text-center space-y-4 shadow-2xl relative overflow-hidden">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-pink-500/10 border border-pink-500/30 text-pink-400 shadow-xl shadow-pink-500/10 mb-1">
+          <Lock className="w-8 h-8 text-amber-400" />
+        </div>
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-mono font-bold uppercase tracking-wider mb-2">
+            <Lock className="w-3.5 h-3.5 text-amber-400" />
+            <span>Module Locked — Coming Soon</span>
+          </div>
+          <h2 className="text-2xl font-bold text-white tracking-tight">
+            Meta Ads & Marketing Automation
+          </h2>
+          <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+            This module is currently locked for upcoming production integration with Meta Marketing API v21.0. 
+            Please utilize Module 01 for autonomous lead discovery and deterministic qualification.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            href="/admin"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-sky-500/20"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Return to Operations Center</span>
+          </Link>
+        </div>
+      </div>
+
       {/* ========================================================= */}
       {/* 1. TOP DUAL LAUNCHPAD CARDS (Card 1 vs Card 2)             */}
       {/* ========================================================= */}

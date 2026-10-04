@@ -48,7 +48,12 @@ class LeadResponse(BaseModel):
     domain: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
-    email_status: Optional[str] = "VERIFIED"  # VERIFIED, SUGGESTED, NOT_FOUND
+    email_status: Optional[str] = "UNVERIFIED"  # VALID, NEEDS_REVIEW, INVALID, UNVERIFIED
+    verification_notes: Optional[str] = None
+    outreach_status: Optional[str] = "PENDING"  # PENDING, READY_FOR_OUTREACH, NEEDS_REVIEW, SENT, FOLLOWUP_SENT, REPLIED_HOT
+    deal_status: Optional[str] = "COLD"  # COLD, IN_PIPELINE, HOT_LEAD, CLOSED_WON, CLOSED_LOST
+    followup_step: Optional[int] = 0
+    last_contacted_at: Optional[datetime] = None
     contact_person: Optional[str] = None
     contact_title: Optional[str] = None
     address: Optional[str] = None
@@ -109,3 +114,24 @@ class LeadDetailResponse(LeadResponse):
     research_jobs: List[ResearchJobSummaryResponse] = []
     all_parameters_matrix: List[Dict[str, Any]] = []
     metadata_json: Optional[Dict[str, Any]] = None
+    outreach_logs: List[Dict[str, Any]] = []
+    outreach_status: Optional[str] = None
+    deal_status: Optional[str] = None
+
+
+class LeadUpdate(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    contact_person: Optional[str] = None
+    contact_title: Optional[str] = None
+    address: Optional[str] = None
+    primary_gap_summary: Optional[str] = None
+    tier: Optional[str] = None
+    approve_for_outreach: Optional[bool] = None
+    outreach_status: Optional[str] = None
+
+
+class StaggeredDispatchCreate(BaseModel):
+    lead_ids: Optional[List[uuid.UUID]] = None
+    min_delay_sec: int = Field(default=45, ge=1, le=600)
+    max_delay_sec: int = Field(default=90, ge=1, le=600)

@@ -232,6 +232,7 @@ async def handle_discover_businesses(
                 "domain": biz.domain,
                 "phone": biz.phone,
                 "business_type": biz.business_type,
+                "auto_mail_enabled": payload.get("auto_mail_enabled", True),
             },
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -726,6 +727,10 @@ async def _execute_research_and_qualify(
         stmt = select(Lead).where(Lead.business_id == business_id)
         lead_res = await session.execute(stmt)
         lead = lead_res.scalar_one_or_none()
+        auto_mail = payload.get("auto_mail_enabled", True)
+        has_email = bool(biz_obj and biz_obj.email)
+        target_outreach_status = "READY_FOR_OUTREACH" if auto_mail else "HOLD"
+
         if lead:
             lead.run_id = valid_run_id
             lead.tier = tier
@@ -733,7 +738,10 @@ async def _execute_research_and_qualify(
             lead.is_qualified = is_qualified
             lead.primary_gap_summary = gap_summary
             lead.explanation_json = explanation
+            if is_qualified and has_email and lead.outreach_status in ("PENDING", "HOLD"):
+                lead.outreach_status = target_outreach_status
         else:
+            initial_outreach = target_outreach_status if (is_qualified and has_email) else "PENDING"
             lead = Lead(
                 business_id=business_id,
                 run_id=valid_run_id,
@@ -742,6 +750,7 @@ async def _execute_research_and_qualify(
                 is_qualified=is_qualified,
                 primary_gap_summary=gap_summary,
                 explanation_json=explanation,
+                outreach_status=initial_outreach,
             )
             session.add(lead)
             await session.flush()

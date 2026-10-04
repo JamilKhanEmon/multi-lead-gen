@@ -17,6 +17,7 @@ class ResearchRunCreate(BaseModel):
     company_limit: int = Field(default=0, ge=0, le=1000000)
     business_type_override: Optional[str] = None
     target_services: List[str] = Field(default_factory=list)
+    auto_mail_enabled: bool = Field(default=True)
 
 
 class ResearchJobResponse(BaseModel):

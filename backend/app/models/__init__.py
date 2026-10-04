@@ -12,11 +12,14 @@ from .audit import User, AuditLog, SystemEvent, BenchmarkResult, ModelRun
 from .campaign import MetaCampaign
 from .voice_agent import VoiceKnowledgeBase, VoiceCallQueueItem, VoiceCallLog
 from .email_template import EmailTemplate
+from .autopilot import AutopilotCampaign, EmailOutreachLog
 
 __all__ = [
     "Base",
     "TimestampMixin",
     "UUIDMixin",
+    "AutopilotCampaign",
+    "EmailOutreachLog",
     "Business",
     "BusinessLocation",
     "Parameter",

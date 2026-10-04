@@ -187,47 +187,47 @@ class DiscoveryOptimizer:
         ollama_client: Optional[Any] = None,
     ) -> Tuple[bool, str]:
         """
-        100% Dynamic, Multi-Business Industry Relevance Gate (Worldwide, No Hardcoding):
-        Works for ANY vertical (Roofing, Dental, Solar, SaaS, Gym, Maritime, Bakery, etc.)
-        Phase 1 (0 Tokens): Dynamic keyword matching from target_industry + rejection of dynamic negative filters.
-        Phase 2 (~50 Tokens): Micro LLM verification ONLY for ambiguous candidates.
-        Phase 3 (0 Tokens): Safe fallback if AI is unavailable.
+        Strict 100% Industry Relevance Gate:
+        Prevents irrelevant businesses (e.g. IT firm when searching for Real Estate) from qualifying.
         """
         ind_clean = (target_industry or "commercial").lower().strip()
         page_title_l = (page_title or "").lower()
         business_name_l = (business_name or "").lower()
         domain_l = (domain or "").lower()
         meta_desc_l = (meta_description or "").lower()
+        heading_l = (heading or "").lower()
+        full_text = f"{business_name_l} {domain_l} {page_title_l} {meta_desc_l} {heading_l}"
 
-        # Step 1: Reject if content matches dynamically generated AI negative keywords (0 Tokens)
+        # Step 1: Negative Filters Check
+
+        # Step 2: Negative Filters Check
         if negative_keywords:
             for neg in negative_keywords:
                 neg_l = neg.lower().strip()
-                if len(neg_l) >= 4 and (neg_l in page_title_l or neg_l in business_name_l or neg_l in meta_desc_l):
-                    return False, f"Matched dynamic negative filter: '{neg}'"
+                if len(neg_l) >= 4 and neg_l in full_text:
+                    return False, f"Matched negative filter: '{neg}'"
 
-        # Step 2: Dynamic Positive Semantic Match (0 Tokens)
-        # Extract meaningful root keywords from user's target_industry (skipping generic suffixes)
-        GENERIC_STOPWORDS = {"and", "the", "for", "with", "service", "services", "company", "firm", "agency", "solutions", "group", "ltd", "inc", "co"}
-        target_words = [
-            w for w in re.split(r'[\s\-_/,]+', ind_clean)
-            if len(w) >= 3 and w not in GENERIC_STOPWORDS
-        ]
-        if target_words:
-            matched_words = [
-                w for w in target_words
-                if w in page_title_l or w in business_name_l or w in domain_l
-            ]
-            if matched_words:
-                return True, f"Direct dynamic industry keyword matched: {matched_words}"
+        # Step 2: Dynamic Root Keyword & Stem Token Extraction (0 Tokens, Universal for Any Niche)
+        GENERIC_STOPWORDS = {"and", "the", "for", "with", "service", "services", "company", "firm", "agency", "solutions", "group", "ltd", "inc", "co", "of", "in"}
+        raw_words = re.split(r'[\s\-_/,]+', ind_clean)
+        target_tokens = [w for w in raw_words if len(w) >= 3 and w not in GENERIC_STOPWORDS]
 
-        # Step 3: Ambiguous Candidate AI Verification (~50-80 Tokens)
-        # LLM evaluates ANY industry dynamically without predefined verticals
+        # Check direct token matches or 4+ letter root stems dynamically
+        matched_tokens = []
+        for tok in target_tokens:
+            stem = tok[:-1] if len(tok) > 4 and tok.endswith('s') else tok
+            if tok in full_text or (len(stem) >= 4 and stem in full_text):
+                matched_tokens.append(tok)
+
+        if matched_tokens:
+            return True, f"Dynamic industry keyword matched: {matched_tokens[:3]}"
+
+        # Step 3: LLM Micro-Verification for Custom & Complex Niches (Universal AI Gate)
         if ollama_client and (page_title or meta_description or business_name):
             try:
                 system_prompt = (
                     "You are a strict B2B industry relevance validator.\n"
-                    "Analyze the business name and website to determine if it directly belongs to the specified target industry.\n"
+                    "Determine if the candidate business operates in or provides products/services for the target industry.\n"
                     "Respond ONLY with a JSON object: {\"is_relevant\": true/false, \"reason\": \"<under 10 words>\"}"
                 )
                 user_prompt = (
@@ -235,18 +235,18 @@ class DiscoveryOptimizer:
                     f"Business Name: {business_name}\n"
                     f"Website Title: {page_title[:120]}\n"
                     f"Website Description: {meta_description[:200]}\n"
-                    f"Question: Does this company operate in or provide products/services for '{target_industry}'?"
+                    f"Question: Does this company operate in or serve the '{target_industry}' industry?"
                 )
                 res = await ollama_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
                 if isinstance(res, dict) and "is_relevant" in res:
                     is_rel = bool(res.get("is_relevant"))
-                    reason = res.get("reason", "AI industry verification")
+                    reason = res.get("reason", "AI dynamic industry verification")
                     return is_rel, reason
             except Exception as e:
-                logger.debug(f"Dynamic AI industry micro-verification notice: {e}")
+                logger.debug(f"Dynamic AI industry verification notice: {e}")
 
-        # Step 4: Fallback Acceptance (0 Tokens)
-        return True, "Passed basic filter (dynamic industry fallback)"
+        # Step 4: Reject candidate if no dynamic keywords or AI confirmation matched
+        return False, f"Candidate website has zero semantic connection to target industry '{target_industry}'"
 
     @classmethod
     def classify_entity(cls, name: str, domain: Optional[str] = None, business_type: str = "general") -> str:

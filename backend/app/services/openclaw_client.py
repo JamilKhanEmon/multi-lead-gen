@@ -809,34 +809,132 @@ class LiveResearchEngine:
         return extracted_phone, extracted_email
 
     @classmethod
-    async def fetch_page_with_browser(cls, target_url: str, human_scroll: bool = True) -> Optional[str]:
-        """Attempts to render dynamic SPA/JavaScript page using Playwright Chromium with human-like wait and scroll."""
+    async def fetch_page_with_browser(cls, target_url: str, human_scroll: bool = True) -> Dict[str, Any]:
+        """
+        Renders dynamic SPA/JavaScript page using Playwright Chromium with human-like wait, smooth scroll,
+        and real mobile viewport layout inspection.
+        Returns dict with html, mobile_overflow, title, links, and accessibility status.
+        """
+        result = {
+            "html": "",
+            "is_accessible": False,
+            "mobile_overflow": False,
+            "title": "",
+            "has_whatsapp": False,
+            "has_form": False,
+            "has_booking": False,
+        }
         try:
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
+                
+                # 1. Desktop view for full content and JS widget rendering
                 page = await browser.new_page(
                     user_agent=cls.USER_AGENT,
                     viewport={"width": 1280, "height": 800},
                 )
-                await page.goto(target_url, timeout=12000, wait_until="domcontentloaded")
-                # Human wait for dynamic scripts/hydration
-                await page.wait_for_timeout(1500)
+                try:
+                    resp = await page.goto(target_url, timeout=15000, wait_until="domcontentloaded")
+                    result["is_accessible"] = resp is not None and resp.status < 400
+                except Exception:
+                    result["is_accessible"] = False
+
+                # Human-like wait (2.5s) for dynamic widget hydration (Tidio, WhatsApp, Calendly)
+                await page.wait_for_timeout(2500)
+
                 if human_scroll:
-                    # Scroll down smoothly to trigger lazy footer contact elements
                     try:
-                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
-                        await page.wait_for_timeout(500)
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 3)")
+                        await page.wait_for_timeout(400)
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 1.5)")
+                        await page.wait_for_timeout(400)
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        await page.wait_for_timeout(800)
+                        await page.wait_for_timeout(600)
                     except Exception:
                         pass
-                content = await page.content()
+
+                result["html"] = await page.content()
+                try:
+                    result["title"] = await page.title()
+                except Exception:
+                    pass
+
+                # Check for dynamic WhatsApp/Form/Booking elements in rendered DOM
+                try:
+                    result["has_whatsapp"] = await page.evaluate('''() => {
+                        const html = document.body ? document.body.innerHTML.toLowerCase() : '';
+                        const hrefs = Array.from(document.querySelectorAll('a')).map(a => (a.href || '').toLowerCase());
+                        return hrefs.some(h => h.includes('wa.me') || h.includes('whatsapp.com') || h.includes('api.whatsapp.com')) ||
+                               html.includes('whatsapp') || html.includes('joinchat') || html.includes('elfsight-app-whatsapp');
+                    }''')
+                except Exception:
+                    pass
+
+                try:
+                    result["has_form"] = await page.evaluate('''() => {
+                        return document.querySelectorAll('form, input[type="email"], textarea').length > 0;
+                    }''')
+                except Exception:
+                    pass
+
+                try:
+                    result["has_booking"] = await page.evaluate('''() => {
+                        const html = document.body ? document.body.innerHTML.toLowerCase() : '';
+                        return html.includes('calendly.com') || html.includes('acuityscheduling') || html.includes('simplybook') || html.includes('book-now') || html.includes('appointment');
+                    }''')
+                except Exception:
+                    pass
+
+                # AI Chatbot & Voice AI Agent Framework Check
+                try:
+                    result["has_ai_bot"] = await page.evaluate('''() => {
+                        const html = document.body ? document.body.innerHTML.toLowerCase() : '';
+                        const scripts = Array.from(document.querySelectorAll('script, iframe')).map(s => (s.src || '').toLowerCase());
+                        const ai_patterns = ['typebot', 'botpress', 'voiceflow', 'chatbase', 'dify', 'manychat', 'landbot', 'collect.chat', 'rasa', 'openai', 'chatgpt', 'vapi.ai', 'retell', 'bland.ai', 'synthflow', 'elevenlabs', 'activechat'];
+                        return scripts.some(src => ai_patterns.some(p => src.includes(p))) || ai_patterns.some(p => html.includes(p));
+                    }''')
+                except Exception:
+                    pass
+
+                # n8n / Zapier / Make / GoHighLevel & Custom Python/Node Webhook Automation Check
+                try:
+                    result["has_workflow_automation"] = await page.evaluate('''() => {
+                        const html = document.body ? document.body.innerHTML.toLowerCase() : '';
+                        const forms = Array.from(document.querySelectorAll('form')).map(f => (f.action || '').toLowerCase());
+                        const scripts = Array.from(document.querySelectorAll('script, iframe')).map(s => (s.src || '').toLowerCase());
+                        const auto_patterns = ['n8n', 'zapier.com', 'hooks.zapier', 'make.com', 'integromat', 'leadconnector', 'gohighlevel', 'ghl', 'activecampaign', '/webhook', 'lambda-url', 'cloudfunctions', '/api/v1/lead', '/api/contact'];
+                        return scripts.some(src => auto_patterns.some(p => src.includes(p))) ||
+                               forms.some(act => auto_patterns.some(p => act.includes(p))) ||
+                               auto_patterns.some(p => html.includes(p));
+                    }''')
+                except Exception:
+                    pass
+
+                await page.close()
+
+                # 2. Test Mobile Viewport Overflow (iPhone X: 375px width)
+                mobile_page = await browser.new_page(
+                    user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
+                    viewport={"width": 375, "height": 812},
+                )
+                try:
+                    await mobile_page.goto(target_url, timeout=12000, wait_until="domcontentloaded")
+                    await mobile_page.wait_for_timeout(1000)
+                    # Measure if page scrollWidth exceeds clientWidth (horizontal scroll bug)
+                    result["mobile_overflow"] = await mobile_page.evaluate('''() => {
+                        return document.documentElement.scrollWidth > window.innerWidth + 10;
+                    }''')
+                except Exception:
+                    result["mobile_overflow"] = False
+                finally:
+                    await mobile_page.close()
+
                 await browser.close()
-                return content
+                return result
         except Exception as e:
-            logger.debug(f"Playwright browser rendering fallback/skipped: {e}")
-            return None
+            logger.debug(f"Playwright browser rendering fallback/skipped for {target_url}: {e}")
+            return result
 
     @classmethod
     async def deep_contact_hunt(
@@ -872,7 +970,8 @@ class LiveResearchEngine:
                 target = f"https://{domain}{sub}"
                 try:
                     logger.info(f"OpenClaw DeepHunt: Human-like browser inspection of {target}...")
-                    rendered_html = await cls.fetch_page_with_browser(target, human_scroll=True)
+                    bw_res = await cls.fetch_page_with_browser(target, human_scroll=True)
+                    rendered_html = bw_res.get("html", "")
                     if rendered_html:
                         p, e = cls.extract_contacts_from_text(rendered_html)
                         if p and not found_phone:
@@ -932,9 +1031,9 @@ class LiveResearchEngine:
     @classmethod
     async def audit_website(cls, url: str, canonical_name: str = "Business", location: str = "") -> Dict[str, Any]:
         """
-        Executes a real human-like multi-page audit across Home, Contact, About, and Services.
-        Collects strictly observable evidence (phone, email, WhatsApp, booking, mobile viewport).
-        If contacts are missing, takes human-like time to perform deep retries and scrolls.
+        Executes a real human-like multi-page audit across Home, Contact, About, Services, and Sitemap.
+        Collects strictly observable evidence (phone, email, WhatsApp, booking, mobile viewport overflow, broken 404 links, pixels).
+        Takes proper time per business to verify all elements and avoid false positives.
         """
         if not url or not url.startswith("http"):
             return {
@@ -943,6 +1042,7 @@ class LiveResearchEngine:
                 "is_accessible": False,
                 "title": canonical_name,
                 "mobile_responsive": None,
+                "mobile_overflow": False,
                 "has_whatsapp": False,
                 "has_online_booking": False,
                 "has_contact_form": False,
@@ -970,12 +1070,17 @@ class LiveResearchEngine:
             "Referer": base_url,
         }
 
-        # Step 1: Visit homepage like a human
-        homepage_html = ""
-        visited_pages = 0
+        # Step 1: Human-like Playwright Browser Inspection on Homepage with full JS rendering
+        logger.info(f"OpenClaw Audit: Executing deep human-like browser audit of {base_url}...")
+        bw_res = await cls.fetch_page_with_browser(base_url, human_scroll=True)
+        homepage_html = bw_res.get("html", "")
+        mobile_overflow = bw_res.get("mobile_overflow", False)
+        browser_accessible = bw_res.get("is_accessible", True)
+
+        visited_pages = 1 if homepage_html else 0
         broken_links_count = 0
-        rendered_by = "http"
-        status_code = 200
+        rendered_by = "playwright-chromium"
+        status_code = 200 if browser_accessible else 500
 
         import ssl
         ssl_ctx = ssl.create_default_context()
@@ -987,24 +1092,13 @@ class LiveResearchEngine:
             with urllib.request.urlopen(req, timeout=6, context=ssl_ctx) as resp:
                 return resp.getcode(), resp.read().decode("utf-8", errors="ignore")
 
-        try:
-            code, homepage_html = await loop.run_in_executor(None, _fetch_page, base_url)
-            status_code = code
-            if code == 200:
-                visited_pages += 1
-            else:
-                broken_links_count += 1
-        except Exception:
-            status_code = 500
-            broken_links_count += 1
-
-        # Discover dynamic contact links from homepage like a human
+        # Discover dynamic sub-page links from homepage like a human
         discovered_paths = set()
         if homepage_html:
             raw_hrefs = re.findall(r'<a[^>]+href=["\']([^"\']+)["\']', homepage_html, re.I)
             for href in raw_hrefs:
                 clean_href = href.strip()
-                if any(k in clean_href.lower() for k in ["contact", "reach", "touch", "about", "connect", "impressum", "team"]):
+                if any(k in clean_href.lower() for k in ["contact", "reach", "touch", "about", "services", "pricing", "team", "booking", "appointment"]):
                     if clean_href.startswith("/"):
                         discovered_paths.add(clean_href.split("?")[0].split("#")[0])
                     elif clean_href.startswith(base_url):
@@ -1014,14 +1108,14 @@ class LiveResearchEngine:
 
         default_contact_paths = ["/contact", "/contact-us", "/about", "/about-us", "/services", "/pages/contact-us"]
         all_paths_to_visit = list(discovered_paths) + [p for p in default_contact_paths if p not in discovered_paths]
-        target_paths = all_paths_to_visit[:5]
+        target_paths = all_paths_to_visit[:6]
 
         aggregated_html = homepage_html
         for path in target_paths:
             target_page_url = base_url + (path if path.startswith("/") else f"/{path}")
             try:
-                # Human pacing between page clicks (0.3s)
-                await asyncio.sleep(0.3)
+                # Human pacing between page clicks (0.5s)
+                await asyncio.sleep(0.5)
                 code, page_html = await loop.run_in_executor(None, _fetch_page, target_page_url)
                 if code == 200:
                     aggregated_html += f"\n--- PAGE: {path} ---\n" + page_html
@@ -1029,18 +1123,9 @@ class LiveResearchEngine:
                 else:
                     broken_links_count += 1
             except Exception:
-                if path in ("", "/contact"):
+                if path in ("", "/contact", "/contact-us"):
                     broken_links_count += 1
                 continue
-
-        # If HTTP request failed or was empty, attempt headless browser execution with Playwright
-        if not aggregated_html:
-            browser_html = await cls.fetch_page_with_browser(base_url, human_scroll=True)
-            if browser_html and len(browser_html) > 100:
-                aggregated_html = browser_html
-                visited_pages = 1
-                rendered_by = "playwright-human-scroll"
-                logger.info(f"LiveResearchEngine: Rendered {base_url} via Playwright Chromium headless with scroll")
 
         if not aggregated_html:
             logger.info(f"LiveResearchEngine: Could not reach {url}")
@@ -1050,6 +1135,7 @@ class LiveResearchEngine:
                 "is_accessible": False,
                 "title": canonical_name,
                 "mobile_responsive": None,
+                "mobile_overflow": False,
                 "has_whatsapp": False,
                 "has_online_booking": False,
                 "has_contact_form": False,
@@ -1102,11 +1188,21 @@ class LiveResearchEngine:
                 extracted_email = hunt["email"]
                 rendered_by = "deep-contact-hunt"
 
-        # 4. Strictly Observable Technical Checks
-        mobile_responsive = "viewport" in html_lower
-        has_whatsapp = any(k in html_lower for k in ["wa.me", "whatsapp.com", "api.whatsapp.com", "whatsapp"])
-        has_online_booking = any(k in html_lower for k in ["booking", "appointment", "calendly.com", "acuityscheduling", "book-now", "schedule-consultation"])
-        has_contact_form = "<form" in html_lower or 'id="contact"' in html_lower or 'class="contact-form"' in html_lower
+        # 4. Strictly Observable Technical Checks with Browser Corroboration
+        mobile_responsive = "viewport" in html_lower and not mobile_overflow
+        
+        # Universal Multi-Pattern WhatsApp Detection
+        has_whatsapp = bw_res.get("has_whatsapp", False) or any(k in html_lower for k in [
+            "wa.me", "whatsapp.com", "api.whatsapp.com", "whatsapp", "joinchat", "chatway", "elfsight-app-whatsapp"
+        ])
+
+        # Universal Booking System Check
+        has_online_booking = bw_res.get("has_booking", False) or any(k in html_lower for k in [
+            "booking", "appointment", "calendly.com", "acuityscheduling", "simplybook", "book-now", "schedule-consultation", "book an appointment"
+        ])
+
+        # Universal Contact Form Check
+        has_contact_form = bw_res.get("has_form", False) or ("<form" in html_lower or 'id="contact"' in html_lower or 'class="contact-form"' in html_lower or 'wpcf7' in html_lower or 'elementor-form' in html_lower)
 
         # 5. CMS Platform & Marketing Stack Detection
         cms_platform = "Custom"
@@ -1128,10 +1224,28 @@ class LiveResearchEngine:
         has_google_analytics = any(x in html_lower for x in ["gtag(", "google-analytics.com", "googletagmanager.com"])
         meta_ads_url = f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&q={urllib.parse.quote(canonical_name)}"
 
-        # 7. Decision Maker / Leadership Detection
+        # Advanced Check 7: 24/7 AI Live Chat Support Widget Detection
+        has_live_chat = any(x in html_lower for x in [
+            "tawk.to", "crisp.chat", "intercom", "zendesk", "drift.com", "tidio", "chatwoot", "livechat", "freshchat"
+        ])
+
+        # Advanced Check 8: SSL Security & HTTPS Protocol Audit
+        has_ssl_security = url.startswith("https://")
+
+        # Advanced Check 9: AI Auto-Reply Chatbot & AI Voice Agent Detection
+        has_ai_chatbot = bw_res.get("has_ai_bot", False) or any(x in html_lower for x in [
+            "typebot", "botpress", "voiceflow", "chatbase", "dify", "manychat", "landbot", "collect.chat", "rasa", "openai", "chatgpt", "vapi.ai", "retell", "bland.ai", "synthflow", "elevenlabs", "activechat"
+        ])
+
+        # Advanced Check 10: Workflow Automation Engine Detection (n8n, Zapier, Make, GoHighLevel)
+        has_automation_workflow = bw_res.get("has_workflow_automation", False) or any(x in html_lower for x in [
+            "n8n", "zapier.com", "hooks.zapier", "make.com", "integromat", "leadconnector", "gohighlevel", "ghl", "activecampaign"
+        ])
+
+        # 7. Decision Maker / Founder / Leadership Detection
         contact_person = None
         contact_title = None
-        leadership_titles = ["Managing Director", "Founder", "Co-Founder", "CEO", "Chairman", "Chief Executive Officer", "Proprietor", "Principal"]
+        leadership_titles = ["Managing Director", "Founder", "Co-Founder", "CEO", "Chairman", "Chief Executive Officer", "Proprietor", "Principal", "Owner", "Dr."]
         
         for lt in leadership_titles:
             m = re.search(rf'([A-Z][a-z]+(?:\s+[A-Z][a-z]+){{1,3}})\s*[,–-]?\s*(?:is the\s+)?{lt}', html)
@@ -1145,13 +1259,14 @@ class LiveResearchEngine:
                     break
 
         # Extract Real Page Metadata (Title, Description, Heading)
-        extracted_page_title = ""
+        extracted_page_title = bw_res.get("title") or ""
         extracted_meta_desc = ""
         extracted_heading = ""
 
-        title_m = re.search(r'<title[^>]*>(.*?)</title>', html, re.IGNORECASE | re.DOTALL)
-        if title_m:
-            extracted_page_title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip()
+        if not extracted_page_title:
+            title_m = re.search(r'<title[^>]*>(.*?)</title>', html, re.IGNORECASE | re.DOTALL)
+            if title_m:
+                extracted_page_title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip()
 
         meta_m = re.search(r'<meta[^>]+name=["\'](?:description|og:description)["\'][^>]+content=["\']([^"\']*)["\']', html, re.IGNORECASE)
         if not meta_m:
@@ -1166,7 +1281,7 @@ class LiveResearchEngine:
         logger.info(
             f"LiveResearchEngine: Audited {url} ({visited_pages} pages) -> "
             f"Title: '{extracted_page_title[:40]}', Phone: {extracted_phone}, Email: {extracted_email}, "
-            f"WhatsApp: {has_whatsapp}, CMS: {cms_platform}, Meta Pixel: {has_meta_pixel}, Lead: {contact_person} ({contact_title})"
+            f"WhatsApp: {has_whatsapp}, LiveChat: {has_live_chat}, AIChatbot: {has_ai_chatbot}, Automation: {has_automation_workflow}, CMS: {cms_platform}, Meta Pixel: {has_meta_pixel}, Lead: {contact_person} ({contact_title})"
         )
 
         return {
@@ -1179,9 +1294,16 @@ class LiveResearchEngine:
             "meta_description": extracted_meta_desc,
             "heading": extracted_heading,
             "mobile_responsive": mobile_responsive,
+            "mobile_overflow": mobile_overflow,
             "has_whatsapp": has_whatsapp,
             "has_online_booking": has_online_booking,
             "has_contact_form": has_contact_form,
+            "has_live_chat": has_live_chat,
+            "has_ssl_security": has_ssl_security,
+            "has_ai_chatbot": has_ai_chatbot,
+            "has_automation_workflow": has_automation_workflow,
+            "has_h1_tag": bool(extracted_heading),
+            "has_meta_description": bool(extracted_meta_desc),
             "broken_links_count": broken_links_count,
             "extracted_phone": extracted_phone,
             "extracted_email": extracted_email,
