@@ -720,6 +720,42 @@ async def export_leads_json(
 
         all_problems_one_column = "\n".join([f"{i+1}. {item}" for i, item in enumerate(problems_list)]) if problems_list else f"1. [Core Primary Issue]: {l.primary_gap_summary or 'No critical public defects detected.'}"
 
+        missing_checklist = {
+            "missing_website": not bool(clean_dom),
+            "missing_ssl_certificate": not bool(meta.get("has_ssl")),
+            "missing_meta_pixel": not bool(meta.get("has_meta_pixel")),
+            "missing_google_analytics": not bool(meta.get("has_google_analytics")),
+            "missing_mobile_viewport": not bool(meta.get("has_viewport")),
+            "missing_public_email": not bool(resolved_email),
+            "missing_phone_number": not bool(biz.phone),
+            "missing_social_presence": not bool(meta.get("facebook_url") or meta.get("instagram_url") or biz.linkedin_url),
+        }
+        missing_count = sum(1 for v in missing_checklist.values() if v)
+
+        human_review_dossier = {
+            "audit_mode": "HUMAN_VS_AI_COMPARISON",
+            "ai_analysis": {
+                "score": l.final_score,
+                "qualification_tier": l.tier,
+                "verdict": "QUALIFIED" if l.is_qualified else "DISQUALIFIED",
+                "primary_gap_summary": l.primary_gap_summary,
+                "ai_reasoning_summary": exp_json.get("summary") or exp_json.get("reasoning") or "Evaluated across deterministic 135-parameter engine.",
+                "ai_identified_weaknesses": exp_json.get("weaknesses") or [],
+                "ai_identified_strengths": exp_json.get("strengths") or [],
+            },
+            "missing_elements_checklist": {
+                **missing_checklist,
+                "total_missing_critical_elements": missing_count,
+            },
+            "human_reviewer_workbench": {
+                "status": "READY_FOR_HUMAN_INSPECTION",
+                "human_approval_decision": None,
+                "human_notes": "",
+                "human_verified_gaps": [],
+                "ai_discrepancy_noted": False,
+            }
+        }
+
         items.append({
             "id": str(l.id),
             "business_id": str(l.business_id),
@@ -731,8 +767,15 @@ async def export_leads_json(
             "phone": biz.phone,
             "email": resolved_email,
             "email_status": email_status,
+            "mail_ready_status": mail_ready_status,
+            "is_mail_ready": is_mail_ready,
+            "outreach_status": getattr(l, "outreach_status", "READY_FOR_OUTREACH"),
+            "deal_status": getattr(l, "deal_status", "COLD"),
+            "followup_step": getattr(l, "followup_step", 1),
+            "human_review_dossier": human_review_dossier,
             "ai_identified_problems_details": all_problems_one_column,
             "ai_identified_problems_list": problems_list,
+            "ai_missed_or_failed_items": problems_list,
             "contact_person": biz.contact_person,
             "contact_title": biz.contact_title,
             "address": address,
@@ -762,6 +805,7 @@ async def export_leads_json(
             "suggested_services": service_matches_list,
             "evidence_parameters": evidence_items_list,
             "email_outreach_draft": {
+                "is_ready": is_mail_ready,
                 "subject": f"Quick inquiry regarding {biz.canonical_name if biz else 'your office'} in {address or 'your area'}",
                 "body": (
                     f"Hello {biz.contact_person or 'Team'},\n\n"

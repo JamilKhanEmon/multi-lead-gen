@@ -115,6 +115,8 @@ services:
         condition: service_healthy
       backend:
         condition: service_started
+    healthcheck:
+      disable: true
     networks:
       - leadgen_network
 

@@ -351,7 +351,26 @@ export default function LeadsPipelinePage() {
     URL.revokeObjectURL(url);
   };
 
-  const exportToJson = (items: Lead[], customName?: string) => {
+  const exportToJson = async (items: Lead[], customName?: string) => {
+    try {
+      const response = await fetch(`${getApiBase()}/api/v1/leads/export/json`);
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const dateStr = new Date().toISOString().slice(0, 10);
+        link.setAttribute("href", url);
+        link.setAttribute("download", customName || `leadgen_full_db_export_${dateStr}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return;
+      }
+    } catch (e) {
+      console.warn("Backend JSON export API failed, using client data fallback", e);
+    }
+
     if (!items || items.length === 0) {
       alert("No leads available to export!");
       return;
