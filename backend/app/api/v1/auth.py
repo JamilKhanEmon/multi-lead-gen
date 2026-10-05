@@ -23,11 +23,15 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 async def ensure_default_accounts(db: AsyncSession):
     """Auto-seeds initial Super Admin and Admin accounts if not present."""
+    import os
+    admin_email = os.getenv("SUPERADMIN_EMAIL", "superadmin@leadgen.local").lower().strip()
+    admin_password = os.getenv("SUPERADMIN_PASSWORD", "SuperAdmin@2026!")
+
     default_accounts = [
         {
-            "email": "superadmin@leadgen.local",
-            "password": "SuperAdmin@2026!",
-            "full_name": "Chief Super Administrator",
+            "email": admin_email,
+            "password": admin_password,
+            "full_name": os.getenv("SUPERADMIN_NAME", "Chief Super Administrator"),
             "role": "super_admin",
             "permissions_json": {
                 "all": True,
@@ -38,22 +42,6 @@ async def ensure_default_accounts(db: AsyncSession):
                 "can_edit_campaigns": True,
                 "can_access_voice": True,
                 "can_manage_templates": True,
-                "can_manage_users": True,
-            },
-        },
-        {
-            "email": "admin@leadgen.local",
-            "password": "Admin@2026!",
-            "full_name": "Platform Administrator",
-            "role": "admin",
-            "permissions_json": {
-                "can_view_dashboard": True,
-                "can_view_leads": True,
-                "can_export_leads": True,
-                "can_run_research": True,
-                "can_edit_campaigns": True,
-                "can_access_voice": True,
-                "can_manage_templates": False,
                 "can_manage_users": True,
             },
         },

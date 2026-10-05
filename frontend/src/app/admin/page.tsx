@@ -474,7 +474,11 @@ export default function AdminPortalPage() {
           <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-48 h-48 bg-sky-500/5 rounded-full blur-3xl pointer-events-none" />
 
-            <form onSubmit={handleLoginSubmit} className="space-y-4 relative z-10">
+            <form onSubmit={handleLoginSubmit} className="space-y-4 relative z-10" autoComplete="off">
+              {/* Dummy hidden inputs to intercept aggressive browser autofill */}
+              <input type="text" name="fake_username_autofill_blocker" style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
+              <input type="password" name="fake_password_autofill_blocker" style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
+
               {loginError && (
                 <div className="flex items-center gap-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-xs">
                   <AlertCircle className="w-4 h-4 shrink-0" />
@@ -491,10 +495,11 @@ export default function AdminPortalPage() {
                   <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
                     type="email"
+                    name="admin_user_email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    autoComplete="email"
+                    autoComplete="off"
                     placeholder="Enter admin email address"
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500/60 focus:ring-1 focus:ring-sky-500/60 transition"
                   />
@@ -509,20 +514,15 @@ export default function AdminPortalPage() {
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
-                    type={showPassword ? "text" : "password"}
+                    type="password"
+                    name="admin_user_password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    autoComplete="new-password"
                     placeholder="••••••••••••"
-                    className="w-full pl-10 pr-10 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500/60 focus:ring-1 focus:ring-sky-500/60 transition"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500/60 focus:ring-1 focus:ring-sky-500/60 transition"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
                 </div>
               </div>
 
