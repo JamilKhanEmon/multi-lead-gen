@@ -71,7 +71,7 @@ export default function AdminPortalPage() {
   };
 
   // Login form state
-  const [email, setEmail] = useState("superadmin@leadgen.local");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -482,42 +482,6 @@ export default function AdminPortalPage() {
                 </div>
               )}
 
-              {/* Quick Preset Selector Buttons */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-medium text-slate-400">Quick Test Credentials:</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail("superadmin@leadgen.local");
-                      setPassword("SuperAdmin@2026!");
-                    }}
-                    className="p-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-left transition"
-                  >
-                    <div className="flex items-center gap-1.5 text-purple-300 font-semibold text-xs">
-                      <Crown className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Super Admin</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-mono block truncate">superadmin@leadgen.local</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail("admin@leadgen.local");
-                      setPassword("Admin@2026!");
-                    }}
-                    className="p-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-left transition"
-                  >
-                    <div className="flex items-center gap-1.5 text-sky-300 font-semibold text-xs">
-                      <Shield className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Admin</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-mono block truncate">admin@leadgen.local</span>
-                  </button>
-                </div>
-              </div>
-
               {/* Email Input */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">
@@ -530,7 +494,8 @@ export default function AdminPortalPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    placeholder="superadmin@leadgen.local"
+                    autoComplete="email"
+                    placeholder="Enter admin email address"
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500/60 focus:ring-1 focus:ring-sky-500/60 transition"
                   />
                 </div>
