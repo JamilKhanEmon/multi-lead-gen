@@ -34,6 +34,9 @@ services:
       - leadgen_network
 
   backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     image: ${BACKEND_IMAGE:-ghcr.io/nibiz-soft/leadgenai-backend:latest}
     container_name: leadgen_backend
     restart: unless-stopped
@@ -73,6 +76,9 @@ services:
       - leadgen_network
 
   worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     image: ${BACKEND_IMAGE:-ghcr.io/nibiz-soft/leadgenai-backend:latest}
     container_name: leadgen_worker
     restart: unless-stopped
@@ -113,6 +119,11 @@ services:
       - leadgen_network
 
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
     image: ${FRONTEND_IMAGE:-ghcr.io/nibiz-soft/leadgenai-frontend:latest}
     container_name: leadgen_frontend
     restart: unless-stopped

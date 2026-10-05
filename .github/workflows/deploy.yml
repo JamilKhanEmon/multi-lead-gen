@@ -75,11 +75,14 @@ jobs:
     steps:
       - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
+          envs: ENV_FILE
           script: |
             set -e
             DEPLOY_PATH="${{ secrets.VPS_DEPLOY_PATH || '/var/www/leadgenai' }}"
@@ -98,20 +101,17 @@ jobs:
               git reset --hard origin/main || git reset --hard origin/master
             fi
 
-            # 2. Login to GitHub Container Registry on VPS (if private)
-            if [ -n "${{ secrets.GHCR_PAT }}" ]; then
-              echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            # 2. Inject real production .env from GitHub Secrets if configured
+            if [ -n "$ENV_FILE" ]; then
+              echo "==> Updating .env from GitHub Secrets..."
+              printf '%s\n' "$ENV_FILE" > "$DEPLOY_PATH/.env"
             fi
 
-            # 3. Pull latest docker images
-            echo "Pulling updated Docker images..."
-            docker compose -f docker-compose.prod.yml pull
+            # 3. Build & start production services
+            echo "==> Building and starting production containers..."
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
 
-            # 4. Restart containers with zero-downtime recreation
-            echo "Recreating and launching services..."
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-
-            # 5. Clean up old dangling images to save VPS disk space
+            # 4. Clean up old dangling images to save VPS disk space
             docker image prune -f
 
             echo "==> Deployment Successfully Completed!"
