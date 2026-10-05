@@ -657,7 +657,7 @@ async def _execute_research_and_qualify(
         service_fit=sf_score,
     )
 
-    tier = QualificationEngine.assign_tier(final_score, passed_gates)
+    tier = QualificationEngine.assign_tier(final_score, passed_gates, has_direct_contact=has_contact)
     is_qualified = tier in ("Strong Potential", "Review Needed")
     logger.info(f"Qualified {business_name}: score={final_score}, tier={tier}, passed_gates={passed_gates}, failures={gate_failures}")
 
