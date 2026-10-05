@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import desc, text
-from app.api.deps import get_db, get_current_user, get_current_user_optional
+from app.api.deps import get_db, get_current_user
 from app.models.lead import Lead, LeadScore, LeadFeedback
 from app.models.service import ServiceMatch, Service
 from app.models.business import Business
@@ -48,10 +48,10 @@ async def list_leads(
     outreach_status: Optional[str] = None,
     deal_status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
 ):
     """Filter and list potential leads."""
-    if current_user and current_user.role != "super_admin":
+    if current_user.role != "super_admin":
         perms = current_user.permissions_json or {}
         if perms.get("can_view_leads") is False:
             raise HTTPException(
@@ -217,10 +217,10 @@ async def export_leads_csv(
     is_qualified: Optional[bool] = None,
     min_score: Optional[float] = Query(None, ge=0.0, le=100.0),
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
 ):
     """Export filtered leads to a CSV spreadsheet with all fields, AI suggestions, parameters, and evidence from A to Z."""
-    if current_user and current_user.role != "super_admin":
+    if current_user.role != "super_admin":
         perms = current_user.permissions_json or {}
         if perms.get("can_export_leads") is False:
             raise HTTPException(
@@ -556,10 +556,10 @@ async def export_leads_json(
     is_qualified: Optional[bool] = None,
     min_score: Optional[float] = Query(None, ge=0.0, le=100.0),
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
 ):
     """Export filtered leads to a downloadable JSON file with complete information from A to Z."""
-    if current_user and current_user.role != "super_admin":
+    if current_user.role != "super_admin":
         perms = current_user.permissions_json or {}
         if perms.get("can_export_leads") is False:
             raise HTTPException(
@@ -1133,9 +1133,15 @@ async def delete_single_lead(
 async def clear_all_leads(
     tier: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
 ):
     """Clear all leads or leads matching a specific tier and clean up research runs, businesses, and history."""
+    if current_user.role != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission Denied: Only Super Admin can purge all leads and database records.",
+        )
+
     from sqlalchemy import delete
     from app.models.research import ResearchRun, ResearchJob
     from app.models.autopilot import EmailOutreachLog, AutopilotCampaign
@@ -1178,7 +1184,7 @@ async def update_lead_details(
     lead_id: uuid.UUID,
     data: LeadUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
 ):
     """Manually update lead & business details (email, phone, contact person, address, gap summary, approval)."""
     stmt = select(Lead).options(selectinload(Lead.business)).where(Lead.id == lead_id)

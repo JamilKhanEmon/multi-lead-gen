@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.db.session import get_db
+from app.api.deps import get_current_user
+from app.models.audit import User
 from app.models.campaign import MetaCampaign
 from app.schemas.campaign import (
     CampaignResearchRequest,
@@ -21,7 +23,10 @@ router = APIRouter(prefix="/campaigns", tags=["B2B Meta Ads Campaigns"])
 
 
 @router.post("/research", response_model=Dict[str, Any])
-async def conduct_market_and_competitor_research(request: CampaignResearchRequest):
+async def conduct_market_and_competitor_research(
+    request: CampaignResearchRequest,
+    current_user: User = Depends(get_current_user),
+):
     """
     Executes LLM query expansion and OpenClaw competitor research.
     Returns recommended B2B targeting and live competitor ad angles.
@@ -41,7 +46,10 @@ async def conduct_market_and_competitor_research(request: CampaignResearchReques
 
 
 @router.post("/generate-creatives", response_model=Dict[str, Any])
-async def generate_funnel_creatives(request: CampaignCreativeGenerateRequest):
+async def generate_funnel_creatives(
+    request: CampaignCreativeGenerateRequest,
+    current_user: User = Depends(get_current_user),
+):
     """
     Generates 2-Step Video Funnel Creatives:
     - Post 1: 3-second hooks, cold video script, primary copy, headline.
@@ -63,7 +71,10 @@ async def generate_funnel_creatives(request: CampaignCreativeGenerateRequest):
 
 
 @router.post("/generate-storyboard")
-async def generate_video_storyboard(payload: Dict[str, Any]):
+async def generate_video_storyboard(
+    payload: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
     """
     Generates a 4-scene Hollywood-grade commercial storyboard with character/hardware anchor consistency.
     """
@@ -82,7 +93,10 @@ async def generate_video_storyboard(payload: Dict[str, Any]):
 
 
 @router.post("/render-scene")
-async def render_individual_scene(payload: Dict[str, Any]):
+async def render_individual_scene(
+    payload: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
     """
     Renders or regenerates an individual video scene with reference image locking.
     """
@@ -100,7 +114,10 @@ async def render_individual_scene(payload: Dict[str, Any]):
 
 
 @router.post("/stitch-video")
-async def stitch_scenes_into_video(payload: Dict[str, Any]):
+async def stitch_scenes_into_video(
+    payload: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
     """
     Stitches multiple scene clips into a single high-impact 20s B2B Meta commercial.
     """
@@ -117,7 +134,10 @@ async def stitch_scenes_into_video(payload: Dict[str, Any]):
 
 
 @router.post("/generate-poster")
-async def generate_b2b_poster(payload: Dict[str, Any]):
+async def generate_b2b_poster(
+    payload: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+):
     """
     Generates a high-converting promotional poster image using Google Imagen 3.
     """
@@ -138,7 +158,11 @@ async def generate_b2b_poster(payload: Dict[str, Any]):
 
 
 @router.post("", response_model=CampaignResponse)
-async def create_campaign(payload: CampaignCreate, db: AsyncSession = Depends(get_db)):
+async def create_campaign(
+    payload: CampaignCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Creates a new B2B Meta campaign draft."""
     try:
         campaign = MetaCampaign(
@@ -168,7 +192,11 @@ async def create_campaign(payload: CampaignCreate, db: AsyncSession = Depends(ge
 
 
 @router.get("", response_model=List[CampaignResponse])
-async def list_campaigns(limit: int = 50, db: AsyncSession = Depends(get_db)):
+async def list_campaigns(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Lists all saved B2B Meta campaigns."""
     stmt = select(MetaCampaign).order_by(MetaCampaign.created_at.desc()).limit(limit)
     res = await db.execute(stmt)
@@ -177,7 +205,11 @@ async def list_campaigns(limit: int = 50, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{campaign_id}", response_model=CampaignResponse)
-async def get_campaign(campaign_id: str, db: AsyncSession = Depends(get_db)):
+async def get_campaign(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Retrieves a single campaign by ID."""
     stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
     res = await db.execute(stmt)
@@ -188,7 +220,11 @@ async def get_campaign(campaign_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{campaign_id}/publish")
-async def publish_campaign(campaign_id: str, db: AsyncSession = Depends(get_db)):
+async def publish_campaign(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Publishes campaign to Meta Ads using 2-step retargeting funnel."""
     stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
     res = await db.execute(stmt)
@@ -222,7 +258,11 @@ async def publish_campaign(campaign_id: str, db: AsyncSession = Depends(get_db))
 
 
 @router.post("/{campaign_id}/toggle-status")
-async def toggle_campaign_status(campaign_id: str, db: AsyncSession = Depends(get_db)):
+async def toggle_campaign_status(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Toggles campaign status between ACTIVE and PAUSED and syncs to Meta."""
     stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
     res = await db.execute(stmt)
@@ -243,7 +283,11 @@ async def toggle_campaign_status(campaign_id: str, db: AsyncSession = Depends(ge
 
 
 @router.get("/{campaign_id}/metrics")
-async def get_live_metrics(campaign_id: str, db: AsyncSession = Depends(get_db)):
+async def get_live_metrics(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Returns real-time live performance metrics for the campaign."""
     stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
     res = await db.execute(stmt)
@@ -258,7 +302,11 @@ async def get_live_metrics(campaign_id: str, db: AsyncSession = Depends(get_db))
 
 
 @router.delete("/{campaign_id}")
-async def delete_campaign(campaign_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_campaign(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Deletes a campaign and stops/removes it from Meta."""
     stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
     res = await db.execute(stmt)

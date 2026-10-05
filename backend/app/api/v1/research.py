@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import desc
-from app.api.deps import get_db, get_current_user, get_current_user_optional
+from app.api.deps import get_db, get_current_user
 from app.core.config import settings
 from app.models.research import ResearchRun, ResearchJob
 from app.models.audit import User
@@ -106,7 +106,7 @@ async def list_research_runs(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
 ):
     """List historical research runs with pagination."""
     stmt = select(ResearchRun).order_by(desc(ResearchRun.created_at)).offset(skip).limit(limit)
@@ -161,12 +161,18 @@ async def cancel_research_run(
 async def delete_research_run(
     run_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
 ):
     """Delete a specific research run, all associated jobs, and all leads belonging to that run."""
     from app.models.research import ResearchJob
     from app.models.lead import Lead
     from sqlalchemy import delete
+
+    if current_user.role not in ["super_admin", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission Denied: Only administrators can delete research runs.",
+        )
 
     stmt = select(ResearchRun).where(ResearchRun.id == run_id)
     res = await db.execute(stmt)
