@@ -195,6 +195,24 @@ async def lifespan(app: FastAPI):
             except Exception as migration_err:
                 logger.warning(f"Migration columns execution notice: {migration_err}")
         logger.info("PostgreSQL database tables, contact columns, user permissions, and outreach columns verified.")
+
+        # Auto-seed parameters, business types, and agency services if missing
+        try:
+            from app.db.session import AsyncSessionLocal
+            from sqlalchemy import select, func
+            from app.models.parameter import Parameter
+            from app.engine.seed_parameters import seed_database
+            async with AsyncSessionLocal() as chk_session:
+                cnt_res = await chk_session.execute(select(func.count(Parameter.id)))
+                param_count = cnt_res.scalar() or 0
+                if param_count < 100:
+                    logger.info(f"Database has {param_count} parameters (< 100). Auto-seeding 135 parameters and services...")
+                    await seed_database()
+                    logger.info("Database auto-seeding completed.")
+                else:
+                    logger.info(f"Parameters verified ({param_count} parameters present).")
+        except Exception as seed_err:
+            logger.warning(f"Auto-seed check/execution notice: {seed_err}")
     except Exception as e:
         logger.warning(f"Database table initialization warning: {e}")
     listener_task = asyncio.create_task(redis_event_listener())

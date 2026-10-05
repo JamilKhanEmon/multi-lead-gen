@@ -701,11 +701,23 @@ async def _execute_research_and_qualify(
                     current_meta[key] = website_data[key]
             biz_obj.metadata_json = current_meta
 
-        # Save Evidence Items
+        # Save Evidence Items (Verify parameter_ids exist in database to prevent FK violation)
+        param_ids_in_evidence = {ev["parameter_id"] for ev in evidence_records if ev.get("parameter_id")}
+        valid_param_ids = set()
+        if param_ids_in_evidence:
+            from app.models.parameter import Parameter
+            p_stmt = select(Parameter.id).where(Parameter.id.in_(param_ids_in_evidence))
+            p_res = await session.execute(p_stmt)
+            valid_param_ids = set(p_res.scalars().all())
+
         for ev in evidence_records:
+            pid = ev.get("parameter_id")
+            if pid not in valid_param_ids:
+                logger.warning(f"TaskResearch: Skipping evidence item: parameter_id {pid} not present in 'parameters' table.")
+                continue
             ev_model = Evidence(
                 business_id=business_id,
-                parameter_id=ev["parameter_id"],
+                parameter_id=pid,
                 evidence_text=ev["evidence_text"],
                 status=ev["status"],
                 classification=ev["classification"],

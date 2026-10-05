@@ -33,6 +33,25 @@ class WorkerRunner:
 
     async def run(self):
         logger.info(f"Starting LeadGen Worker (Queue: leadgen:tasks, Concurrency target: {settings.WORKER_CONCURRENCY})")
+
+        # Verify parameters are present in DB before processing jobs
+        try:
+            from app.db.session import AsyncSessionLocal
+            from sqlalchemy import select, func
+            from app.models.parameter import Parameter
+            from app.engine.seed_parameters import seed_database
+            async with AsyncSessionLocal() as chk_session:
+                cnt_res = await chk_session.execute(select(func.count(Parameter.id)))
+                param_count = cnt_res.scalar() or 0
+                if param_count < 100:
+                    logger.info(f"Worker startup: Database has only {param_count} parameters. Auto-seeding...")
+                    await seed_database()
+                    logger.info("Worker startup: Parameters seeded successfully.")
+                else:
+                    logger.info(f"Worker startup: Parameters verified ({param_count} parameters).")
+        except Exception as seed_err:
+            logger.warning(f"Worker startup parameter check notice: {seed_err}")
+
         r = aioredis.from_url(settings.REDIS_URL)
 
         while self.running:
