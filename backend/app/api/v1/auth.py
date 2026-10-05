@@ -22,67 +22,82 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 async def ensure_default_accounts(db: AsyncSession):
-    """Auto-seeds initial Super Admin and Admin accounts if not present."""
+    """Auto-seeds initial Super Admin account from .env configuration."""
     import os
-    admin_email = os.getenv("SUPERADMIN_EMAIL", "superadmin@leadgen.local").lower().strip()
-    admin_password = os.getenv("SUPERADMIN_PASSWORD", "SuperAdmin@2026!")
+    from app.core.logging import logger
 
-    default_accounts = [
-        {
-            "email": admin_email,
-            "password": admin_password,
-            "full_name": os.getenv("SUPERADMIN_NAME", "Chief Super Administrator"),
-            "role": "super_admin",
-            "permissions_json": {
-                "all": True,
-                "can_view_dashboard": True,
-                "can_view_leads": True,
-                "can_export_leads": True,
-                "can_run_research": True,
-                "can_edit_campaigns": True,
-                "can_access_voice": True,
-                "can_manage_templates": True,
-                "can_manage_users": True,
-            },
-        },
-    ]
+    admin_email = (os.getenv("SUPERADMIN_EMAIL") or "").lower().strip()
+    admin_password = os.getenv("SUPERADMIN_PASSWORD") or ""
+    admin_name = os.getenv("SUPERADMIN_NAME") or "Super Administrator"
 
-    for acc in default_accounts:
-        stmt = select(User).where(User.email == acc["email"])
+    if not admin_email or not admin_password:
+        return
+
+    try:
+        stmt = select(User).where(User.email == admin_email)
         res = await db.execute(stmt)
         existing = res.scalar_one_or_none()
         if not existing:
             new_u = User(
-                email=acc["email"],
-                hashed_password=get_password_hash(acc["password"]),
-                full_name=acc["full_name"],
-                role=acc["role"],
-                permissions_json=acc["permissions_json"],
+                email=admin_email,
+                hashed_password=get_password_hash(admin_password),
+                full_name=admin_name,
+                role="super_admin",
+                permissions_json={"all": True},
                 is_active=True,
             )
             db.add(new_u)
+            await db.commit()
+            logger.info(f"Initialized default superadmin account: {admin_email}")
         else:
+            needs_commit = False
             try:
-                if not verify_password(acc["password"], existing.hashed_password):
-                    existing.hashed_password = get_password_hash(acc["password"])
+                if not verify_password(admin_password, existing.hashed_password):
+                    existing.hashed_password = get_password_hash(admin_password)
+                    needs_commit = True
             except Exception:
-                existing.hashed_password = get_password_hash(acc["password"])
-            if acc["email"] == "superadmin@leadgen.local" and existing.role != "super_admin":
+                existing.hashed_password = get_password_hash(admin_password)
+                needs_commit = True
+
+            if existing.role != "super_admin":
                 existing.role = "super_admin"
-                existing.permissions_json = acc["permissions_json"]
-    await db.commit()
+                existing.permissions_json = {"all": True}
+                needs_commit = True
+
+            if needs_commit:
+                await db.commit()
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error ensuring default superadmin: {e}")
 
 
 @router.post("/login", response_model=Token)
 async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate user with email/password and issue signed JWT token."""
+    from app.core.logging import logger
+
     await ensure_default_accounts(db)
 
-    stmt = select(User).where(User.email == credentials.email.lower().strip())
+    email_clean = credentials.email.lower().strip()
+    stmt = select(User).where(User.email == email_clean)
     res = await db.execute(stmt)
     user = res.scalar_one_or_none()
 
-    if not user or not verify_password(credentials.password, user.hashed_password):
+    if not user:
+        logger.warning(f"Login failed: User '{email_clean}' not found.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+        )
+
+    try:
+        is_valid = verify_password(credentials.password, user.hashed_password)
+    except Exception as err:
+        logger.error(f"Password verification error: {err}")
+        is_valid = False
+
+    if not is_valid:
+        logger.warning(f"Login failed: Invalid password for '{email_clean}'.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -94,7 +109,7 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Account is inactive",
         )
 
-    access_token = create_access_token(subject=user.id, role=user.role)
+    access_token = create_access_token(subject=str(user.id), role=user.role)
     return Token(access_token=access_token, token_type="bearer", role=user.role)
 
 
