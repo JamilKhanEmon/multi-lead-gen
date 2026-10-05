@@ -89,7 +89,7 @@ class LiveResearchEngine:
             browser_discovered = await cls._search_commercial_companies_via_browser(
                 industry=industry,
                 location=full_location,
-                limit=min(100, effective_limit),
+                limit=effective_limit,
                 business_type_override=business_type_override,
                 seen_domains=seen_domains,
                 seen_names=seen_names,
