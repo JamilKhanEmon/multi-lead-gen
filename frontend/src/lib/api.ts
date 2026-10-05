@@ -6,10 +6,13 @@ export function getApiBase(): string {
   if (typeof window !== "undefined") {
     return "/api/v1";
   }
-  return process.env.NEXT_PUBLIC_API_URL || process.env.BACKEND_INTERNAL_URL || "http://127.0.0.1:8000/api/v1";
+  const internal = process.env.BACKEND_INTERNAL_URL || "http://backend:8000";
+  return `${internal.replace(/\/+$/, "")}/api/v1`;
 }
 
-const API_BASE = typeof window !== "undefined" ? "/api/v1" : (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1");
+const API_BASE = typeof window !== "undefined" 
+  ? "/api/v1" 
+  : `${(process.env.BACKEND_INTERNAL_URL || "http://backend:8000").replace(/\/+$/, "")}/api/v1`;
 
 export interface ResearchRun {
   id: string;
