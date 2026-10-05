@@ -74,6 +74,11 @@ async def ensure_default_accounts(db: AsyncSession):
             )
             db.add(new_u)
         else:
+            try:
+                if not verify_password(acc["password"], existing.hashed_password):
+                    existing.hashed_password = get_password_hash(acc["password"])
+            except Exception:
+                existing.hashed_password = get_password_hash(acc["password"])
             if acc["email"] == "superadmin@leadgen.local" and existing.role != "super_admin":
                 existing.role = "super_admin"
                 existing.permissions_json = acc["permissions_json"]
