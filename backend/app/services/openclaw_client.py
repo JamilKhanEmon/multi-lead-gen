@@ -84,12 +84,12 @@ class LiveResearchEngine:
         )
         logger.info(f"DiscoveryOptimizer: Using {len(plan['search_queries'])} targeted search queries and {len(plan['osm_queries'])} OSM targets.")
 
-        # 2. Primary: Headless Browser Search with Optimized Queries & Smart Validation
+        # 2. Primary: Headless Browser & High-Speed Search with Smart Validation
         try:
             browser_discovered = await cls._search_commercial_companies_via_browser(
                 industry=industry,
                 location=full_location,
-                limit=min(25, effective_limit),
+                limit=min(100, effective_limit),
                 business_type_override=business_type_override,
                 seen_domains=seen_domains,
                 seen_names=seen_names,
