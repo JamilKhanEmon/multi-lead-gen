@@ -97,27 +97,31 @@ class QualificationEngine:
 
         # Gate 7: Direct Contact Channel Required (At least one phone number or email address must exist)
         if not has_direct_contact:
-            failed_reasons.append("Unreachable: No direct phone number or email address available for outreach.")
-
-        # Gate 8: Target Industry Semantic Verification (Prevents cross-vertical bleed e.g. Dental vs Real Estate)
+        # Gate 7: Target Industry Semantic Verification (Fatal gate)
         if not is_industry_verified:
             failed_reasons.append(f"Industry mismatch: {industry_mismatch_reason or 'Website content does not align with target industry'}.")
 
-        passed = len(failed_reasons) == 0
+        # Direct Contact check (non-fatal; routes to Review Needed instead of outright rejection)
+        if not has_direct_contact:
+            failed_reasons.append("Needs manual outreach review: Direct phone or email not yet verified.")
+
+        fatal_failures = [r for r in failed_reasons if not r.startswith("Needs manual outreach review")]
+        passed = len(fatal_failures) == 0
         return passed, failed_reasons
 
     @classmethod
-    def assign_tier(cls, score: float, gates_passed: bool) -> str:
+    def assign_tier(cls, score: float, gates_passed: bool, has_direct_contact: bool = True) -> str:
         """
-        Assigns lead tier based on score and gates:
-        80–100: Strong Potential (if gates passed)
-        60–79: Review Needed (if gates passed)
-        Below 60 or failed gates: Rejected
+        Assigns lead tier based on score, gates, and contact reachability:
+        - If fatal gates failed: Rejected
+        - If score >= 80 and has_direct_contact: Strong Potential
+        - If score >= 60 OR missing direct contact: Review Needed
+        - Below 60: Rejected
         """
         if not gates_passed:
             return "Rejected"
 
-        if score >= 80.0:
+        if score >= 80.0 and has_direct_contact:
             return "Strong Potential"
         elif score >= 60.0:
             return "Review Needed"

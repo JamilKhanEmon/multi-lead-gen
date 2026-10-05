@@ -97,16 +97,19 @@ class DiscoveryOptimizer:
         loc_parts = [p for p in [sub_city, city, country] if p]
         loc_str = ", ".join(loc_parts) if loc_parts else (location.strip() or f"{city} {country}".strip() or "local")
 
+        city_target = f"{city} {country}".strip() or loc_str
+        sub_target = f"{sub_city} {city}".strip() if sub_city else loc_str
+
         queries = [
-            f"{industry} companies in {loc_str} official website",
-            f"{industry} firms and services {loc_str}",
-            f"{industry} local offices {loc_str}",
-            f"{industry} commercial business directory {loc_str}",
+            f"{industry} {sub_target} official website",
+            f"{industry} companies in {city_target} official website",
+            f"top {industry} firms and services in {city_target}",
+            f"{industry} commercial business offices {sub_target}",
         ]
         osm = [
+            f"{industry} {sub_target}",
+            f"{industry} {city_target}",
             f"{industry} Company {loc_str}",
-            f"{industry} Services {loc_str}",
-            f"{industry} Agency {loc_str}",
         ]
         pos = [ind_lower, f"{ind_lower} services", f"{ind_lower} company"]
         neg = [w for w in cls.UNIVERSAL_NEGATIVE_KEYWORDS if w not in ind_lower]
@@ -114,6 +117,7 @@ class DiscoveryOptimizer:
         return {
             "industry": industry,
             "location": loc_str,
+            "city": city.strip(),
             "sub_city": sub_city.strip(),
             "search_queries": queries,
             "osm_queries": osm,
@@ -127,7 +131,7 @@ class DiscoveryOptimizer:
         Pure dynamic AI-driven candidate validation.
         No hardcoded industry or regional rules.
         Rejection is driven entirely by the search plan negative keywords,
-        snippet semantics, and strict geographic locality matching.
+        snippet semantics, and geographic locality matching.
         """
         name = (candidate.get("canonical_name") or candidate.get("name") or "").strip()
         domain = (candidate.get("domain") or candidate.get("website") or "").lower()
@@ -146,12 +150,13 @@ class DiscoveryOptimizer:
         if any(bad in name_lower for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "google.com/maps", "twitter.com"]):
             return False, f"Candidate name is a social media / platform URL: '{name}'"
 
-        # 3. Strict Locality Match: If user specified a sub-city/area, enforce geographic boundary
+        # 3. Locality Match: reject only if candidate explicitly belongs to a different distant region
         req_sub_city = (plan.get("sub_city") or "").lower().strip()
-        if req_sub_city and len(req_sub_city) >= 3:
+        req_city = (plan.get("city") or "").lower().strip()
+        if cand_address and req_city and len(req_city) >= 3:
             cand_full_loc = f"{cand_address} {snippet} {candidate.get('location', '')}".lower()
-            if cand_address and req_sub_city not in cand_full_loc:
-                return False, f"Candidate location does not match requested area '{req_sub_city}'"
+            if req_city not in cand_full_loc and req_sub_city not in cand_full_loc:
+                return False, f"Candidate location does not match target city '{req_city}'"
 
         # 4. Disqualify if candidate name is merely the generic industry category name itself
         target_ind = (plan.get("industry") or "").lower().strip()
