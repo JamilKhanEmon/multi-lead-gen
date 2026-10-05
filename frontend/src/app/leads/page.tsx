@@ -12,6 +12,7 @@ import {
   getStoredUser,
   hasPermission, deleteLead, clearAllLeads, submitLeadFeedback, updateLeadDetails, dispatchStaggeredOutreach,
   AuthUser,
+  getApiBase,
 } from "@/lib/api";
 import {
   Users,
@@ -353,7 +354,7 @@ export default function LeadsPipelinePage() {
 
   const exportToJson = async (items: Lead[], customName?: string) => {
     try {
-      const response = await fetch(`${getApiBase()}/api/v1/leads/export/json`);
+      const response = await fetch(`${getApiBase()}/leads/export/json`);
       if (response.ok) {
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
