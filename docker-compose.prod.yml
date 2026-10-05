@@ -41,7 +41,7 @@ services:
     container_name: leadgen_backend
     restart: unless-stopped
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     environment:
       ENVIRONMENT: production
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -132,7 +132,7 @@ services:
     container_name: leadgen_frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
       BACKEND_INTERNAL_URL: http://backend:8000
