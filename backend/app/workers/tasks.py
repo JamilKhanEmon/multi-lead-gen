@@ -133,9 +133,9 @@ async def handle_discover_businesses(
                 logger.info(f"TaskDiscover: Rejecting candidate '{raw_name}': {reason}")
                 continue
 
-            # Strict contactability gate: Reject ghost/unreachable records with zero contact channels
-            if not raw_domain and not raw_phone and not comp.get("email"):
-                logger.info(f"TaskDiscover: Discarding candidate '{raw_name}' due to zero contact channels (no website, phone, or email).")
+            # Discard only ghost records with zero contact channels AND zero physical address
+            if not raw_domain and not raw_phone and not comp.get("email") and not comp.get("address"):
+                logger.info(f"TaskDiscover: Discarding ghost candidate '{raw_name}' due to zero contact channels and no address.")
                 continue
 
             norm_domain = DeduplicationEngine.normalize_domain(raw_domain)
