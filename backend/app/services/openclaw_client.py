@@ -254,6 +254,7 @@ class LiveResearchEngine:
             seen_names = set()
 
         results = []
+        # Attempt 1: Headless browser if Playwright is installed
         try:
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
@@ -301,12 +302,40 @@ class LiveResearchEngine:
                         logger.debug(f"Search query '{q}' error: {e}")
                 await browser.close()
         except Exception as e:
-            logger.warning(f"Browser search error: {e}")
+            logger.info(f"Browser search unavailable ({e}), using fast HTTP search engine fallback.")
+
+        # Attempt 2: High-speed HTTP web search fallback (DuckDuckGo / Web)
+        if len(results) < limit:
+            queries = search_queries or [
+                f"{industry} company in {location}",
+                f"{industry} offices {location} official website",
+                f"{industry} firms {location}",
+            ]
+            for q in queries:
+                if len(results) >= limit:
+                    break
+                try:
+                    search_items = await cls._execute_web_search(q)
+                    for it in search_items:
+                        if len(results) >= limit:
+                            break
+                        url = it.get("url", "")
+                        title = it.get("title", "")
+                        snippet = it.get("snippet", "")
+                        biz = cls._process_candidate_url(
+                            url, title, snippet, industry, location, business_type_override, seen_domains, seen_names, plan=plan
+                        )
+                        if biz:
+                            results.append(biz)
+                except Exception as e:
+                    logger.debug(f"HTTP web search fallback query '{q}' notice: {e}")
+
         return results
 
     @classmethod
     async def resolve_domain_for_business(cls, business_name: str, location: str) -> Optional[str]:
         """Attempts to find the official website domain of a discovered entity."""
+        # 1. Try Playwright browser if present
         try:
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
@@ -330,12 +359,29 @@ class LiveResearchEngine:
                     if not l or not l.startswith("http"):
                         continue
                     parsed = urllib.parse.urlparse(l)
+                    dom = parsed.netloc.lower().replace("www.", "")
                     if any(bad in dom for bad in ["brave.com", "facebook.com", "linkedin.com", "youtube.com", "wikipedia.org", "yellowpages"]):
                         continue
                     if "." in dom and len(dom) > 4:
                         return dom
+        except Exception:
+            pass
+
+        # 2. HTTP search engine fallback
+        try:
+            items = await cls._execute_web_search(f"{business_name} {location} official website")
+            for it in (items or []):
+                url = it.get("url", "")
+                if not url or not url.startswith("http"):
+                    continue
+                parsed = urllib.parse.urlparse(url)
+                dom = parsed.netloc.lower().replace("www.", "")
+                if any(bad in dom for bad in ["duckduckgo.com", "brave.com", "bing.com", "google.com", "facebook.com", "linkedin.com", "youtube.com", "wikipedia.org", "yellowpages"]):
+                    continue
+                if "." in dom and len(dom) > 4:
+                    return dom
         except Exception as e:
-            logger.debug(f"Resolve domain error for '{business_name}': {e}")
+            logger.debug(f"Resolve domain HTTP fallback error for '{business_name}': {e}")
         return None
 
     @classmethod
@@ -473,11 +519,11 @@ class LiveResearchEngine:
                     city = props.get("city") or ""
                     formatted_addr = ", ".join([x for x in [street, district, city] if x])
 
-                    # Strict sub_city locality check: if user specified a sub_city, ensure it matches the address
-                    if target_sub_city:
-                        sub_l = target_sub_city.lower().strip()
-                        raw_loc_text = f"{street} {district} {props.get('locality', '')} {formatted_addr}".lower()
-                        if raw_loc_text and sub_l not in raw_loc_text:
+                    # Sub-city & locality validation:
+                    # Query already specified sub_city/city. Reject only if explicitly in a different city.
+                    if target_city and city:
+                        city_l = target_city.lower().strip()
+                        if city_l and city.lower() not in city_l and city_l not in city.lower():
                             continue
 
                     geom = f.get("geometry") or {}
@@ -496,11 +542,12 @@ class LiveResearchEngine:
                         "longitude": lon,
                         "display_name": f"{name}, {formatted_addr}",
                     })
-                return results
+                if results:
+                    return results
         except Exception as e:
             logger.debug(f"Photon query error for '{query_str}': {e}")
 
-        # 2. Secondary: Nominatim OpenStreetMap Search (only if Photon network failed)
+        # 2. Secondary: Nominatim OpenStreetMap Search
         url = f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(query_str)}&format=json&addressdetails=1&extratags=1&limit={limit}"
         headers = {
             "User-Agent": "LeadGenPlatform/1.0 (contact: admin@leadgen.local)",
@@ -508,7 +555,7 @@ class LiveResearchEngine:
         }
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=3) as resp:
+            with urllib.request.urlopen(req, timeout=4) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 for item in data:
                     name = item.get("name")
@@ -526,11 +573,11 @@ class LiveResearchEngine:
                     city = addr_dict.get("city") or addr_dict.get("town") or ""
                     formatted_addr = ", ".join([x for x in [road, suburb, city] if x]) or item.get("display_name")
 
-                    # Strict sub_city locality check: if user specified a sub_city, ensure it matches the address
-                    if target_sub_city:
-                        sub_l = target_sub_city.lower().strip()
-                        raw_loc_text = f"{road} {suburb} {city} {formatted_addr} {item.get('display_name', '')}".lower()
-                        if raw_loc_text and sub_l not in raw_loc_text:
+                    # Sub-city & locality validation:
+                    if target_city:
+                        city_l = target_city.lower().strip()
+                        nom_c = (addr_dict.get("city") or addr_dict.get("town") or "").lower()
+                        if nom_c and city_l and nom_c not in city_l and city_l not in nom_c:
                             continue
 
                     phone = ext.get("phone") or ext.get("contact:phone")
