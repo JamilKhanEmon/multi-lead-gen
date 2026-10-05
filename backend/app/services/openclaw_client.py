@@ -164,10 +164,9 @@ class LiveResearchEngine:
                             website = enriched["website"]
                             domain = enriched.get("domain")
 
-                    # STRICT ZERO-CONTACT GATE:
-                    # Discard candidate if there is NO email, NO phone, and NO website/domain
-                    if not website and not domain and not phone and not email:
-                        logger.info(f"Zero-Contact Gate: Discarding unreachable entity '{p_name}' (No website, phone, or email).")
+                    # Allow candidate if it has a website, phone, email, OR a verified physical address/coordinates
+                    if not website and not domain and not phone and not email and not p.get("address") and lat is None:
+                        logger.debug(f"Discarding ghost candidate '{p_name}' (No contact channel and no address).")
                         continue
 
                     if lat is not None and lon is not None:
@@ -626,12 +625,13 @@ class LiveResearchEngine:
 
     @classmethod
     def _fetch_ddg_html(cls, query_str: str, form_inputs: Optional[Dict[str, str]] = None) -> Tuple[str, Dict[str, str]]:
-        """Fetches HTML from DuckDuckGo search."""
+        """Fetches HTML from DuckDuckGo search with automatic Lite engine fallback."""
         url = "https://html.duckduckgo.com/html/"
         headers = {
             "User-Agent": cls.USER_AGENT,
             "Accept-Language": "en-US,en;q=0.9",
         }
+        # Attempt 1: Standard DuckDuckGo HTML
         try:
             if form_inputs:
                 headers["Content-Type"] = "application/x-www-form-urlencoded"
@@ -641,22 +641,42 @@ class LiveResearchEngine:
             else:
                 req = urllib.request.Request(f"{url}?q={urllib.parse.quote(query_str)}", headers=headers)
 
-            with urllib.request.urlopen(req, timeout=8) as resp:
+            with urllib.request.urlopen(req, timeout=7) as resp:
                 html = resp.read().decode("utf-8", errors="ignore")
                 inputs = dict(re.findall(r'<input[^>]+name=\"([^\"]+)\"[^>]+value=\"([^\"]*)\"', html))
-                return html, inputs
+                if "result__a" in html or "result__snippet" in html:
+                    return html, inputs
         except Exception:
-            return "", {}
+            pass
+
+        # Attempt 2: DuckDuckGo Lite (Highly resilient, never blocked by cloud IPs)
+        try:
+            lite_url = "https://lite.duckduckgo.com/lite/"
+            post_data = urllib.parse.urlencode({"q": query_str}).encode("utf-8")
+            lite_headers = {
+                "User-Agent": cls.USER_AGENT,
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Referer": "https://lite.duckduckgo.com/",
+            }
+            req = urllib.request.Request(lite_url, data=post_data, headers=lite_headers)
+            with urllib.request.urlopen(req, timeout=7) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+                return html, {}
+        except Exception:
+            pass
+
+        return "", {}
 
     @classmethod
     def _parse_ddg_items(cls, html: str) -> List[Tuple[str, str, str]]:
-        """Parses raw search result links from HTML."""
-        a_matches = re.findall(r'<a[^>]+class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>', html, re.DOTALL)
-        snippet_matches = re.findall(r'<a[^>]+class=\"result__snippet\"[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>', html, re.DOTALL)
+        """Parses raw search result links from HTML (supports both standard and Lite formats)."""
+        # Matches result__a (Standard DDG) or result-link (Lite DDG)
+        a_matches = re.findall(r'<a[^>]+class=\"(?:result__a|result-link)\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>', html, re.DOTALL)
+        snippet_matches = re.findall(r'<(?:a|td|div)[^>]+class=\"(?:result__snippet|result-snippet)\"[^>]*>(.*?)</(?:a|td|div)>', html, re.DOTALL)
 
         items = []
         for idx, (raw_u, raw_t) in enumerate(a_matches):
-            snip_t = snippet_matches[idx][1] if idx < len(snippet_matches) else ""
+            snip_t = snippet_matches[idx] if idx < len(snippet_matches) else ""
             actual_url = raw_u
             if "uddg=" in raw_u:
                 try:
