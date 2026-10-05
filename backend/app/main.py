@@ -81,8 +81,8 @@ async def autonomous_outreach_scheduler():
 
     while True:
         try:
-            # Wait random delay between checks (240 to 480 seconds = 4 to 8 minutes)
-            delay = OutreachEngine.get_random_anti_spam_delay(240, 480)
+            import random
+            delay = random.uniform(240, 480)
             await asyncio.sleep(delay)
 
             smtp_host = os.getenv("SMTP_HOST")

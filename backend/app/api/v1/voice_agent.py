@@ -12,6 +12,8 @@ from sqlalchemy.future import select
 from sqlalchemy import desc, update
 
 from app.db.session import get_db
+from app.api.deps import get_current_user
+from app.models.audit import User
 from app.models.voice_agent import VoiceKnowledgeBase, VoiceCallQueueItem, VoiceCallLog
 from app.models.lead import Lead
 from app.schemas.voice_agent import (
@@ -37,7 +39,10 @@ router = APIRouter(prefix="/voice-agent", tags=["B2B Voice Calling Agent"])
 # ==============================================================================
 
 @router.get("/kb", response_model=VoiceKnowledgeBaseResponse)
-async def get_active_knowledge_base(db: AsyncSession = Depends(get_db)):
+async def get_active_knowledge_base(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Retrieves active Knowledge Base and ElevenLabs-style prompt profile."""
     stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
     res = await db.execute(stmt)
@@ -76,7 +81,11 @@ When a time is agreed, confirm the slot and state that the meeting link is being
 
 
 @router.post("/kb", response_model=VoiceKnowledgeBaseResponse)
-async def save_or_update_knowledge_base(payload: VoiceKnowledgeBaseCreate, db: AsyncSession = Depends(get_db)):
+async def save_or_update_knowledge_base(
+    payload: VoiceKnowledgeBaseCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Saves or updates the active ElevenLabs-style prompt and company details."""
     stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
     res = await db.execute(stmt)
@@ -106,7 +115,11 @@ async def save_or_update_knowledge_base(payload: VoiceKnowledgeBaseCreate, db: A
 
 
 @router.delete("/kb/{kb_id}")
-async def delete_knowledge_base(kb_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_knowledge_base(
+    kb_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Deletes a Knowledge Base profile."""
     stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.id == uuid.UUID(kb_id))
     res = await db.execute(stmt)
@@ -123,7 +136,10 @@ async def delete_knowledge_base(kb_id: str, db: AsyncSession = Depends(get_db)):
 # ==============================================================================
 
 @router.get("/queue", response_model=List[VoiceCallQueueItemResponse])
-async def list_call_queue(db: AsyncSession = Depends(get_db)):
+async def list_call_queue(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Returns all leads in the PostgreSQL-backed Interactive Sheet View."""
     stmt = select(VoiceCallQueueItem).order_by(VoiceCallQueueItem.created_at.desc())
     res = await db.execute(stmt)
@@ -142,7 +158,11 @@ async def list_call_queue(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/queue", response_model=VoiceCallQueueItemResponse)
-async def add_lead_to_queue(payload: VoiceCallQueueItemCreate, db: AsyncSession = Depends(get_db)):
+async def add_lead_to_queue(
+    payload: VoiceCallQueueItemCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Adds a single verified lead manually into the Interactive Sheet View."""
     item = VoiceCallQueueItem(
         contact_person=payload.contact_person,
@@ -162,7 +182,12 @@ async def add_lead_to_queue(payload: VoiceCallQueueItemCreate, db: AsyncSession 
 
 
 @router.put("/queue/{item_id}", response_model=VoiceCallQueueItemResponse)
-async def update_queue_item(item_id: str, payload: VoiceCallQueueItemUpdate, db: AsyncSession = Depends(get_db)):
+async def update_queue_item(
+    item_id: str,
+    payload: VoiceCallQueueItemUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Inline cell edit for the Sheet View (phone, problem, contact, status, etc.)."""
     stmt = select(VoiceCallQueueItem).where(VoiceCallQueueItem.id == uuid.UUID(item_id))
     res = await db.execute(stmt)
@@ -197,7 +222,11 @@ async def update_queue_item(item_id: str, payload: VoiceCallQueueItemUpdate, db:
 
 
 @router.delete("/queue/{item_id}")
-async def delete_queue_item(item_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_queue_item(
+    item_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Removes a lead row from the Sheet View."""
     stmt = select(VoiceCallQueueItem).where(VoiceCallQueueItem.id == uuid.UUID(item_id))
     res = await db.execute(stmt)
@@ -210,7 +239,11 @@ async def delete_queue_item(item_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/queue/batch")
-async def batch_queue_action(payload: BatchQueueActionRequest, db: AsyncSession = Depends(get_db)):
+async def batch_queue_action(
+    payload: BatchQueueActionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Handles select all, deselect all, and 1-click sync from Qualified Leads table."""
     if payload.action == "select_all":
         stmt = update(VoiceCallQueueItem).values(selected_for_call=True)
@@ -268,7 +301,10 @@ async def batch_queue_action(payload: BatchQueueActionRequest, db: AsyncSession 
 # ==============================================================================
 
 @router.get("/office-hours")
-async def check_office_hours_status(db: AsyncSession = Depends(get_db)):
+async def check_office_hours_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Validates whether calling is currently permitted under office hours rules."""
     stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
     res = await db.execute(stmt)
@@ -287,7 +323,11 @@ async def check_office_hours_status(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/dialogue-turn", response_model=VoiceDialogueTurnResponse)
-async def process_live_dialogue_turn(payload: VoiceDialogueTurnRequest, db: AsyncSession = Depends(get_db)):
+async def process_live_dialogue_turn(
+    payload: VoiceDialogueTurnRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Ultra-low latency conversational turn processing for live phone or browser testing.
     Detects meeting booking and returns Zoom/Meet links.
@@ -321,7 +361,8 @@ async def process_live_dialogue_turn(payload: VoiceDialogueTurnRequest, db: Asyn
 async def complete_call_and_record(
     item_id: str,
     payload: Dict[str, Any],
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Marks a call as DONE or MEETING_BOOKED.
@@ -376,7 +417,11 @@ async def complete_call_and_record(
 
 
 @router.get("/logs", response_model=List[VoiceCallLogResponse])
-async def get_call_logs(limit: int = 50, db: AsyncSession = Depends(get_db)):
+async def get_call_logs(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Retrieves call history with transcripts and booked meetings."""
     stmt = select(VoiceCallLog).order_by(desc(VoiceCallLog.created_at)).limit(limit)
     res = await db.execute(stmt)
