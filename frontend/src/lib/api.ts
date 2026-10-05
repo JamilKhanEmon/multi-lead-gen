@@ -6,13 +6,13 @@ export function getApiBase(): string {
   if (typeof window !== "undefined") {
     return "/api/v1";
   }
-  const internal = process.env.BACKEND_INTERNAL_URL || "http://backend:8000";
+  const internal = process.env.BACKEND_INTERNAL_URL || "http://127.0.0.1:8000";
   return `${internal.replace(/\/+$/, "")}/api/v1`;
 }
 
 const API_BASE = typeof window !== "undefined" 
   ? "/api/v1" 
-  : `${(process.env.BACKEND_INTERNAL_URL || "http://backend:8000").replace(/\/+$/, "")}/api/v1`;
+  : `${(process.env.BACKEND_INTERNAL_URL || "http://127.0.0.1:8000").replace(/\/+$/, "")}/api/v1`;
 
 export interface ResearchRun {
   id: string;
@@ -825,15 +825,20 @@ export function logoutUser(): void {
 }
 
 export async function loginUser(email: string, password: string): Promise<{ token: string; role: string; user?: AuthUser }> {
-  const res = await fetch(`${API_BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: email.trim(), password }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim(), password }),
+    });
+  } catch (netErr: any) {
+    throw new Error(`Cannot connect to Backend API (${API_BASE}). Please check if backend server is running.`);
+  }
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || "Authentication failed. Please verify credentials.");
+    throw new Error(errorData.detail || `Login failed (${res.status}): ${res.statusText || "Incorrect credentials"}`);
   }
 
   const tokenData: AuthTokenResponse = await res.json();

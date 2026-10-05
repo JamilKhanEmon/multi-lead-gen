@@ -71,7 +71,7 @@ export default function AdminPortalPage() {
   };
 
   // Login form state
-  const [email, setEmail] = useState("superadmin@leadgen.local");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -474,49 +474,17 @@ export default function AdminPortalPage() {
           <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-48 h-48 bg-sky-500/5 rounded-full blur-3xl pointer-events-none" />
 
-            <form onSubmit={handleLoginSubmit} className="space-y-4 relative z-10">
+            <form onSubmit={handleLoginSubmit} className="space-y-4 relative z-10" autoComplete="off">
+              {/* Dummy hidden inputs to intercept aggressive browser autofill */}
+              <input type="text" name="fake_username_autofill_blocker" style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
+              <input type="password" name="fake_password_autofill_blocker" style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
+
               {loginError && (
                 <div className="flex items-center gap-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-xs">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{loginError}</span>
                 </div>
               )}
-
-              {/* Quick Preset Selector Buttons */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-medium text-slate-400">Quick Test Credentials:</span>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail("superadmin@leadgen.local");
-                      setPassword("SuperAdmin@2026!");
-                    }}
-                    className="p-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-left transition"
-                  >
-                    <div className="flex items-center gap-1.5 text-purple-300 font-semibold text-xs">
-                      <Crown className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Super Admin</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-mono block truncate">superadmin@leadgen.local</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail("admin@leadgen.local");
-                      setPassword("Admin@2026!");
-                    }}
-                    className="p-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-left transition"
-                  >
-                    <div className="flex items-center gap-1.5 text-sky-300 font-semibold text-xs">
-                      <Shield className="w-3.5 h-3.5 text-sky-400" />
-                      <span>Admin</span>
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-mono block truncate">admin@leadgen.local</span>
-                  </button>
-                </div>
-              </div>
 
               {/* Email Input */}
               <div>
@@ -527,10 +495,12 @@ export default function AdminPortalPage() {
                   <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
                     type="email"
+                    name="admin_user_email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    placeholder="superadmin@leadgen.local"
+                    autoComplete="off"
+                    placeholder="Enter admin email address"
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500/60 focus:ring-1 focus:ring-sky-500/60 transition"
                   />
                 </div>
@@ -544,20 +514,15 @@ export default function AdminPortalPage() {
                 <div className="relative">
                   <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
-                    type={showPassword ? "text" : "password"}
+                    type="password"
+                    name="admin_user_password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    autoComplete="new-password"
                     placeholder="••••••••••••"
-                    className="w-full pl-10 pr-10 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500/60 focus:ring-1 focus:ring-sky-500/60 transition"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500/60 focus:ring-1 focus:ring-sky-500/60 transition"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
                 </div>
               </div>
 
