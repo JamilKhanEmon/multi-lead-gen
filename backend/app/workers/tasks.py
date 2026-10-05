@@ -232,7 +232,11 @@ async def handle_discover_businesses(
                 "domain": biz.domain,
                 "phone": biz.phone,
                 "business_type": biz.business_type,
+                "industry": industry,
+                "location": location,
                 "auto_mail_enabled": payload.get("auto_mail_enabled", True),
+                "positive_keywords": val_plan.get("positive_keywords", []),
+                "negative_keywords": val_plan.get("negative_keywords", []),
             },
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -610,6 +614,8 @@ async def _execute_research_and_qualify(
         page_title=website_data.get("page_title") or website_data.get("title") or "",
         meta_description=website_data.get("meta_description") or "",
         heading=website_data.get("heading") or "",
+        positive_keywords=payload.get("positive_keywords"),
+        negative_keywords=payload.get("negative_keywords"),
         ollama_client=ollama_client,
     )
     if not is_industry_fit:
@@ -737,11 +743,25 @@ async def _execute_research_and_qualify(
                 valid_run_id = run_id
 
         stmt = select(Lead).where(Lead.business_id == business_id)
-        lead_res = await session.execute(stmt)
-        lead = lead_res.scalar_one_or_none()
-        auto_mail = payload.get("auto_mail_enabled", True)
-        has_email = bool(biz_obj and biz_obj.email)
-        target_outreach_status = "READY_FOR_OUTREACH" if auto_mail else "HOLD"
+        # Strict Industry Relevance & Qualification Filter:
+        # If the audited business does not match the target industry or was rejected by gates,
+        # do NOT add it to the leads pipeline!
+        if not is_industry_fit or tier == "Rejected":
+            logger.info(
+                f"TaskResearch: Discarding irrelevant/unqualified business '{business_name}' "
+                f"(Industry fit: {is_industry_fit}, Tier: {tier}, Reason: {fit_reason}). Not adding to leads."
+            )
+            if valid_run_id:
+                stmt = select(ResearchRun).where(ResearchRun.id == valid_run_id)
+                r_res = await session.execute(stmt)
+                run = r_res.scalar_one_or_none()
+                if run:
+                    run.rejected_count += 1
+                    processed = run.qualified_count + run.rejected_count + run.failed_count
+                    if processed >= run.discovered_count and run.discovered_count > 0:
+                        run.status = "COMPLETED"
+            await session.commit()
+            return {"status": "REJECTED", "business_id": str(business_id), "reason": fit_reason}
 
         if lead:
             lead.run_id = valid_run_id
