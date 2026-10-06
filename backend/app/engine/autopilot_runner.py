@@ -371,7 +371,7 @@ class AutopilotRunner:
                                 "industry": b_type,
                                 "primary_gap": primary_gap,
                                 "personas": active_personas,
-                                "custom_template": active_tpl
+                                "custom_template": active_tpl if getattr(campaign, "use_global_template", True) else None
                             }
                         )
                         success, note = await OutreachEngine.dispatch_smtp_email(

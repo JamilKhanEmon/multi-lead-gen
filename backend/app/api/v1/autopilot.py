@@ -33,6 +33,7 @@ class CampaignCreate(BaseModel):
     daily_email_limit: int = Field(default=50)
     is_unlimited_leads: bool = Field(default=False)
     auto_mail_enabled: bool = Field(default=True)
+    use_global_template: bool = Field(default=True)
 
 
 class CampaignUpdate(BaseModel):
@@ -44,6 +45,7 @@ class CampaignUpdate(BaseModel):
     daily_email_limit: Optional[int] = None
     is_unlimited_leads: Optional[bool] = None
     auto_mail_enabled: Optional[bool] = None
+    use_global_template: Optional[bool] = None
     is_active: Optional[bool] = None
 
 
@@ -127,6 +129,7 @@ async def create_campaign(
         daily_email_limit=data.daily_email_limit,
         is_unlimited_leads=data.is_unlimited_leads,
         auto_mail_enabled=data.auto_mail_enabled,
+        use_global_template=data.use_global_template,
         is_active=True,
         status="IDLE",
         created_by_user_id=current_user.id if current_user else None
