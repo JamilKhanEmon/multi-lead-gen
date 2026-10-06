@@ -459,11 +459,6 @@ async def get_inbox_monitor_stats(
                 "company": p.company,
                 "is_active": p.is_active,
             })
-    else:
-        persona_list = [
-            {"id": f"default_{idx+1}", "name": p["name"], "title": p["title"], "company": p["company"], "is_active": True}
-            for idx, p in enumerate(OutreachEngine.PERSONA_SIGNATURES)
-        ]
 
     return {
         "total_inboxes_configured": len(inbox_list),

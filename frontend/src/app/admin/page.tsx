@@ -2109,30 +2109,39 @@ export default function AdminPortalPage() {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {(inboxMonitorData?.persona_signatures || []).map((p, idx) => (
-                <div key={p.id || idx} className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1.5 hover:border-slate-700 transition relative group">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-slate-200">{p.name}</span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] font-mono text-sky-400">Persona #{idx + 1}</span>
-                      {p.id && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeletePersona(p.id)}
-                          className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition"
-                          title="Delete Persona"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      )}
+            {inboxMonitorData && inboxMonitorData.persona_signatures && inboxMonitorData.persona_signatures.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {inboxMonitorData.persona_signatures.map((p, idx) => (
+                  <div key={p.id || idx} className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1.5 hover:border-slate-700 transition relative group">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-slate-200">{p.name}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-mono text-sky-400">Persona #{idx + 1}</span>
+                        {p.id && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePersona(p.id)}
+                            className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition"
+                            title="Delete Persona"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
+                    <div className="text-[11px] text-slate-400">{p.title}</div>
+                    <div className="text-[10px] font-mono text-slate-500">{p.company}</div>
                   </div>
-                  <div className="text-[11px] text-slate-400">{p.title}</div>
-                  <div className="text-[10px] font-mono text-slate-500">{p.company}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 rounded-xl bg-slate-950/50 border border-dashed border-slate-800 text-center space-y-2">
+                <div className="text-xs text-slate-400 font-medium">No custom personas registered yet.</div>
+                <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                  Click the <strong>"+ Add Persona"</strong> button above to add your team members, titles, and company signatures to the rotation pool.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Super Admin Database Control & Storage Purge Panel */}
