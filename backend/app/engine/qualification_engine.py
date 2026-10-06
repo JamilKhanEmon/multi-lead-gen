@@ -95,8 +95,6 @@ class QualificationEngine:
         if has_primary_conflict:
             failed_reasons.append("Active unresolved contradiction between primary sources.")
 
-        # Gate 7: Direct Contact Channel Required (At least one phone number or email address must exist)
-        if not has_direct_contact:
         # Gate 7: Target Industry Semantic Verification (Fatal gate)
         if not is_industry_verified:
             failed_reasons.append(f"Industry mismatch: {industry_mismatch_reason or 'Website content does not align with target industry'}.")

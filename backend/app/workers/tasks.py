@@ -742,7 +742,13 @@ async def _execute_research_and_qualify(
             if run_check_res.scalar_one_or_none():
                 valid_run_id = run_id
 
-        stmt = select(Lead).where(Lead.business_id == business_id)
+        stmt_lead = select(Lead).where(Lead.business_id == business_id)
+        lead_res = await session.execute(stmt_lead)
+        lead = lead_res.scalar_one_or_none()
+        auto_mail = payload.get("auto_mail_enabled", True)
+        has_email = bool(biz_obj and biz_obj.email)
+        target_outreach_status = "READY_FOR_OUTREACH" if auto_mail else "HOLD"
+
         # Strict Industry Relevance & Qualification Filter:
         # If the audited business does not match the target industry or was rejected by gates,
         # do NOT add it to the leads pipeline!
@@ -752,8 +758,8 @@ async def _execute_research_and_qualify(
                 f"(Industry fit: {is_industry_fit}, Tier: {tier}, Reason: {fit_reason}). Not adding to leads."
             )
             if valid_run_id:
-                stmt = select(ResearchRun).where(ResearchRun.id == valid_run_id)
-                r_res = await session.execute(stmt)
+                stmt_run = select(ResearchRun).where(ResearchRun.id == valid_run_id)
+                r_res = await session.execute(stmt_run)
                 run = r_res.scalar_one_or_none()
                 if run:
                     run.rejected_count += 1

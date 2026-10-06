@@ -112,7 +112,7 @@ class LiveResearchEngine:
                 break
             try:
                 places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 50, country, city, sub_city)
-                for p in places:
+                for p in (places or []):
                     if len(discovered) >= effective_limit:
                         break
                     
@@ -453,7 +453,11 @@ class LiveResearchEngine:
         # 1. Primary: Photon OpenStreetMap Geocoder (high-volume, fast, no rate-limit blocking)
         try:
             p_url = f"https://photon.komoot.io/api/?q={urllib.parse.quote(query_str)}&limit={limit}"
-            headers = {"User-Agent": "LeadGenPlatform/1.0 (admin@leadgen.local)"}
+            headers = {
+                "User-Agent": cls.USER_AGENT,
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
             req = urllib.request.Request(p_url, headers=headers)
             with urllib.request.urlopen(req, timeout=6) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -549,7 +553,8 @@ class LiveResearchEngine:
         # 2. Secondary: Nominatim OpenStreetMap Search
         url = f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(query_str)}&format=json&addressdetails=1&extratags=1&limit={limit}"
         headers = {
-            "User-Agent": "LeadGenPlatform/1.0 (contact: admin@leadgen.local)",
+            "User-Agent": cls.USER_AGENT,
+            "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
         }
         try:
@@ -615,6 +620,7 @@ class LiveResearchEngine:
                 return results
         except Exception as e:
             logger.warning(f"Nominatim fetch exception for query '{query_str}': {e}")
+        return results
     @classmethod
     async def _execute_web_search(cls, query_str: str) -> List[Dict[str, str]]:
         """Executes a live web search for competitor intelligence and market analysis."""
