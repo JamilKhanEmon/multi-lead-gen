@@ -109,8 +109,9 @@ class AutopilotRunner:
         total_skipped_duplicates = 0
         total_dispatched_count = 0
 
-        # Iterate through ALL sub-cities in 1-click
-        for target_city in sub_cities:
+        try:
+            # Iterate through ALL sub-cities in 1-click
+            for target_city in sub_cities:
             target_city_clean = target_city.strip()
             if not target_city_clean:
                 continue
@@ -405,11 +406,16 @@ class AutopilotRunner:
                     lead.outreach_status = "COLLECTED"
                     lead.verification_notes = "Data Collector Mode: Lead and audit preserved without automated outreach."
 
-        # Update campaign stats
-        campaign.total_leads_found += len(all_added_leads)
-        campaign.total_emails_sent += total_dispatched_count
-        campaign.status = "IDLE"
-        await db.commit()
+                # Progressive DB commit per lead so dashboard updates live
+                campaign.total_leads_found += 1
+                campaign.total_emails_sent += total_dispatched_count
+                await db.commit()
+
+        except Exception as batch_err:
+            logger.error(f"[AUTOPILOT RUN FAIL] Error in campaign run: {batch_err}")
+        finally:
+            campaign.status = "IDLE"
+            await db.commit()
 
         logger.info(
             f"[AUTOPILOT 1-CLICK COMPLETE] Campaign '{campaign.name}' | "

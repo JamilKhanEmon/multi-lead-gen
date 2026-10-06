@@ -127,10 +127,15 @@ export default function AutopilotPage() {
     setCurrentUser(user);
     loadData();
 
-    // Auto-refresh stats every 30 seconds
-    const interval = setInterval(loadData, 30000);
+    // Dynamically adjust polling interval:
+    // If any campaign is running, poll every 3 seconds so the user sees live progressive updates!
+    // Otherwise poll every 20 seconds.
+    const isAnyRunning = campaigns.some((c) => c.status === "RUNNING") || runningBatchId !== null;
+    const intervalMs = isAnyRunning ? 3000 : 20000;
+
+    const interval = setInterval(loadData, intervalMs);
     return () => clearInterval(interval);
-  }, [loadData]);
+  }, [loadData, campaigns, runningBatchId]);
 
   // Handle Sub-city tag addition
   const handleAddSubCity = (e: React.KeyboardEvent) => {
@@ -556,13 +561,13 @@ export default function AutopilotPage() {
                   {hasPermission(currentUser, "can_run_autopilot_cycle", false) ? (
                     <button
                       onClick={() => handleRunNow(camp.id, camp.name)}
-                      disabled={runningBatchId === camp.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-sky-300 border border-sky-500/40 text-xs font-semibold transition shadow-sm"
+                      disabled={runningBatchId === camp.id || camp.status === "RUNNING"}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 disabled:opacity-75 disabled:cursor-not-allowed text-sky-300 border border-sky-500/40 text-xs font-semibold transition shadow-sm"
                     >
-                      {runningBatchId === camp.id ? (
+                      {runningBatchId === camp.id || camp.status === "RUNNING" ? (
                         <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-400" />
-                          <span>Scanning All Locations...</span>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                          <span className="text-amber-300 animate-pulse">Scanning Sub-Locations...</span>
                         </>
                       ) : (
                         <>
