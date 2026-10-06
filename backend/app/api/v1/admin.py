@@ -3,8 +3,9 @@ Admin Monitoring & System Health Endpoints
 """
 import time
 import socket
-from typing import Dict
-from fastapi import APIRouter, Depends
+import uuid
+from typing import Dict, Optional, List
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text, func
 from sqlalchemy.future import select
@@ -13,7 +14,7 @@ from app.core.config import settings
 from app.models.lead import Lead
 from app.models.research import ResearchRun
 from app.models.audit import User
-from app.models.email_template import EmailTemplate
+from app.models.email_template import EmailTemplate, SMTPInbox, PersonaSignature
 from app.schemas.admin import (
     SystemHealthResponse,
     SystemMetricsResponse,
@@ -24,6 +25,7 @@ from app.schemas.admin import (
 )
 import redis.asyncio as aioredis
 import httpx
+import smtplib
 
 router = APIRouter(prefix="/admin", tags=["Admin & Health"])
 
@@ -348,9 +350,6 @@ async def preview_email_template(
 
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
-from app.models.email_template import SMTPInbox, PersonaSignature
-import smtplib
 
 
 class SMTPInboxCreate(BaseModel):
