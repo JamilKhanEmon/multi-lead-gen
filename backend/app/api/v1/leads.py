@@ -1267,6 +1267,19 @@ async def dispatch_staggered_outreach(
             "message": "No valid leads found to dispatch."
         }
 
+    # Fetch active sender personas and custom global email template from database
+    from app.models.email_template import PersonaSignature, EmailTemplate
+    p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
+    p_res = await db.execute(p_stmt)
+    active_personas = [
+        {"name": p.name, "title": p.title, "company": p.company}
+        for p in p_res.scalars().all()
+    ]
+
+    t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
+    t_res = await db.execute(t_stmt)
+    active_tpl = t_res.scalar_one_or_none()
+
     smtp_host = os.getenv("SMTP_HOST")
     smtp_user = os.getenv("SMTP_USER")
     is_live = bool(smtp_host and smtp_user)
@@ -1285,8 +1298,12 @@ async def dispatch_staggered_outreach(
             lead_data={
                 "company_name": biz.canonical_name,
                 "contact_person": biz.contact_person or "Executive",
-                "city": biz.address or "Dhaka",
-                "primary_gap": lead.primary_gap_summary
+                "city": biz.address or "",
+                "website": getattr(biz, "domain", ""),
+                "industry": getattr(biz, "business_type", ""),
+                "primary_gap": lead.primary_gap_summary,
+                "personas": active_personas,
+                "custom_template": active_tpl
             }
         )
 

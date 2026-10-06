@@ -100,11 +100,26 @@ async def autonomous_outreach_scheduler():
                 res = await session.execute(stmt)
                 ready_leads = res.scalars().all()
 
+                # Fetch active personas and custom global email template for auto-rotation
+                from app.models.email_template import PersonaSignature, EmailTemplate
+                p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
+                p_res = await session.execute(p_stmt)
+                active_personas = [
+                    {"name": p.name, "title": p.title, "company": p.company}
+                    for p in p_res.scalars().all()
+                ]
+
+                t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
+                t_res = await session.execute(t_stmt)
+                active_tpl = t_res.scalar_one_or_none()
+
                 for idx, lead in enumerate(ready_leads):
                     biz = lead.business
+                    if not biz or not biz.email:
+                        continue
                     meta = biz.metadata_json or {}
                     target_city = meta.get("city") or biz.address or ""
-                    target_country = meta.get("country") or "Bangladesh"
+                    target_country = meta.get("country") or ""
                     loc = biz.locations[0] if (biz.locations and len(biz.locations) > 0) else None
                     lat = loc.latitude if loc else meta.get("latitude")
                     lon = loc.longitude if loc else meta.get("longitude")
@@ -120,14 +135,18 @@ async def autonomous_outreach_scheduler():
                         logger.debug(f"[OUTREACH DAEMON] Skipping '{biz.canonical_name}' ({target_city}, {target_country}): {reason}")
                         continue
 
-                    recipient = biz.email or os.getenv("SMTP_USER")
+                    recipient = biz.email.strip()
                     subject, body = OutreachEngine.render_email(
                         step=1,
                         lead_data={
                             "company_name": biz.canonical_name,
                             "contact_person": biz.contact_person or "Executive",
-                            "city": target_city or "your area",
-                            "primary_gap": lead.primary_gap_summary
+                            "city": target_city or "",
+                            "website": getattr(biz, "domain", ""),
+                            "industry": getattr(biz, "business_type", ""),
+                            "primary_gap": lead.primary_gap_summary,
+                            "personas": active_personas,
+                            "custom_template": active_tpl
                         }
                     )
                     success, note = await OutreachEngine.dispatch_smtp_email(

@@ -15,6 +15,7 @@ from app.core.logging import logger
 from app.models.business import Business, BusinessLocation
 from app.models.lead import Lead, LeadScore
 from app.models.autopilot import AutopilotCampaign, EmailOutreachLog
+from app.models.email_template import PersonaSignature, EmailTemplate
 from app.engine.email_verifier import EmailVerifier
 from app.engine.outreach_engine import OutreachEngine
 from app.services.openclaw_client import LiveResearchEngine
@@ -77,11 +78,11 @@ class AutopilotRunner:
         the user to click repeatedly for each sub-location.
         Uses real OpenClaw / OSM discovery with zero mock / fake data.
         """
-        sub_cities = campaign.sub_cities or ["Dhaka"]
+        sub_cities = campaign.sub_cities or ([campaign.country] if campaign.country else [""])
         if not sub_cities:
-            sub_cities = ["Dhaka"]
+            sub_cities = [campaign.country] if campaign.country else [""]
 
-        keywords = campaign.keywords or ["Real Estate"]
+        keywords = campaign.keywords or ["Business"]
         target_keyword = keywords[0] if keywords else "Business"
 
         logger.info(
@@ -91,6 +92,18 @@ class AutopilotRunner:
         campaign.status = "RUNNING"
         campaign.last_run_at = datetime.now(timezone.utc)
         await db.commit()
+
+        # Fetch active sender personas and custom global email template configured by user
+        p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
+        p_res = await db.execute(p_stmt)
+        active_personas = [
+            {"name": p.name, "title": p.title, "company": p.company}
+            for p in p_res.scalars().all()
+        ]
+
+        t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
+        t_res = await db.execute(t_stmt)
+        active_tpl = t_res.scalar_one_or_none()
 
         all_added_leads = []
         total_skipped_duplicates = 0
@@ -354,7 +367,11 @@ class AutopilotRunner:
                                 "company_name": biz.canonical_name,
                                 "contact_person": biz.contact_person,
                                 "city": target_city_clean,
-                                "primary_gap": primary_gap
+                                "website": biz.domain or "",
+                                "industry": b_type,
+                                "primary_gap": primary_gap,
+                                "personas": active_personas,
+                                "custom_template": active_tpl
                             }
                         )
                         success, note = await OutreachEngine.dispatch_smtp_email(

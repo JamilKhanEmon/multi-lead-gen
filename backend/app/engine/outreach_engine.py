@@ -82,36 +82,121 @@ class OutreachEngine:
 
     @classmethod
     def render_email(cls, step: int, lead_data: Dict[str, Any]) -> Tuple[str, str]:
-        """Render subject and body with variable and dynamic sender signature injection."""
-        template = cls.TEMPLATES.get(step, cls.TEMPLATES[1])
+        """
+        Renders AI-adaptive, industry-tailored subject and body with 
+        dynamic round-robin persona signature rotation.
+        """
         company_name = lead_data.get("company_name") or "Your Team"
         contact_person = lead_data.get("contact_person") or "there"
         city = lead_data.get("city") or "your area"
-        primary_gap = lead_data.get("primary_gap") or "optimizing your online visibility and lead conversion"
-        
-        sender_name = lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or "Growth Team"
-        sender_title = lead_data.get("sender_title") or "Solutions Specialist"
-        sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or "Enterprise Solutions"
+        primary_gap = lead_data.get("primary_gap") or "optimizing your online presence and client acquisition"
+        industry = (lead_data.get("industry") or lead_data.get("business_type") or "").lower()
 
-        subject = template["subject"].format(
-            company_name=company_name,
-            contact_person=contact_person,
-            city=city,
-            primary_gap=primary_gap,
-            sender_name=sender_name,
-            sender_title=sender_title,
-            sender_company=sender_company
-        )
+        # 1. Dynamic Persona Rotation from Admin Pool
+        personas = lead_data.get("personas") or []
+        if personas:
+            p = personas[hash(company_name) % len(personas)]
+            sender_name = p.get("name") if isinstance(p, dict) else getattr(p, "name", "Growth Team")
+            sender_title = p.get("title") if isinstance(p, dict) else getattr(p, "title", "Solutions Specialist")
+            sender_company = p.get("company") if isinstance(p, dict) else getattr(p, "company", os.getenv("COMPANY_NAME", "Enterprise Solutions"))
+        else:
+            sender_name = lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or "Growth Team"
+            sender_title = lead_data.get("sender_title") or "Solutions Specialist"
+            sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or "Enterprise Solutions"
 
-        body = template["body"].format(
-            company_name=company_name,
-            contact_person=contact_person,
-            city=city,
-            primary_gap=primary_gap,
-            sender_name=sender_name,
-            sender_title=sender_title,
-            sender_company=sender_company
-        )
+        # 2. Check if Custom Global Email Template from Admin Panel is provided
+        custom_tpl = lead_data.get("custom_template")
+        if custom_tpl and step == 1:
+            subj = custom_tpl.get("subject") if isinstance(custom_tpl, dict) else getattr(custom_tpl, "subject", "")
+            bdy = custom_tpl.get("body") if isinstance(custom_tpl, dict) else getattr(custom_tpl, "body", "")
+            
+            sig_block = f"{sender_name}\n{sender_title}\n{sender_company}"
+            replacements = {
+                "{{company_name}}": company_name,
+                "{{business_name}}": company_name,
+                "{{contact_person}}": contact_person,
+                "{{location}}": city,
+                "{{address}}": city,
+                "{{website}}": lead_data.get("website") or "",
+                "{{domain}}": lead_data.get("website") or "",
+                "{{phone}}": lead_data.get("phone") or "",
+                "{{primary_gap}}": f" ({primary_gap})" if primary_gap else "",
+                "{{signature}}": sig_block,
+                "{{sender_name}}": sender_name,
+                "{{sender_title}}": sender_title,
+                "{{sender_company}}": sender_company,
+                "{company_name}": company_name,
+                "{contact_person}": contact_person,
+                "{city}": city,
+                "{primary_gap}": primary_gap,
+                "{sender_name}": sender_name,
+                "{sender_title}": sender_title,
+                "{sender_company}": sender_company,
+            }
+            for tag, val in replacements.items():
+                subj = subj.replace(tag, str(val))
+                bdy = bdy.replace(tag, str(val))
+            return subj, bdy
+
+        # 3. Industry-Specific Adaptive Value Propositions (Fallback/Auto-AI mode)
+        if any(w in industry for w in ["dental", "clinic", "health", "medical", "doctor", "care"]):
+            value_pitch = "increase direct patient bookings and modernize your digital inquiry capture"
+            call_to_action = f"preview the patient acquisition audit we prepared specifically for {company_name}"
+        elif any(w in industry for w in ["real estate", "property", "developer", "realty", "builder"]):
+            value_pitch = "capture high-ticket property buyers and instantly qualify inquiry leads"
+            call_to_action = f"see the tailored property buyer funnel recommendations for {company_name}"
+        elif any(w in industry for w in ["restaurant", "cafe", "food", "dining", "catering"]):
+            value_pitch = "drive direct table reservations and WhatsApp customer inquiries without intermediary commissions"
+            call_to_action = f"check out the digital reservation flow we modeled for {company_name}"
+        elif any(w in industry for w in ["roofing", "contractor", "plumbing", "hvac", "solar", "construction"]):
+            value_pitch = "convert local emergency searchers into high-margin estimate requests"
+            call_to_action = f"see the estimate capture analysis we put together for {company_name}"
+        elif any(w in industry for w in ["law", "legal", "attorney", "accounting", "consulting"]):
+            value_pitch = "enhance client trust and capture premium retainer consultations"
+            call_to_action = f"review the client intake optimization audit for {company_name}"
+        else:
+            value_pitch = "resolve key conversion bottlenecks and significantly increase your monthly inbound client inquiries"
+            call_to_action = f"see the free growth audit report we prepared for {company_name}"
+
+        # 3. Generate Multi-Step Sequence Copy
+        if step == 2:
+            subject = f"Following up: Growth opportunity for {company_name}"
+            body = (
+                f"Hi {contact_person},\n\n"
+                f"Just following up on my previous note regarding {company_name}. I know you're busy managing operations in {city}.\n\n"
+                f"Did you have a chance to review our observation regarding {primary_gap}?\n\n"
+                f"We help businesses in your space {value_pitch}. Happy to email over a concise 1-page summary if that's more convenient.\n\n"
+                f"Best regards,\n\n"
+                f"{sender_name}\n"
+                f"{sender_title}\n"
+                f"{sender_company}"
+            )
+        elif step == 3:
+            subject = f"Permission to close your file, {contact_person}?"
+            body = (
+                f"Hi {contact_person},\n\n"
+                f"I haven't heard back, so I assume addressing {primary_gap} isn't an active priority for {company_name} right now.\n\n"
+                f"I won't take up any more of your time. If you ever want to explore modernizing this in the future to {value_pitch}, feel free to reach out anytime.\n\n"
+                f"Wishing {company_name} continued success!\n\n"
+                f"Warm regards,\n\n"
+                f"{sender_name}\n"
+                f"{sender_title}\n"
+                f"{sender_company}"
+            )
+        else:
+            # Step 1: Initial Strategic Pitch
+            subject = f"Quick question regarding {company_name} ({city})"
+            body = (
+                f"Hi {contact_person},\n\n"
+                f"I was researching established businesses in {city} and came across {company_name}.\n\n"
+                f"While reviewing your digital touchpoints online, I noticed a key opportunity regarding {primary_gap}.\n\n"
+                f"We recently helped similar businesses in your industry {value_pitch} by over 30% within 48 hours.\n\n"
+                f"Would you be open to a brief 3-minute chat this week to {call_to_action}?\n\n"
+                f"Best regards,\n\n"
+                f"{sender_name}\n"
+                f"{sender_title}\n"
+                f"{sender_company}"
+            )
 
         return subject, body
 

@@ -52,21 +52,40 @@ async def dispatch_pending_outreach(force_live: bool = False):
 
         print(f"[+] Found {len(ready_leads)} leads ready for outreach.")
 
+        # Fetch active sender personas and custom global template from database for round-robin rotation
+        from app.models.email_template import PersonaSignature, EmailTemplate
+        p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
+        p_res = await session.execute(p_stmt)
+        active_personas = [
+            {"name": p.name, "title": p.title, "company": p.company}
+            for p in p_res.scalars().all()
+        ]
+
+        t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
+        t_res = await session.execute(t_stmt)
+        active_tpl = t_res.scalar_one_or_none()
+
         dispatched_count = 0
         failed_count = 0
 
-        for lead in ready_leads:
+        for idx, lead in enumerate(ready_leads):
             biz = lead.business
-            recipient_email = biz.email or "softvence.jamil@gmail.com"
+            if not biz or not biz.email:
+                continue
+            recipient_email = biz.email.strip()
 
-            # Render email
+            # Render email with dynamic auto-rotating persona signature and global template
             subject, body = OutreachEngine.render_email(
                 step=1,
                 lead_data={
                     "company_name": biz.canonical_name,
                     "contact_person": biz.contact_person or "Executive",
-                    "city": biz.address or "Dhaka",
-                    "primary_gap": lead.primary_gap_summary
+                    "city": biz.address or "",
+                    "website": getattr(biz, "domain", ""),
+                    "industry": getattr(biz, "business_type", ""),
+                    "primary_gap": lead.primary_gap_summary,
+                    "personas": active_personas,
+                    "custom_template": active_tpl
                 }
             )
 

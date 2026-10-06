@@ -204,14 +204,17 @@ async def dispatch_outreach_queue(
 
     for lead in ready_leads:
         biz = lead.business
-        recipient = biz.email or "softvence.jamil@gmail.com"
+        if not biz or not biz.email:
+            continue
+        recipient = biz.email.strip()
 
         subject, body = OutreachEngine.render_email(
             step=1,
             lead_data={
                 "company_name": biz.canonical_name,
                 "contact_person": biz.contact_person or "Executive",
-                "city": biz.address or "Dhaka",
+                "city": biz.address or "",
+                "industry": getattr(biz, "business_type", ""),
                 "primary_gap": lead.primary_gap_summary
             }
         )
