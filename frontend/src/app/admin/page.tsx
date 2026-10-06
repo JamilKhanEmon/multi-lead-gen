@@ -1769,6 +1769,9 @@ export default function AdminPortalPage() {
               </div>
             </div>
           </form>
+        </div>
+      )}
+
       {/* ========================================================================= */}
       {/* TAB 4: MULTI-SMTP 20X INBOXES & PERSONA SIGNATURES LIVE MONITOR           */}
       {/* ========================================================================= */}
