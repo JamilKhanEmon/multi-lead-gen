@@ -1378,6 +1378,21 @@ export async function fetchInboxMonitorStats(): Promise<{
   return res.json();
 }
 
+export async function simulateLeadReply(leadId: string, replyText: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/leads/${leadId}/simulate-reply`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ reply_text: replyText }),
+  });
+  if (!res.ok) throw new Error("Failed to simulate reply");
+  return res.json();
+}
+
+
 
 
 
