@@ -163,13 +163,26 @@ async def update_campaign(
     return campaign
 
 
+async def _bg_run_campaign(campaign_id: uuid.UUID):
+    from app.db.session import AsyncSessionLocal
+    async with AsyncSessionLocal() as session:
+        stmt = select(AutopilotCampaign).where(AutopilotCampaign.id == campaign_id)
+        res = await session.execute(stmt)
+        camp = res.scalar_one_or_none()
+        if camp:
+            try:
+                await AutopilotRunner.run_campaign_batch(db=session, campaign=camp, batch_size=15)
+            except Exception as e:
+                pass
+
+
 @router.post("/campaigns/{campaign_id}/run-now")
 async def trigger_campaign_run(
     campaign_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Trigger an immediate batch discovery and verification run for this campaign."""
+    """Trigger an immediate batch discovery and verification run for this campaign in background."""
     check_autopilot_permission(current_user, "can_run_autopilot_cycle")
     stmt = select(AutopilotCampaign).where(AutopilotCampaign.id == campaign_id)
     res = await db.execute(stmt)
@@ -177,12 +190,19 @@ async def trigger_campaign_run(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    result = await AutopilotRunner.run_campaign_batch(
-        db=db,
-        campaign=campaign,
-        batch_size=15
-    )
-    return result
+    campaign.status = "RUNNING"
+    await db.commit()
+
+    # Launch in decoupled background task so navigating away or closing browser NEVER cancels it
+    import asyncio
+    asyncio.create_task(_bg_run_campaign(campaign_id))
+
+    return {
+        "campaign_id": str(campaign.id),
+        "status": "RUNNING",
+        "sub_cities_processed": campaign.sub_cities,
+        "message": f"Autonomous discovery for '{campaign.name}' launched in background."
+    }
 
 
 @router.post("/dispatch-queue")

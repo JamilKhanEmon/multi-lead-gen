@@ -183,6 +183,54 @@ async def autonomous_outreach_scheduler():
             await asyncio.sleep(60)
 
 
+async def autonomous_campaign_discovery_loop():
+    """
+    Continuous 24/7 background scheduler for active Autopilot campaigns.
+    Automatically checks every 15 minutes for active campaigns and discovers new leads across all sub-cities.
+    Runs entirely decoupled from frontend browser session.
+    """
+    from app.engine.autopilot_runner import AutopilotRunner
+    from app.models.autopilot import AutopilotCampaign
+    from app.db.session import AsyncSessionLocal
+    from sqlalchemy import select
+    from datetime import datetime, timezone, timedelta
+
+    logger.info("Started Autonomous Continuous Campaign Discovery Daemon.")
+    await asyncio.sleep(60)  # Initial grace delay after boot
+
+    while True:
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(AutopilotCampaign).where(
+                    AutopilotCampaign.is_active == True,
+                    AutopilotCampaign.status == "IDLE"
+                )
+                res = await session.execute(stmt)
+                active_campaigns = res.scalars().all()
+
+                for camp in active_campaigns:
+                    # Run if never run, or if last run was > 3 hours ago
+                    should_run = not camp.last_run_at or (datetime.now(timezone.utc) - camp.last_run_at) > timedelta(hours=3)
+                    if should_run:
+                        logger.info(f"[AUTONOMOUS DISCOVERY DAEMON] Scheduled run starting for campaign '{camp.name}'...")
+                        try:
+                            await AutopilotRunner.run_campaign_batch(
+                                db=session,
+                                campaign=camp,
+                                batch_size=15
+                            )
+                        except Exception as ce:
+                            logger.error(f"[AUTONOMOUS DISCOVERY DAEMON] Error running '{camp.name}': {ce}")
+
+            # Wait 15 minutes before checking next active schedule
+            await asyncio.sleep(900)
+        except asyncio.CancelledError:
+            break
+        except Exception as err:
+            logger.error(f"[AUTONOMOUS DISCOVERY DAEMON] Daemon error: {err}")
+            await asyncio.sleep(120)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle management."""
@@ -239,9 +287,11 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Database table initialization warning: {e}")
     listener_task = asyncio.create_task(redis_event_listener())
     outreach_daemon_task = asyncio.create_task(autonomous_outreach_scheduler())
+    discovery_daemon_task = asyncio.create_task(autonomous_campaign_discovery_loop())
     yield
     listener_task.cancel()
     outreach_daemon_task.cancel()
+    discovery_daemon_task.cancel()
     logger.info("Shutdown complete.")
 
 
