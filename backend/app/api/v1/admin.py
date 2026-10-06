@@ -346,3 +346,37 @@ async def preview_email_template(
         "signature_block": sig,
     }
 
+
+@router.get("/inbox-monitor")
+async def get_inbox_monitor_stats(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Returns active SMTP inboxes status, daily limits, sent counts, and signature rotation pool."""
+    from app.engine.outreach_engine import OutreachEngine
+    inboxes = OutreachEngine.get_active_smtp_inboxes()
+    inbox_list = []
+    
+    for ib in inboxes:
+        ib_id = ib["id"]
+        sent_today = OutreachEngine.INBOX_STATS.get(ib_id, 0)
+        inbox_list.append({
+            "id": ib_id,
+            "host": ib["host"],
+            "port": ib["port"],
+            "user": ib["user"],
+            "from_email": ib["from_email"],
+            "from_name": ib["from_name"],
+            "daily_limit": ib.get("daily_limit", 30),
+            "sent_today": sent_today,
+            "remaining": max(0, ib.get("daily_limit", 30) - sent_today),
+            "status": "HEALTHY" if sent_today < ib.get("daily_limit", 30) else "DAILY_CAP_REACHED"
+        })
+
+    return {
+        "total_inboxes_configured": len(inbox_list),
+        "inboxes": inbox_list,
+        "persona_signatures": OutreachEngine.PERSONA_SIGNATURES,
+    }
+
+

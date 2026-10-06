@@ -336,40 +336,57 @@ class AutopilotRunner:
 
                 all_added_leads.append(lead)
 
-                # If auto_mail_enabled and lead has an email, dispatch Step 1 email immediately!
+                # Autonomous Campaign Mode Logic:
+                # Mode A: Store Only (auto_mail_enabled = False) -> Store lead with full audit data, zero emails dispatched.
+                # Mode B: Auto-Outreach (auto_mail_enabled = True) -> Send strictly within target country office hours.
                 if campaign.auto_mail_enabled and has_email and resolved_email:
-                    subject, body = OutreachEngine.render_email(
-                        step=1,
-                        lead_data={
-                            "company_name": biz.canonical_name,
-                            "contact_person": biz.contact_person,
-                            "city": target_city_clean,
-                            "primary_gap": primary_gap
-                        }
+                    is_office_hrs, hrs_note = OutreachEngine.is_within_target_business_hours(
+                        lat=cand.get("latitude"),
+                        lon=cand.get("longitude"),
+                        country=campaign.country,
+                        city=target_city_clean
                     )
-                    success, note = await OutreachEngine.dispatch_smtp_email(
-                        recipient_email=resolved_email,
-                        subject=subject,
-                        body=body,
-                        dry_run=True
-                    )
-                    if success:
-                        lead.outreach_status = "SENT"
-                        lead.followup_step = 1
-                        lead.last_contacted_at = datetime.now(timezone.utc)
-                        total_dispatched_count += 1
-
-                        outreach_log = EmailOutreachLog(
-                            lead_id=lead.id,
-                            campaign_id=campaign.id,
+                    
+                    if is_office_hrs:
+                        subject, body = OutreachEngine.render_email(
                             step=1,
+                            lead_data={
+                                "company_name": biz.canonical_name,
+                                "contact_person": biz.contact_person,
+                                "city": target_city_clean,
+                                "primary_gap": primary_gap
+                            }
+                        )
+                        success, note = await OutreachEngine.dispatch_smtp_email(
                             recipient_email=resolved_email,
                             subject=subject,
-                            body_snippet=body[:300],
-                            status="SENT",
-                            sent_at=datetime.now(timezone.utc)
+                            body=body,
+                            dry_run=False
                         )
-                        db.add(outreach_log)
+                        if success:
+                            lead.outreach_status = "SENT"
+                            lead.followup_step = 1
+                            lead.last_contacted_at = datetime.now(timezone.utc)
+                            total_dispatched_count += 1
+
+                            outreach_log = EmailOutreachLog(
+                                lead_id=lead.id,
+                                campaign_id=campaign.id,
+                                step=1,
+                                recipient_email=resolved_email,
+                                subject=subject,
+                                body_snippet=body[:300],
+                                status="SENT",
+                                sent_at=datetime.now(timezone.utc)
+                            )
+                            db.add(outreach_log)
+                    else:
+                        lead.outreach_status = "READY_FOR_OUTREACH"
+                        lead.verification_notes = f"Queued for target local office hours ({hrs_note})"
+                        logger.info(f"[AUTOPILOT OUTREACH QUEUED] {biz.canonical_name} ({resolved_email}) -> {hrs_note}")
+                elif not campaign.auto_mail_enabled:
+                    lead.outreach_status = "COLLECTED"
+                    lead.verification_notes = "Data Collector Mode: Lead and audit preserved without automated outreach."
 
         # Update campaign stats
         campaign.total_leads_found += len(all_added_leads)

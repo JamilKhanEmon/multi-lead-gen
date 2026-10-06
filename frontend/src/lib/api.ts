@@ -1349,19 +1349,35 @@ export async function markLeadHotDeal(leadId: string): Promise<any> {
   return res.json();
 }
 
-export async function simulateLeadReply(leadId: string, replyText: string): Promise<any> {
+export async function fetchInboxMonitorStats(): Promise<{
+  total_inboxes_configured: number;
+  inboxes: Array<{
+    id: number;
+    host: string;
+    port: number;
+    user: string;
+    from_email: string;
+    from_name: string;
+    daily_limit: number;
+    sent_today: number;
+    remaining: number;
+    status: string;
+  }>;
+  persona_signatures: Array<{
+    name: string;
+    title: string;
+    company: string;
+  }>;
+}> {
   const token = getStoredToken();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}/autopilot/leads/${leadId}/simulate-reply`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ reply_text: replyText }),
-  });
-  if (!res.ok) throw new Error("Failed to simulate reply");
+  const res = await fetch(`${API_BASE}/admin/inbox-monitor`, { headers });
+  if (!res.ok) throw new Error("Failed to fetch inbox monitor stats");
   return res.json();
 }
+
 
 
 

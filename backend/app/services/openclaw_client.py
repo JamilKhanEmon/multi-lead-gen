@@ -1347,14 +1347,61 @@ class LiveResearchEngine:
         if meta_m:
             extracted_meta_desc = meta_m.group(1).strip()
 
-        h1_m = re.search(r'<h1[^>]*>(.*?)</h1>', html, re.IGNORECASE | re.DOTALL)
-        if h1_m:
-            extracted_heading = re.sub(r'<[^>]+>', '', h1_m.group(1)).strip()
+        # Advanced Check 11: Outdated Website Copyright Year
+        copyright_year = None
+        c_match = re.search(r'(?:©|&copy;|copyright|all rights reserved)[^0-9]{0,20}(?:20\d\d\s*[-–/]\s*)?(20[12]\d)', html_lower)
+        if c_match:
+            try:
+                copyright_year = int(c_match.group(1))
+            except Exception:
+                pass
+
+        # Build Structured Weakness List
+        detected_weaknesses = []
+        if not mobile_responsive:
+            detected_weaknesses.append("Website layout breaks or lacks viewport optimization on mobile devices")
+        if not has_online_booking:
+            detected_weaknesses.append("Missing automated online appointment/quote booking system")
+        if not has_whatsapp:
+            detected_weaknesses.append("Missing click-to-WhatsApp instant conversion widget")
+        if not has_meta_pixel:
+            detected_weaknesses.append("Missing Meta/Google Ads retargeting pixel for visitor recapture")
+        if not has_contact_form:
+            detected_weaknesses.append("Missing direct lead capture/inquiry form")
+        if not has_live_chat and not has_ai_chatbot:
+            detected_weaknesses.append("Missing 24/7 live chat or AI customer assistant")
+        if not has_ssl_security:
+            detected_weaknesses.append("Missing SSL HTTPS security encryption")
+        if not extracted_meta_desc:
+            detected_weaknesses.append("Missing SEO meta description tags for Google search ranking")
+        if copyright_year and copyright_year < 2024:
+            detected_weaknesses.append(f"Outdated website layout & copyright ({copyright_year})")
+        if broken_links_count > 0:
+            detected_weaknesses.append(f"{broken_links_count} broken link references detected")
+
+        # Generate Human-Friendly Outreach Pitch for Primary Gap
+        weakness_pitch = ""
+        if not mobile_responsive and not has_online_booking:
+            weakness_pitch = "the mobile user experience and the lack of an instant online booking form"
+        elif not has_meta_pixel and not has_whatsapp:
+            weakness_pitch = "visitor retargeting tracking and instant WhatsApp engagement"
+        elif not has_online_booking:
+            weakness_pitch = "automating your online quote & appointment booking flow"
+        elif not has_whatsapp:
+            weakness_pitch = "adding a direct WhatsApp chat option for rapid mobile client inquiries"
+        elif not has_meta_pixel:
+            weakness_pitch = "installing Meta retargeting pixels to re-engage past website visitors"
+        elif copyright_year and copyright_year < 2024:
+            weakness_pitch = "modernizing your website design to increase trust and inbound conversion rates"
+        elif detected_weaknesses:
+            weakness_pitch = detected_weaknesses[0].lower()
+        else:
+            weakness_pitch = "scaling your online visibility and inbound client conversion pipeline"
 
         logger.info(
             f"LiveResearchEngine: Audited {url} ({visited_pages} pages) -> "
             f"Title: '{extracted_page_title[:40]}', Phone: {extracted_phone}, Email: {extracted_email}, "
-            f"WhatsApp: {has_whatsapp}, LiveChat: {has_live_chat}, AIChatbot: {has_ai_chatbot}, Automation: {has_automation_workflow}, CMS: {cms_platform}, Meta Pixel: {has_meta_pixel}, Lead: {contact_person} ({contact_title})"
+            f"WhatsApp: {has_whatsapp}, LiveChat: {has_live_chat}, AIChatbot: {has_ai_chatbot}, Automation: {has_automation_workflow}, CMS: {cms_platform}, Meta Pixel: {has_meta_pixel}, Lead: {contact_person} ({contact_title}), Weaknesses: {len(detected_weaknesses)}"
         )
 
         return {
@@ -1377,6 +1424,7 @@ class LiveResearchEngine:
             "has_automation_workflow": has_automation_workflow,
             "has_h1_tag": bool(extracted_heading),
             "has_meta_description": bool(extracted_meta_desc),
+            "copyright_year": copyright_year,
             "broken_links_count": broken_links_count,
             "extracted_phone": extracted_phone,
             "extracted_email": extracted_email,
@@ -1390,6 +1438,8 @@ class LiveResearchEngine:
             "contact_person": contact_person,
             "contact_title": contact_title,
             "rendered_by": rendered_by,
+            "detected_weaknesses": detected_weaknesses,
+            "weakness_pitch": weakness_pitch,
         }
 
     @classmethod

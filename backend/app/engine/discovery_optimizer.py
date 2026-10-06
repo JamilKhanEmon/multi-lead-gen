@@ -252,9 +252,28 @@ class DiscoveryOptimizer:
             except Exception as e:
                 logger.debug(f"Dynamic AI semantic verification notice: {e}")
 
-        # 5. Non-ambiguous root token check (for single-word queries like 'plumber', 'electrician')
+        # 5. Semantic Industry Synonym Mapping (Ensures valid entities like Realtors, Clinics, Contractors never get false negative rejections)
+        INDUSTRY_SYNONYMS = {
+            "real estate": ["realtor", "realty", "property", "properties", "apartment", "apartments", "housing", "developer", "builders", "flat", "land", "estate", "brokerage", "leasing"],
+            "real_estate": ["realtor", "realty", "property", "properties", "apartment", "apartments", "housing", "developer", "builders", "flat", "land", "estate", "brokerage", "leasing"],
+            "healthcare": ["clinic", "hospital", "doctor", "dental", "dentist", "medical", "physician", "health", "care", "surgery", "therapy"],
+            "legal": ["lawyer", "attorney", "law firm", "advocate", "legal", "solicitor", "counsel", "barrister"],
+            "construction": ["contractor", "builder", "construction", "architecture", "architect", "engineering", "renovation", "interior"],
+            "restaurant": ["cafe", "dining", "eatery", "bistro", "bakery", "food", "kitchen", "grill"],
+            "fitness": ["gym", "fitness", "crossfit", "workout", "trainer", "yoga", "pilates"],
+            "technology": ["software", "tech", "it solutions", "agency", "developer", "digital", "saas", "cloud", "consulting"]
+        }
+        
+        # Check synonyms if applicable
+        for ind_key, syns in INDUSTRY_SYNONYMS.items():
+            if ind_key in ind_clean or ind_clean in ind_key:
+                for syn in syns:
+                    if len(syn) >= 4 and syn in full_text:
+                        return True, f"Industry synonym verified: '{syn}'"
+
+        # 6. Non-ambiguous root token check (for single-word queries like 'plumber', 'electrician')
         AMBIGUOUS_TOKENS = {
-            "real", "estate", "care", "digital", "smart", "home", "prime", "star", "one", 
+            "care", "digital", "smart", "home", "prime", "star", "one", 
             "new", "best", "top", "general", "global", "express", "direct", "city", "center",
             "hub", "point", "group", "life", "first", "pro", "master", "tech", "web", "clean"
         }
@@ -265,6 +284,10 @@ class DiscoveryOptimizer:
             stem = tok[:-1] if len(tok) > 4 and tok.endswith('s') else tok
             if tok in full_text or (len(stem) >= 4 and stem in full_text):
                 return True, f"Root industry stem matched: '{tok}'"
+
+        # If business has accessible website and valid contact, default to Review Needed rather than total rejection
+        if domain and (page_title or meta_description):
+            return True, "General commercial relevance"
 
         return False, f"Website content has no semantic connection to target industry '{target_industry}'"
 

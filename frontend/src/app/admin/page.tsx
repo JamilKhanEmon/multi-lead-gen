@@ -49,6 +49,7 @@ import {
   fetchEmailTemplate,
   updateEmailTemplate,
   renderEmailTemplate,
+  fetchInboxMonitorStats,
   AuthUser,
   EmailTemplate,
   DashboardPermissions,
@@ -61,12 +62,34 @@ export default function AdminPortalPage() {
   const [loading, setLoading] = useState(true);
 
   // Active top navigation tab (defaults to Operations Modules)
-  const [activeTab, setActiveTab] = useState<"users" | "modules" | "template">("modules");
+  const [activeTab, setActiveTab] = useState<"users" | "modules" | "template" | "inboxes">("modules");
 
-  const handleSelectTab = (tab: "users" | "modules" | "template") => {
+  const [inboxMonitorData, setInboxMonitorData] = useState<{
+    total_inboxes_configured: number;
+    inboxes: any[];
+    persona_signatures: any[];
+  } | null>(null);
+  const [inboxLoading, setInboxLoading] = useState(false);
+
+  const loadInboxMonitor = async () => {
+    try {
+      setInboxLoading(true);
+      const data = await fetchInboxMonitorStats();
+      setInboxMonitorData(data);
+    } catch (e) {
+      console.warn("Could not load inbox monitor stats:", e);
+    } finally {
+      setInboxLoading(false);
+    }
+  };
+
+  const handleSelectTab = (tab: "users" | "modules" | "template" | "inboxes") => {
     setActiveTab(tab);
     if (typeof window !== "undefined") {
       sessionStorage.setItem("admin_active_tab", tab);
+    }
+    if (tab === "inboxes") {
+      loadInboxMonitor();
     }
   };
 
@@ -618,6 +641,21 @@ export default function AdminPortalPage() {
           >
             <PenTool className="w-4 h-4" />
             <span>Global Email Template</span>
+          </button>
+        )}
+
+        {!isMember && (
+          <button
+            type="button"
+            onClick={() => handleSelectTab("inboxes")}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
+              activeTab === "inboxes"
+                ? "bg-sky-500/20 text-sky-300 border border-sky-500/40 shadow-sm"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+            }`}
+          >
+            <Inbox className="w-4 h-4 text-emerald-400" />
+            <span>Multi-SMTP 20x & Persona Monitor</span>
           </button>
         )}
       </div>
@@ -1731,6 +1769,142 @@ export default function AdminPortalPage() {
               </div>
             </div>
           </form>
+      {/* ========================================================================= */}
+      {/* TAB 4: MULTI-SMTP 20X INBOXES & PERSONA SIGNATURES LIVE MONITOR           */}
+      {/* ========================================================================= */}
+      {activeTab === "inboxes" && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Header Card */}
+          <div className="rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 p-6 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Inbox className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <span>Multi-SMTP 20x Inboxes & Persona Rotation Monitor</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      Anti-Spam Load Balanced
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Live telemetry across up to 20 rotating SMTP sending accounts and 10 executive persona signatures. Enforces 20-30 emails/day cap per inbox.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={loadInboxMonitor}
+                disabled={inboxLoading}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 transition cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${inboxLoading ? "animate-spin" : ""}`} />
+                <span>Refresh Status</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Active Inboxes Table */}
+          <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Configured SMTP Inboxes ({inboxMonitorData?.inboxes.length || 1} / 20 Active)</span>
+              </h4>
+              <span className="text-[11px] text-slate-400">
+                Auto-rotates in round-robin sequence to preserve sender reputation
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-300">
+                <thead className="bg-slate-950/60 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
+                  <tr>
+                    <th className="px-3.5 py-2.5">Inbox ID</th>
+                    <th className="px-3.5 py-2.5">Sender Identity</th>
+                    <th className="px-3.5 py-2.5">Host / Gateway</th>
+                    <th className="px-3.5 py-2.5">Today Sent</th>
+                    <th className="px-3.5 py-2.5">Daily Quota</th>
+                    <th className="px-3.5 py-2.5">Remaining</th>
+                    <th className="px-3.5 py-2.5">Deliverability Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-sans">
+                  {inboxMonitorData && inboxMonitorData.inboxes.length > 0 ? (
+                    inboxMonitorData.inboxes.map((ib) => (
+                      <tr key={ib.id} className="hover:bg-slate-800/30 transition">
+                        <td className="px-3.5 py-3 font-mono font-bold text-sky-400">#{ib.id}</td>
+                        <td className="px-3.5 py-3">
+                          <div className="font-semibold text-slate-200">{ib.from_name}</div>
+                          <div className="text-[11px] font-mono text-slate-400">{ib.from_email}</div>
+                        </td>
+                        <td className="px-3.5 py-3 font-mono text-slate-400">{ib.host}:{ib.port}</td>
+                        <td className="px-3.5 py-3 font-mono text-white font-bold">{ib.sent_today}</td>
+                        <td className="px-3.5 py-3 font-mono text-slate-400">{ib.daily_limit} / day</td>
+                        <td className="px-3.5 py-3 font-mono text-emerald-400 font-bold">{ib.remaining}</td>
+                        <td className="px-3.5 py-3">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${
+                            ib.status === "HEALTHY"
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                              : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                          }`}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                            {ib.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="px-3.5 py-6 text-center text-slate-500 italic">
+                        Loading inbox pool status...
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 10 Persona Signatures Pool */}
+          <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                <Users className="w-4 h-4 text-sky-400" />
+                <span>10 Persona Sender Signatures Pool (Dynamic Rotation)</span>
+              </h4>
+              <span className="text-[11px] text-slate-400">
+                Varied sender signatures prevent algorithmic template spam clustering
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {(inboxMonitorData?.persona_signatures || [
+                { name: "Alex Morgan", title: "Head of Client Growth", company: "Growth Partners Global" },
+                { name: "Sarah Jenkins", title: "Growth Strategy Consultant", company: "ScaleUp Advisory" },
+                { name: "David Miller", title: "Digital Solutions Architect", company: "Apex Digital Labs" },
+                { name: "Emma Vance", title: "Inbound Optimization Lead", company: "Inbound Velocity" },
+                { name: "Michael Chang", title: "Strategic Partnerships Director", company: "NextGen Strategic" },
+                { name: "Rachel Adams", title: "Web Conversion Analyst", company: "MetricFlow Systems" },
+                { name: "James Wilson", title: "Client Acquisition Partner", company: "Ascend Business Advisory" },
+                { name: "Sophia Martinez", title: "Operations & Digital Strategist", company: "Elevate Media Network" },
+                { name: "Daniel Taylor", title: "Conversion Rate Specialist", company: "Growth Engine Labs" },
+                { name: "Olivia Reed", title: "Senior Outreach Strategist", company: "Horizon Strategic Growth" },
+              ]).map((p, idx) => (
+                <div key={idx} className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1 hover:border-slate-700 transition">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-slate-200">{p.name}</span>
+                    <span className="text-[10px] font-mono text-sky-400">Persona #{idx + 1}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400">{p.title}</div>
+                  <div className="text-[10px] font-mono text-slate-500">{p.company}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
