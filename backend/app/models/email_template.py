@@ -53,3 +53,28 @@ class EmailTemplate(Base, UUIDMixin, TimestampMixin):
             parts.append(self.sender_website)
 
         return "\n".join(parts)
+
+
+class SMTPInbox(Base, UUIDMixin, TimestampMixin):
+    """Configurable SMTP Sending Inbox accounts."""
+    __tablename__ = "smtp_inboxes"
+
+    host: Mapped[str] = mapped_column(String(255), nullable=False)
+    port: Mapped[int] = mapped_column(default=587, nullable=False)
+    username: Mapped[str] = mapped_column(String(255), nullable=False)
+    password: Mapped[str] = mapped_column(String(255), nullable=False)
+    from_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    from_name: Mapped[str] = mapped_column(String(150), default="Growth Team", nullable=False)
+    daily_limit: Mapped[int] = mapped_column(default=30, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class PersonaSignature(Base, UUIDMixin, TimestampMixin):
+    """Custom executive persona signatures pool for round-robin rotation."""
+    __tablename__ = "persona_signatures"
+
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    title: Mapped[str] = mapped_column(String(150), nullable=False)
+    company: Mapped[str] = mapped_column(String(150), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+

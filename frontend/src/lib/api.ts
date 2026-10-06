@@ -1349,25 +1349,34 @@ export async function markLeadHotDeal(leadId: string): Promise<any> {
   return res.json();
 }
 
+export interface SMTPInboxItem {
+  id: string;
+  index?: number;
+  host: string;
+  port: number;
+  user?: string;
+  username?: string;
+  from_email: string;
+  from_name: string;
+  daily_limit: number;
+  sent_today: number;
+  remaining: number;
+  is_active: boolean;
+  status: string;
+}
+
+export interface PersonaSignatureItem {
+  id: string;
+  name: string;
+  title: string;
+  company: string;
+  is_active?: boolean;
+}
+
 export async function fetchInboxMonitorStats(): Promise<{
   total_inboxes_configured: number;
-  inboxes: Array<{
-    id: number;
-    host: string;
-    port: number;
-    user: string;
-    from_email: string;
-    from_name: string;
-    daily_limit: number;
-    sent_today: number;
-    remaining: number;
-    status: string;
-  }>;
-  persona_signatures: Array<{
-    name: string;
-    title: string;
-    company: string;
-  }>;
+  inboxes: SMTPInboxItem[];
+  persona_signatures: PersonaSignatureItem[];
 }> {
   const token = getStoredToken();
   const headers: Record<string, string> = {};
@@ -1375,6 +1384,119 @@ export async function fetchInboxMonitorStats(): Promise<{
 
   const res = await fetch(`${API_BASE}/admin/inbox-monitor`, { headers });
   if (!res.ok) throw new Error("Failed to fetch inbox monitor stats");
+  return res.json();
+}
+
+export async function createSMTPInbox(data: {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  from_email: string;
+  from_name: string;
+  daily_limit: number;
+  is_active?: boolean;
+}): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/smtp-inboxes`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to add SMTP Inbox");
+  }
+  return res.json();
+}
+
+export async function deleteSMTPInbox(inboxId: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/smtp-inboxes/${inboxId}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to delete SMTP Inbox");
+  }
+  return res.json();
+}
+
+export async function testSMTPInbox(inboxId: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/smtp-inboxes/${inboxId}/test`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "SMTP Connection Test Failed");
+  }
+  return res.json();
+}
+
+export async function createPersonaSignature(data: {
+  name: string;
+  title: string;
+  company: string;
+  is_active?: boolean;
+}): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/persona-signatures`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to add Persona Signature");
+  }
+  return res.json();
+}
+
+export async function deletePersonaSignature(personaId: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/persona-signatures/${personaId}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to delete Persona Signature");
+  }
+  return res.json();
+}
+
+export async function purgeDatabaseData(target: "rejected_leads" | "search_runs" | "all_leads" | "factory_reset"): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/purge-data`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ target }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to purge database data");
+  }
   return res.json();
 }
 
@@ -1391,6 +1513,7 @@ export async function simulateLeadReply(leadId: string, replyText: string): Prom
   if (!res.ok) throw new Error("Failed to simulate reply");
   return res.json();
 }
+
 
 
 
