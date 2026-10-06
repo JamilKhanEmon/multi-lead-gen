@@ -347,6 +347,52 @@ async def preview_email_template(
     }
 
 
+from pydantic import BaseModel, Field
+from typing import Optional, List
+from app.models.email_template import SMTPInbox, PersonaSignature
+import smtplib
+
+
+class SMTPInboxCreate(BaseModel):
+    host: str
+    port: int = 587
+    username: str
+    password: str
+    from_email: str
+    from_name: str = "Growth Team"
+    daily_limit: int = 30
+    is_active: bool = True
+
+
+class SMTPInboxUpdate(BaseModel):
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    from_email: Optional[str] = None
+    from_name: Optional[str] = None
+    daily_limit: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class PersonaSignatureCreate(BaseModel):
+    name: str
+    title: str
+    company: str
+    is_active: bool = True
+
+
+class PersonaSignatureUpdate(BaseModel):
+    name: Optional[str] = None
+    title: Optional[str] = None
+    company: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class PurgeRequest(BaseModel):
+    target: str = Field(..., description="rejected_leads | search_runs | all_leads | factory_reset")
+
+
 @router.get("/inbox-monitor")
 async def get_inbox_monitor_stats(
     db: AsyncSession = Depends(get_db),
@@ -354,29 +400,306 @@ async def get_inbox_monitor_stats(
 ):
     """Returns active SMTP inboxes status, daily limits, sent counts, and signature rotation pool."""
     from app.engine.outreach_engine import OutreachEngine
-    inboxes = OutreachEngine.get_active_smtp_inboxes()
-    inbox_list = []
     
-    for ib in inboxes:
-        ib_id = ib["id"]
-        sent_today = OutreachEngine.INBOX_STATS.get(ib_id, 0)
-        inbox_list.append({
-            "id": ib_id,
-            "host": ib["host"],
-            "port": ib["port"],
-            "user": ib["user"],
-            "from_email": ib["from_email"],
-            "from_name": ib["from_name"],
-            "daily_limit": ib.get("daily_limit", 30),
-            "sent_today": sent_today,
-            "remaining": max(0, ib.get("daily_limit", 30) - sent_today),
-            "status": "HEALTHY" if sent_today < ib.get("daily_limit", 30) else "DAILY_CAP_REACHED"
-        })
+    # 1. Fetch from Database
+    db_inboxes_stmt = select(SMTPInbox).order_by(SMTPInbox.created_at)
+    res = await db.execute(db_inboxes_stmt)
+    db_inboxes = res.scalars().all()
+    
+    inbox_list = []
+    if db_inboxes:
+        for idx, ib in enumerate(db_inboxes):
+            sent_today = OutreachEngine.INBOX_STATS.get(str(ib.id), 0)
+            inbox_list.append({
+                "id": str(ib.id),
+                "index": idx + 1,
+                "host": ib.host,
+                "port": ib.port,
+                "user": ib.username,
+                "from_email": ib.from_email,
+                "from_name": ib.from_name,
+                "daily_limit": ib.daily_limit,
+                "sent_today": sent_today,
+                "remaining": max(0, ib.daily_limit - sent_today),
+                "is_active": ib.is_active,
+                "status": "HEALTHY" if sent_today < ib.daily_limit else "DAILY_CAP_REACHED"
+            })
+    else:
+        # Fallback to ENV inboxes
+        env_inboxes = OutreachEngine.get_active_smtp_inboxes()
+        for ib in env_inboxes:
+            ib_id = ib["id"]
+            sent_today = OutreachEngine.INBOX_STATS.get(str(ib_id), 0)
+            inbox_list.append({
+                "id": str(ib_id),
+                "index": ib_id,
+                "host": ib["host"],
+                "port": ib["port"],
+                "user": ib["user"],
+                "from_email": ib["from_email"],
+                "from_name": ib["from_name"],
+                "daily_limit": ib.get("daily_limit", 30),
+                "sent_today": sent_today,
+                "remaining": max(0, ib.get("daily_limit", 30) - sent_today),
+                "is_active": True,
+                "status": "HEALTHY" if sent_today < ib.get("daily_limit", 30) else "DAILY_CAP_REACHED"
+            })
+
+    # 2. Fetch Personas from Database
+    db_personas_stmt = select(PersonaSignature).order_by(PersonaSignature.created_at)
+    p_res = await db.execute(db_personas_stmt)
+    db_personas = p_res.scalars().all()
+    
+    persona_list = []
+    if db_personas:
+        for p in db_personas:
+            persona_list.append({
+                "id": str(p.id),
+                "name": p.name,
+                "title": p.title,
+                "company": p.company,
+                "is_active": p.is_active,
+            })
+    else:
+        persona_list = [
+            {"id": f"default_{idx+1}", "name": p["name"], "title": p["title"], "company": p["company"], "is_active": True}
+            for idx, p in enumerate(OutreachEngine.PERSONA_SIGNATURES)
+        ]
 
     return {
         "total_inboxes_configured": len(inbox_list),
         "inboxes": inbox_list,
-        "persona_signatures": OutreachEngine.PERSONA_SIGNATURES,
+        "persona_signatures": persona_list,
     }
+
+
+# ==============================================================================
+# SMTP Inboxes CRUD
+# ==============================================================================
+@router.post("/smtp-inboxes")
+async def create_smtp_inbox(
+    data: SMTPInboxCreate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Add a new SMTP Sending Inbox."""
+    inbox = SMTPInbox(
+        host=data.host,
+        port=data.port,
+        username=data.username,
+        password=data.password,
+        from_email=data.from_email,
+        from_name=data.from_name,
+        daily_limit=data.daily_limit,
+        is_active=data.is_active,
+    )
+    db.add(inbox)
+    await db.commit()
+    await db.refresh(inbox)
+    return {"status": "SUCCESS", "id": str(inbox.id), "message": "SMTP Inbox added successfully"}
+
+
+@router.put("/smtp-inboxes/{inbox_id}")
+async def update_smtp_inbox(
+    inbox_id: uuid.UUID,
+    data: SMTPInboxUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Update an existing SMTP Sending Inbox."""
+    stmt = select(SMTPInbox).where(SMTPInbox.id == inbox_id)
+    res = await db.execute(stmt)
+    inbox = res.scalar_one_or_none()
+    if not inbox:
+        raise HTTPException(status_code=404, detail="SMTP Inbox not found")
+
+    for key, val in data.model_dump(exclude_unset=True).items():
+        setattr(inbox, key, val)
+
+    await db.commit()
+    await db.refresh(inbox)
+    return {"status": "SUCCESS", "message": "SMTP Inbox updated"}
+
+
+@router.delete("/smtp-inboxes/{inbox_id}")
+async def delete_smtp_inbox(
+    inbox_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Delete an SMTP Sending Inbox."""
+    stmt = select(SMTPInbox).where(SMTPInbox.id == inbox_id)
+    res = await db.execute(stmt)
+    inbox = res.scalar_one_or_none()
+    if not inbox:
+        raise HTTPException(status_code=404, detail="SMTP Inbox not found")
+
+    await db.delete(inbox)
+    await db.commit()
+    return {"status": "SUCCESS", "message": "SMTP Inbox removed"}
+
+
+@router.post("/smtp-inboxes/{inbox_id}/test")
+async def test_smtp_inbox(
+    inbox_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Test SMTP connection credentials."""
+    stmt = select(SMTPInbox).where(SMTPInbox.id == inbox_id)
+    res = await db.execute(stmt)
+    inbox = res.scalar_one_or_none()
+    if not inbox:
+        raise HTTPException(status_code=404, detail="SMTP Inbox not found")
+
+    import asyncio
+    loop = asyncio.get_running_loop()
+
+    def _test():
+        try:
+            if inbox.port == 465:
+                server = smtplib.SMTP_SSL(inbox.host, inbox.port, timeout=10)
+            else:
+                server = smtplib.SMTP(inbox.host, inbox.port, timeout=10)
+                server.starttls()
+
+            if inbox.username and inbox.password:
+                server.login(inbox.username, inbox.password)
+            server.quit()
+            return True, "SMTP connection and authentication successful!"
+        except Exception as e:
+            return False, str(e)
+
+    ok, msg = await loop.run_in_executor(None, _test)
+    if not ok:
+        raise HTTPException(status_code=400, detail=f"SMTP Connection Failed: {msg}")
+    return {"status": "SUCCESS", "message": msg}
+
+
+# ==============================================================================
+# Persona Signatures CRUD
+# ==============================================================================
+@router.post("/persona-signatures")
+async def create_persona_signature(
+    data: PersonaSignatureCreate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Add a new Persona Signature."""
+    persona = PersonaSignature(
+        name=data.name,
+        title=data.title,
+        company=data.company,
+        is_active=data.is_active,
+    )
+    db.add(persona)
+    await db.commit()
+    await db.refresh(persona)
+    return {"status": "SUCCESS", "id": str(persona.id), "message": "Persona Signature created"}
+
+
+@router.put("/persona-signatures/{persona_id}")
+async def update_persona_signature(
+    persona_id: uuid.UUID,
+    data: PersonaSignatureUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Update a Persona Signature."""
+    stmt = select(PersonaSignature).where(PersonaSignature.id == persona_id)
+    res = await db.execute(stmt)
+    persona = res.scalar_one_or_none()
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    for key, val in data.model_dump(exclude_unset=True).items():
+        setattr(persona, key, val)
+
+    await db.commit()
+    await db.refresh(persona)
+    return {"status": "SUCCESS", "message": "Persona updated"}
+
+
+@router.delete("/persona-signatures/{persona_id}")
+async def delete_persona_signature(
+    persona_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Delete a Persona Signature."""
+    stmt = select(PersonaSignature).where(PersonaSignature.id == persona_id)
+    res = await db.execute(stmt)
+    persona = res.scalar_one_or_none()
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    await db.delete(persona)
+    await db.commit()
+    return {"status": "SUCCESS", "message": "Persona deleted"}
+
+
+# ==============================================================================
+# Database Purge Management (Super Admin Exclusive)
+# ==============================================================================
+@router.post("/purge-data")
+async def purge_database_data(
+    req: PurgeRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Purges selected categories or performs complete database reset."""
+    if admin_user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="Only Super Administrator can perform database purges.")
+
+    from sqlalchemy import delete
+    from app.models.lead import Lead, LeadScore, LeadFeedback
+    from app.models.research import ResearchRun, ResearchJob
+    from app.models.autopilot import EmailOutreachLog, AutopilotCampaign
+    from app.models.business import Business, BusinessLocation
+    from app.models.evidence import Evidence
+    from app.models.service import ServiceMatch
+
+    target = req.target.lower().strip()
+
+    if target == "rejected_leads":
+        stmt = delete(Lead).where(Lead.tier == "Rejected")
+        res = await db.execute(stmt)
+        await db.commit()
+        return {"status": "SUCCESS", "message": f"Purged {res.rowcount} rejected leads."}
+
+    elif target == "search_runs":
+        await db.execute(delete(ResearchJob))
+        res = await db.execute(delete(ResearchRun))
+        await db.commit()
+        return {"status": "SUCCESS", "message": f"Cleared all search runs and history."}
+
+    elif target in ["all_leads", "factory_reset"]:
+        await db.execute(delete(EmailOutreachLog))
+        await db.execute(delete(LeadFeedback))
+        await db.execute(delete(LeadScore))
+        await db.execute(delete(ServiceMatch))
+        await db.execute(delete(Lead))
+        await db.execute(delete(ResearchJob))
+        await db.execute(delete(ResearchRun))
+        await db.execute(delete(AutopilotCampaign))
+        await db.execute(delete(Evidence))
+        await db.execute(delete(BusinessLocation))
+        await db.execute(delete(Business))
+        await db.commit()
+
+        # Also purge redis queues
+        try:
+            r = aioredis.from_url(settings.REDIS_URL)
+            await r.delete("leadgen:tasks")
+            await r.delete("leadgen:events")
+            await r.aclose()
+        except Exception:
+            pass
+
+        return {"status": "SUCCESS", "message": "Database completely purged and reset to clean state."}
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown purge target: {req.target}")
+
 
 

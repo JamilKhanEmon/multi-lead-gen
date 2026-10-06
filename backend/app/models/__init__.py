@@ -11,7 +11,7 @@ from .research import ResearchRun, ResearchJob, SchedulerRun
 from .audit import User, AuditLog, SystemEvent, BenchmarkResult, ModelRun
 from .campaign import MetaCampaign
 from .voice_agent import VoiceKnowledgeBase, VoiceCallQueueItem, VoiceCallLog
-from .email_template import EmailTemplate
+from .email_template import EmailTemplate, SMTPInbox, PersonaSignature
 from .autopilot import AutopilotCampaign, EmailOutreachLog
 
 __all__ = [
@@ -48,5 +48,8 @@ __all__ = [
     "VoiceCallQueueItem",
     "VoiceCallLog",
     "EmailTemplate",
+    "SMTPInbox",
+    "PersonaSignature",
 ]
+
 

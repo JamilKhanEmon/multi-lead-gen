@@ -36,6 +36,12 @@ import {
   XCircle,
   Zap,
   Inbox,
+  Plus,
+  Database,
+  AlertTriangle,
+  Server,
+  Activity,
+  RotateCcw,
 } from "lucide-react";
 import {
   loginUser,
@@ -51,10 +57,18 @@ import {
   updateEmailTemplate,
   renderEmailTemplate,
   fetchInboxMonitorStats,
+  createSMTPInbox,
+  deleteSMTPInbox,
+  testSMTPInbox,
+  createPersonaSignature,
+  deletePersonaSignature,
+  purgeDatabaseData,
   AuthUser,
   EmailTemplate,
   DashboardPermissions,
   hasPermission,
+  SMTPInboxItem,
+  PersonaSignatureItem,
 } from "@/lib/api";
 
 export default function AdminPortalPage() {
@@ -67,10 +81,40 @@ export default function AdminPortalPage() {
 
   const [inboxMonitorData, setInboxMonitorData] = useState<{
     total_inboxes_configured: number;
-    inboxes: any[];
-    persona_signatures: any[];
+    inboxes: SMTPInboxItem[];
+    persona_signatures: PersonaSignatureItem[];
   } | null>(null);
   const [inboxLoading, setInboxLoading] = useState(false);
+
+  // Inbox Modal & Action States
+  const [showAddInboxModal, setShowAddInboxModal] = useState(false);
+  const [inboxForm, setInboxForm] = useState({
+    host: "",
+    port: 587,
+    username: "",
+    password: "",
+    from_email: "",
+    from_name: "Growth Team",
+    daily_limit: 30,
+  });
+  const [inboxSubmitting, setInboxSubmitting] = useState(false);
+  const [testingInboxId, setTestingInboxId] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
+
+  // Persona Modal & Action States
+  const [showAddPersonaModal, setShowAddPersonaModal] = useState(false);
+  const [personaForm, setPersonaForm] = useState({
+    name: "",
+    title: "",
+    company: "",
+  });
+  const [personaSubmitting, setPersonaSubmitting] = useState(false);
+
+  // Purge Modal & Action States
+  const [showPurgeModal, setShowPurgeModal] = useState(false);
+  const [purgeTarget, setPurgeTarget] = useState<"rejected_leads" | "search_runs" | "all_leads" | "factory_reset">("rejected_leads");
+  const [purgeSubmitting, setPurgeSubmitting] = useState(false);
+  const [purgeSuccessMsg, setPurgeSuccessMsg] = useState<string | null>(null);
 
   const loadInboxMonitor = async () => {
     try {
@@ -414,6 +458,117 @@ export default function AdminPortalPage() {
       setTplError(err.message || "Failed to update email template");
     } finally {
       setTplSaving(false);
+    }
+  };
+
+  // SMTP Inboxes Handlers
+  const handleAddInboxSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setInboxSubmitting(true);
+    setUserActionError(null);
+    setUserActionSuccess(null);
+    try {
+      await createSMTPInbox(inboxForm);
+      setUserActionSuccess("SMTP Sending Inbox added successfully!");
+      setShowAddInboxModal(false);
+      setInboxForm({
+        host: "",
+        port: 587,
+        username: "",
+        password: "",
+        from_email: "",
+        from_name: "Growth Team",
+        daily_limit: 30,
+      });
+      await loadInboxMonitor();
+    } catch (err: any) {
+      setUserActionError(err.message || "Failed to add SMTP inbox");
+    } finally {
+      setInboxSubmitting(false);
+    }
+  };
+
+  const handleDeleteInbox = async (inboxId: string) => {
+    if (!confirm("Are you sure you want to remove this SMTP Inbox?")) return;
+    setUserActionError(null);
+    setUserActionSuccess(null);
+    try {
+      await deleteSMTPInbox(inboxId);
+      setUserActionSuccess("SMTP Inbox removed.");
+      await loadInboxMonitor();
+    } catch (err: any) {
+      setUserActionError(err.message || "Failed to remove inbox");
+    }
+  };
+
+  const handleTestInbox = async (inboxId: string) => {
+    setTestingInboxId(inboxId);
+    try {
+      const res = await testSMTPInbox(inboxId);
+      setTestResults((prev) => ({
+        ...prev,
+        [inboxId]: { ok: true, msg: res.message || "Connection Verified!" },
+      }));
+    } catch (err: any) {
+      setTestResults((prev) => ({
+        ...prev,
+        [inboxId]: { ok: false, msg: err.message || "Connection Failed" },
+      }));
+    } finally {
+      setTestingInboxId(null);
+    }
+  };
+
+  // Persona Signatures Handlers
+  const handleAddPersonaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPersonaSubmitting(true);
+    setUserActionError(null);
+    setUserActionSuccess(null);
+    try {
+      await createPersonaSignature(personaForm);
+      setUserActionSuccess("Persona signature added to rotation pool!");
+      setShowAddPersonaModal(false);
+      setPersonaForm({ name: "", title: "", company: "" });
+      await loadInboxMonitor();
+    } catch (err: any) {
+      setUserActionError(err.message || "Failed to add persona");
+    } finally {
+      setPersonaSubmitting(false);
+    }
+  };
+
+  const handleDeletePersona = async (personaId: string) => {
+    if (!confirm("Are you sure you want to delete this Persona signature?")) return;
+    setUserActionError(null);
+    setUserActionSuccess(null);
+    try {
+      await deletePersonaSignature(personaId);
+      setUserActionSuccess("Persona signature removed from rotation.");
+      await loadInboxMonitor();
+    } catch (err: any) {
+      setUserActionError(err.message || "Failed to remove persona");
+    }
+  };
+
+  // Database Purge Handler
+  const handlePurgeData = async () => {
+    setPurgeSubmitting(true);
+    setUserActionError(null);
+    setPurgeSuccessMsg(null);
+    try {
+      const res = await purgeDatabaseData(purgeTarget);
+      setPurgeSuccessMsg(res.message || "Operation completed successfully");
+      setUserActionSuccess(res.message || "Database updated");
+      setTimeout(() => {
+        setShowPurgeModal(false);
+        setPurgeSuccessMsg(null);
+      }, 1500);
+      await loadInboxMonitor();
+    } catch (err: any) {
+      setUserActionError(err.message || "Failed to purge database");
+    } finally {
+      setPurgeSubmitting(false);
     }
   };
 
@@ -1788,7 +1943,7 @@ export default function AdminPortalPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <span>Multi-SMTP 20x Inboxes & Persona Rotation Monitor</span>
+                    <span>Multi-SMTP 20x Inboxes & Persona Rotation Hub</span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                       Anti-Spam Load Balanced
                     </span>
@@ -1799,15 +1954,46 @@ export default function AdminPortalPage() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={loadInboxMonitor}
-                disabled={inboxLoading}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 transition cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${inboxLoading ? "animate-spin" : ""}`} />
-                <span>Refresh Status</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={loadInboxMonitor}
+                  disabled={inboxLoading}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${inboxLoading ? "animate-spin" : ""}`} />
+                  <span>Refresh</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAddInboxModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-emerald-500/20"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add SMTP Inbox</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAddPersonaModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-sky-500/20"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Persona</span>
+                </button>
+
+                {isSuperAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPurgeModal(true)}
+                    className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Database className="w-3.5 h-3.5" />
+                    <span>Database Purge</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1816,7 +2002,7 @@ export default function AdminPortalPage() {
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Configured SMTP Inboxes ({inboxMonitorData?.inboxes.length || 1} / 20 Active)</span>
+                <span>Configured SMTP Inboxes ({inboxMonitorData?.inboxes.length || 0} / 20 Active)</span>
               </h4>
               <span className="text-[11px] text-slate-400">
                 Auto-rotates in round-robin sequence to preserve sender reputation
@@ -1829,42 +2015,80 @@ export default function AdminPortalPage() {
                   <tr>
                     <th className="px-3.5 py-2.5">Inbox ID</th>
                     <th className="px-3.5 py-2.5">Sender Identity</th>
-                    <th className="px-3.5 py-2.5">Host / Gateway</th>
+                    <th className="px-3.5 py-2.5">Host & Port</th>
                     <th className="px-3.5 py-2.5">Today Sent</th>
-                    <th className="px-3.5 py-2.5">Daily Quota</th>
+                    <th className="px-3.5 py-2.5">Daily Limit</th>
                     <th className="px-3.5 py-2.5">Remaining</th>
-                    <th className="px-3.5 py-2.5">Deliverability Status</th>
+                    <th className="px-3.5 py-2.5">Status</th>
+                    <th className="px-3.5 py-2.5 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-sans">
                   {inboxMonitorData && inboxMonitorData.inboxes.length > 0 ? (
-                    inboxMonitorData.inboxes.map((ib) => (
-                      <tr key={ib.id} className="hover:bg-slate-800/30 transition">
-                        <td className="px-3.5 py-3 font-mono font-bold text-sky-400">#{ib.id}</td>
-                        <td className="px-3.5 py-3">
-                          <div className="font-semibold text-slate-200">{ib.from_name}</div>
-                          <div className="text-[11px] font-mono text-slate-400">{ib.from_email}</div>
-                        </td>
-                        <td className="px-3.5 py-3 font-mono text-slate-400">{ib.host}:{ib.port}</td>
-                        <td className="px-3.5 py-3 font-mono text-white font-bold">{ib.sent_today}</td>
-                        <td className="px-3.5 py-3 font-mono text-slate-400">{ib.daily_limit} / day</td>
-                        <td className="px-3.5 py-3 font-mono text-emerald-400 font-bold">{ib.remaining}</td>
-                        <td className="px-3.5 py-3">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${
-                            ib.status === "HEALTHY"
-                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                              : "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                          }`}>
-                            <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                            {ib.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                    inboxMonitorData.inboxes.map((ib) => {
+                      const isTesting = testingInboxId === String(ib.id);
+                      const testRes = testResults[String(ib.id)];
+
+                      return (
+                        <tr key={ib.id} className="hover:bg-slate-800/30 transition">
+                          <td className="px-3.5 py-3 font-mono font-bold text-sky-400">#{ib.index || ib.id}</td>
+                          <td className="px-3.5 py-3">
+                            <div className="font-semibold text-slate-200">{ib.from_name}</div>
+                            <div className="text-[11px] font-mono text-slate-400">{ib.from_email}</div>
+                          </td>
+                          <td className="px-3.5 py-3 font-mono text-slate-400">
+                            {ib.host}:{ib.port}
+                          </td>
+                          <td className="px-3.5 py-3 font-mono text-white font-bold">{ib.sent_today}</td>
+                          <td className="px-3.5 py-3 font-mono text-slate-400">{ib.daily_limit} / day</td>
+                          <td className="px-3.5 py-3 font-mono text-emerald-400 font-bold">{ib.remaining}</td>
+                          <td className="px-3.5 py-3">
+                            <div>
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                ib.status === "HEALTHY"
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                  : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                              }`}>
+                                <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                {ib.status}
+                              </span>
+                              {testRes && (
+                                <div className={`mt-1 text-[10px] font-mono ${testRes.ok ? "text-emerald-400" : "text-rose-400"}`}>
+                                  {testRes.msg}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3.5 py-3 text-right">
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleTestInbox(String(ib.id))}
+                                disabled={isTesting}
+                                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-sky-500/20 text-slate-300 hover:text-sky-300 border border-slate-700 text-xs flex items-center gap-1 transition cursor-pointer"
+                                title="Verify SMTP credentials"
+                              >
+                                <Activity className={`w-3 h-3 ${isTesting ? "animate-spin text-sky-400" : ""}`} />
+                                <span>{isTesting ? "Testing..." : "Test"}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteInbox(String(ib.id))}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700 transition cursor-pointer"
+                                title="Remove SMTP Inbox"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   ) : (
                     <tr>
-                      <td colSpan={7} className="px-3.5 py-6 text-center text-slate-500 italic">
-                        Loading inbox pool status...
+                      <td colSpan={8} className="px-3.5 py-6 text-center text-slate-500 italic">
+                        No custom SMTP Inboxes configured yet. Default Hostinger SMTP is active.
                       </td>
                     </tr>
                   )}
@@ -1878,7 +2102,7 @@ export default function AdminPortalPage() {
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
                 <Users className="w-4 h-4 text-sky-400" />
-                <span>10 Persona Sender Signatures Pool (Dynamic Rotation)</span>
+                <span>Persona Sender Signatures Pool ({inboxMonitorData?.persona_signatures.length || 0} Registered)</span>
               </h4>
               <span className="text-[11px] text-slate-400">
                 Varied sender signatures prevent algorithmic template spam clustering
@@ -1886,27 +2110,408 @@ export default function AdminPortalPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {(inboxMonitorData?.persona_signatures || [
-                { name: "Alex Morgan", title: "Head of Client Growth", company: "Growth Partners Global" },
-                { name: "Sarah Jenkins", title: "Growth Strategy Consultant", company: "ScaleUp Advisory" },
-                { name: "David Miller", title: "Digital Solutions Architect", company: "Apex Digital Labs" },
-                { name: "Emma Vance", title: "Inbound Optimization Lead", company: "Inbound Velocity" },
-                { name: "Michael Chang", title: "Strategic Partnerships Director", company: "NextGen Strategic" },
-                { name: "Rachel Adams", title: "Web Conversion Analyst", company: "MetricFlow Systems" },
-                { name: "James Wilson", title: "Client Acquisition Partner", company: "Ascend Business Advisory" },
-                { name: "Sophia Martinez", title: "Operations & Digital Strategist", company: "Elevate Media Network" },
-                { name: "Daniel Taylor", title: "Conversion Rate Specialist", company: "Growth Engine Labs" },
-                { name: "Olivia Reed", title: "Senior Outreach Strategist", company: "Horizon Strategic Growth" },
-              ]).map((p, idx) => (
-                <div key={idx} className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1 hover:border-slate-700 transition">
+              {(inboxMonitorData?.persona_signatures || []).map((p, idx) => (
+                <div key={p.id || idx} className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1.5 hover:border-slate-700 transition relative group">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-xs text-slate-200">{p.name}</span>
-                    <span className="text-[10px] font-mono text-sky-400">Persona #{idx + 1}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-mono text-sky-400">Persona #{idx + 1}</span>
+                      {p.id && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePersona(p.id)}
+                          className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition"
+                          title="Delete Persona"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="text-[11px] text-slate-400">{p.title}</div>
                   <div className="text-[10px] font-mono text-slate-500">{p.company}</div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Super Admin Database Control & Storage Purge Panel */}
+          {isSuperAdmin && (
+            <div className="rounded-2xl bg-gradient-to-b from-rose-950/20 to-slate-950 border border-rose-500/20 p-6 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Super Admin Database Control & Clean Storage</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/30 font-bold">
+                        Master Access Only
+                      </span>
+                    </h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Perform instant maintenance to clean rejected leads, reset test runs, or purge database to keep storage clean with zero fake data.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 flex flex-col justify-between space-y-3">
+                  <div>
+                    <div className="font-semibold text-xs text-white">Purge Rejected Leads</div>
+                    <div className="text-[11px] text-slate-400 mt-1">
+                      Deletes all leads categorized as "Rejected" to free up storage space.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPurgeTarget("rejected_leads");
+                      setShowPurgeModal(true);
+                    }}
+                    className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition cursor-pointer border border-slate-700"
+                  >
+                    Purge Rejected Leads
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 flex flex-col justify-between space-y-3">
+                  <div>
+                    <div className="font-semibold text-xs text-white">Clear Search Runs & History</div>
+                    <div className="text-[11px] text-slate-400 mt-1">
+                      Removes historical OpenClaw research runs and execution logs.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPurgeTarget("search_runs");
+                      setShowPurgeModal(true);
+                    }}
+                    className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition cursor-pointer border border-slate-700"
+                  >
+                    Clear Search Runs
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900/90 border border-rose-500/30 flex flex-col justify-between space-y-3">
+                  <div>
+                    <div className="font-semibold text-xs text-rose-300 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Factory Database Reset</span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-1">
+                      Wipes all discovered leads, campaigns, and queues. Keeps accounts and configurations intact.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPurgeTarget("factory_reset");
+                      setShowPurgeModal(true);
+                    }}
+                    className="w-full py-2 px-3 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold text-xs transition cursor-pointer border border-rose-500/40"
+                  >
+                    Factory Reset Database
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 1: ADD SMTP INBOX                                                   */}
+      {/* ========================================================================= */}
+      {showAddInboxModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Inbox className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-white">Add New SMTP Sending Inbox</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddInboxModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddInboxSubmit} className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                    SMTP Host / Server
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={inboxForm.host}
+                    onChange={(e) => setInboxForm({ ...inboxForm, host: e.target.value })}
+                    placeholder="smtp.hostinger.com or smtp.titan.email"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                    Port
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={inboxForm.port}
+                    onChange={(e) => setInboxForm({ ...inboxForm, port: parseInt(e.target.value) || 587 })}
+                    placeholder="587"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                    SMTP Username / Email
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={inboxForm.username}
+                    onChange={(e) => setInboxForm({ ...inboxForm, username: e.target.value })}
+                    placeholder="alex@outreach-leadgen.com"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                    SMTP Password / App Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={inboxForm.password}
+                    onChange={(e) => setInboxForm({ ...inboxForm, password: e.target.value })}
+                    placeholder="••••••••••••"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                    Sender Display Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={inboxForm.from_name}
+                    onChange={(e) => setInboxForm({ ...inboxForm, from_name: e.target.value })}
+                    placeholder="Alex Morgan"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                    From Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={inboxForm.from_email}
+                    onChange={(e) => setInboxForm({ ...inboxForm, from_email: e.target.value })}
+                    placeholder="alex@outreach-leadgen.com"
+                    className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Daily Sending Quota / Limit (Max emails per 24 hours)
+                </label>
+                <input
+                  type="number"
+                  min="5"
+                  max="100"
+                  required
+                  value={inboxForm.daily_limit}
+                  onChange={(e) => setInboxForm({ ...inboxForm, daily_limit: parseInt(e.target.value) || 30 })}
+                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Recommended: 25-30 emails/day per inbox to maintain 100% inbox placement and avoid spam clustering.
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddInboxModal(false)}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={inboxSubmitting}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
+                >
+                  {inboxSubmitting ? "Adding Inbox..." : "Save SMTP Inbox"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 2: ADD PERSONA SIGNATURE                                            */}
+      {/* ========================================================================= */}
+      {showAddPersonaModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-sky-400" />
+                <h3 className="text-base font-bold text-white">Add Executive Persona</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddPersonaModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddPersonaSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={personaForm.name}
+                  onChange={(e) => setPersonaForm({ ...personaForm, name: e.target.value })}
+                  placeholder="e.g. Sarah Jenkins"
+                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Professional Title / Role
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={personaForm.title}
+                  onChange={(e) => setPersonaForm({ ...personaForm, title: e.target.value })}
+                  placeholder="e.g. Growth Strategy Consultant"
+                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Company / Organization Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={personaForm.company}
+                  onChange={(e) => setPersonaForm({ ...personaForm, company: e.target.value })}
+                  placeholder="e.g. ScaleUp Advisory"
+                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAddPersonaModal(false)}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={personaSubmitting}
+                  className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
+                >
+                  {personaSubmitting ? "Adding..." : "Add to Rotation Pool"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 3: SUPER ADMIN DATABASE PURGE CONFIRMATION                          */}
+      {/* ========================================================================= */}
+      {showPurgeModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-rose-400" />
+                <h3 className="text-base font-bold text-white">Confirm Database Purge Action</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPurgeModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 font-medium">
+                You are about to execute:{" "}
+                <strong className="text-white uppercase font-mono">
+                  {purgeTarget.replace("_", " ")}
+                </strong>
+              </div>
+
+              <p className="text-slate-300 leading-relaxed">
+                {purgeTarget === "rejected_leads" && "This will permanently remove all leads that were scored as 'Rejected'. Qualified Tier A/B leads and campaigns remain intact."}
+                {purgeTarget === "search_runs" && "This will permanently clear all completed and historical search execution runs and logs."}
+                {purgeTarget === "factory_reset" && "This will perform a clean factory purge: wiping all leads, runs, and autopilot queue logs. User accounts and configurations will be preserved."}
+              </p>
+
+              {purgeSuccessMsg && (
+                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-semibold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{purgeSuccessMsg}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowPurgeModal(false)}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePurgeData}
+                disabled={purgeSubmitting}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
+              >
+                {purgeSubmitting ? "Purging..." : "Confirm & Execute Purge"}
+              </button>
             </div>
           </div>
         </div>
@@ -1915,3 +2520,4 @@ export default function AdminPortalPage() {
     </div>
   );
 }
+
