@@ -18,20 +18,6 @@ from app.core.logging import logger
 class OutreachEngine:
     """Enterprise cold outreach and response management engine."""
 
-    # 10 Diverse Persona Signatures for Anti-Spam Variation & Maximum Credibility
-    PERSONA_SIGNATURES = [
-        {"name": "Alex Morgan", "title": "Head of Client Growth", "company": "Growth Partners Global"},
-        {"name": "Sarah Jenkins", "title": "Growth Strategy Consultant", "company": "ScaleUp Advisory"},
-        {"name": "David Miller", "title": "Digital Solutions Architect", "company": "Apex Digital Labs"},
-        {"name": "Emma Vance", "title": "Inbound Optimization Lead", "company": "Inbound Velocity"},
-        {"name": "Michael Chang", "title": "Strategic Partnerships Director", "company": "NextGen Strategic"},
-        {"name": "Rachel Adams", "title": "Web Conversion Analyst", "company": "MetricFlow Systems"},
-        {"name": "James Wilson", "title": "Client Acquisition Partner", "company": "Ascend Business Advisory"},
-        {"name": "Sophia Martinez", "title": "Operations & Digital Strategist", "company": "Elevate Media Network"},
-        {"name": "Daniel Taylor", "title": "Conversion Rate Specialist", "company": "Growth Engine Labs"},
-        {"name": "Olivia Reed", "title": "Senior Outreach Strategist", "company": "Horizon Strategic Growth"},
-    ]
-
     # In-memory inbox rotation tracking (Daily limits)
     INBOX_STATS = {}
     _inbox_index = 0
@@ -96,19 +82,16 @@ class OutreachEngine:
 
     @classmethod
     def render_email(cls, step: int, lead_data: Dict[str, Any]) -> Tuple[str, str]:
-        """Render subject and body with variable and persona signature injection."""
+        """Render subject and body with variable and dynamic sender signature injection."""
         template = cls.TEMPLATES.get(step, cls.TEMPLATES[1])
         company_name = lead_data.get("company_name") or "Your Team"
         contact_person = lead_data.get("contact_person") or "there"
         city = lead_data.get("city") or "your area"
         primary_gap = lead_data.get("primary_gap") or "optimizing your online visibility and lead conversion"
         
-        # Pick a persona signature dynamically (deterministic by company name or random)
-        persona_idx = hash(company_name) % len(cls.PERSONA_SIGNATURES)
-        persona = cls.PERSONA_SIGNATURES[persona_idx]
-        sender_name = lead_data.get("sender_name") or persona["name"]
-        sender_title = lead_data.get("sender_title") or persona["title"]
-        sender_company = os.getenv("COMPANY_NAME") or persona["company"]
+        sender_name = lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or "Growth Team"
+        sender_title = lead_data.get("sender_title") or "Solutions Specialist"
+        sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or "Enterprise Solutions"
 
         subject = template["subject"].format(
             company_name=company_name,
@@ -262,7 +245,7 @@ class OutreachEngine:
             p = os.getenv(f"SMTP_PASSWORD_{i}")
             port = int(os.getenv(f"SMTP_PORT_{i}", "587"))
             fe = os.getenv(f"SMTP_FROM_EMAIL_{i}", u or f"inbox{i}@leadgen.local")
-            fn = os.getenv(f"SMTP_FROM_NAME_{i}", cls.PERSONA_SIGNATURES[(i - 1) % len(cls.PERSONA_SIGNATURES)]["name"])
+            fn = os.getenv(f"SMTP_FROM_NAME_{i}", os.getenv("SMTP_FROM_NAME", f"Growth Specialist #{i}"))
 
             if h and u:
                 inboxes.append({
