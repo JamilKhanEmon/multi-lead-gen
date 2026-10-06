@@ -81,6 +81,7 @@ export default function AutopilotPage() {
   const [cDailyLimit, setCDailyLimit] = useState(100);
   const [cUnlimited, setCUnlimited] = useState(false);
   const [cAutoMail, setCAutoMail] = useState(true);
+  const [cUseGlobalTemplate, setCUseGlobalTemplate] = useState(true);
   const [creatingCampaign, setCreatingCampaign] = useState(false);
   const [runningBatchId, setRunningBatchId] = useState<string | null>(null);
 
@@ -169,7 +170,8 @@ export default function AutopilotPage() {
         daily_lead_limit: cUnlimited ? 0 : Number(cDailyLimit) || 100,
         daily_email_limit: 50,
         is_unlimited_leads: cUnlimited,
-        auto_mail_enabled: cAutoMail
+        auto_mail_enabled: cAutoMail,
+        use_global_template: cUseGlobalTemplate
       });
       showToast("✓ Autopilot Campaign launched successfully!");
       setShowCreateModal(false);
@@ -906,7 +908,30 @@ export default function AutopilotPage() {
                   type="checkbox"
                   checked={cAutoMail}
                   onChange={(e) => setCAutoMail(e.target.checked)}
-                  className="w-5 h-5 rounded text-sky-500 bg-slate-900 border-slate-700"
+                  className="w-5 h-5 rounded text-sky-500 bg-slate-900 border-slate-700 cursor-pointer"
+                />
+              </div>
+
+              {/* Field 7: Global Template vs AI Pitch Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-white block">Use Saved Global Email Template</span>
+                    <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 text-[10px] font-medium">
+                      {cUseGlobalTemplate ? "Admin Template Active" : "AI Pitch Mode"}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    {cUseGlobalTemplate
+                      ? "Checked: Uses saved Global Template from Admin Panel with dynamic gap & persona rotation"
+                      : "Unchecked: AI dynamically writes industry-specific adaptive pitch per lead"}
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={cUseGlobalTemplate}
+                  onChange={(e) => setCUseGlobalTemplate(e.target.checked)}
+                  className="w-5 h-5 rounded text-sky-500 bg-slate-900 border-slate-700 cursor-pointer"
                 />
               </div>
 

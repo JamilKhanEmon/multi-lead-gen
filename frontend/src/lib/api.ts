@@ -1167,6 +1167,7 @@ export interface AutopilotCampaign {
   daily_email_limit: number;
   is_unlimited_leads: boolean;
   auto_mail_enabled: boolean;
+  use_global_template?: boolean;
   is_active: boolean;
   status: "IDLE" | "RUNNING" | "PAUSED" | "COMPLETED";
   current_city_index: number;
@@ -1221,6 +1222,7 @@ export async function createAutopilotCampaign(data: {
   daily_email_limit: number;
   is_unlimited_leads: boolean;
   auto_mail_enabled: boolean;
+  use_global_template?: boolean;
 }): Promise<AutopilotCampaign> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };

@@ -23,6 +23,7 @@ class AutopilotCampaign(Base, UUIDMixin, TimestampMixin):
     daily_email_limit: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     is_unlimited_leads: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     auto_mail_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    use_global_template: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     
     status: Mapped[str] = mapped_column(String(50), default="IDLE", nullable=False, index=True)  # IDLE, RUNNING, PAUSED, COMPLETED
