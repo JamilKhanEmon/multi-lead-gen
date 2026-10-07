@@ -149,7 +149,6 @@ export default function LeadsPipelinePage() {
       .catch((e) => console.debug("Error loading runs:", e));
   }, []);
 
-  // Poll when a research run is active in the background
   useEffect(() => {
     if (!activeRunningRun) return;
 
@@ -245,27 +244,21 @@ export default function LeadsPipelinePage() {
       }
       const cleanDomain = lead.domain && !GENERIC_PLATFORMS.some((p) => lead.domain?.toLowerCase().includes(p)) ? lead.domain : null;
 
-      // Pipeline Stage Filter
       if (pipelineStage === "REVIEW" && !isNeedsReview(lead)) return false;
       if (pipelineStage === "READY" && !isReadyForMail(lead)) return false;
       if (pipelineStage === "SENT" && !isSentMail(lead)) return false;
       if (pipelineStage === "HOT_DEALS" && !isHotDeal(lead)) return false;
       if (pipelineStage === "NO_EMAIL" && hasEmailForOutreach(lead)) return false;
 
-      // Tier Filter
       if (activeTier !== "ALL" && lead.tier !== activeTier) return false;
 
-      // Fit Gate Tier Filter (HOT, WARM, COLD, DROPPED)
       if (fitTierFilter !== "ALL" && (lead.fit_tier || "HOT") !== fitTierFilter) return false;
 
-      // Run Batch Filter
       if (selectedRunId !== "ALL" && lead.run_id !== selectedRunId) return false;
 
-      // Website Filter
       if (websiteFilter === "WITH_WEBSITE" && !cleanDomain) return false;
       if (websiteFilter === "NO_WEBSITE" && !!cleanDomain) return false;
 
-      // Search Query
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase();
         const matchName = lead.business_name && lead.business_name.toLowerCase().includes(q);
@@ -453,7 +446,7 @@ export default function LeadsPipelinePage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* Active Background Research Run Banner */}
+
       {activeRunningRun && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-950/80 via-slate-900 to-indigo-950/80 border border-sky-500/40 shadow-xl shadow-sky-500/10 space-y-2.5 animate-in fade-in duration-300">
           <div className="flex items-center justify-between text-xs">
@@ -516,7 +509,6 @@ export default function LeadsPipelinePage() {
         </div>
       )}
 
-      {/* Header & Quick Action Bar */}
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div>
           <div className="flex items-center gap-2.5">
@@ -534,7 +526,6 @@ export default function LeadsPipelinePage() {
           </div>
         </div>
 
-        {/* Global Export & Action Controls */}
         <div className="flex items-center gap-2 flex-wrap">
           {hasPermission(currentUser, "can_export_leads", true) && leads.length > 0 && (
             <>
@@ -566,7 +557,6 @@ export default function LeadsPipelinePage() {
         </div>
       </div>
 
-      {/* KPI Overview Metrics Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <button
           type="button"
@@ -654,10 +644,9 @@ export default function LeadsPipelinePage() {
         </button>
       </div>
 
-      {/* Filter Tabs & Real-Time Search Bar */}
       <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-3.5">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          {/* Master Pipeline Stage Tabs */}
+
           <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950/80 border border-slate-800 overflow-x-auto">
             <button
               onClick={() => setPipelineStage("ALL")}
@@ -721,7 +710,6 @@ export default function LeadsPipelinePage() {
             </button>
           </div>
 
-          {/* Search Box */}
           <div className="relative min-w-[240px]">
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5 pointer-events-none" />
             <input
@@ -743,10 +731,9 @@ export default function LeadsPipelinePage() {
           </div>
         </div>
 
-        {/* Secondary Filters Bar */}
         <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-800/80 text-xs">
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Batch Selector */}
+
             {runs.length > 0 && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px]">
                 <Layers className="w-3 h-3 text-sky-400" />
@@ -766,7 +753,6 @@ export default function LeadsPipelinePage() {
               </div>
             )}
 
-            {/* Tier Filter */}
             <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px]">
               {["ALL", "Strong Potential", "Review Needed", "Rejected"].map((t) => (
                 <button
@@ -781,7 +767,6 @@ export default function LeadsPipelinePage() {
               ))}
             </div>
 
-            {/* Fit Gate Filter */}
             <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-950 border border-amber-500/30 text-[11px]">
               <span className="text-[10px] text-amber-400 font-semibold px-1.5 hidden sm:inline">Fit Gate:</span>
               {[
@@ -808,7 +793,6 @@ export default function LeadsPipelinePage() {
               ))}
             </div>
 
-            {/* Website Status Filter */}
             <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px]">
               <button
                 onClick={() => setWebsiteFilter("ALL")}
@@ -843,7 +827,6 @@ export default function LeadsPipelinePage() {
         </div>
       </div>
 
-      {/* Human-Paced Staggered Dispatch Action Bar */}
       {(pipelineStage === "READY" || selectedLeads.length > 0) && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-950/80 via-slate-900 to-indigo-950/80 border border-sky-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-sky-500/5">
           <div className="flex items-center gap-3">
@@ -910,7 +893,6 @@ export default function LeadsPipelinePage() {
         </div>
       )}
 
-      {/* Leads Table & Master Dossier List */}
       <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
         {loading ? (
           <div className="py-20 text-center space-y-3">
@@ -976,7 +958,7 @@ export default function LeadsPipelinePage() {
                       onClick={() => router.push(`/leads/${lead.id}`)}
                       className="hover:bg-slate-800/40 transition cursor-pointer group"
                     >
-                      {/* Checkbox */}
+
                       <td className="py-3.5 px-4 w-10" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
@@ -985,7 +967,7 @@ export default function LeadsPipelinePage() {
                           className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer"
                         />
                       </td>
-                      {/* Business & Domain */}
+
                       <td className="py-3.5 px-4 text-xs">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
@@ -1025,7 +1007,6 @@ export default function LeadsPipelinePage() {
                             </div>
                           )}
 
-                          {/* Quick External Research Links */}
                           <div className="flex items-center gap-1.5 pt-1">
                             {lead.google_maps_url && (
                               <a
@@ -1063,10 +1044,9 @@ export default function LeadsPipelinePage() {
                         </div>
                       </td>
 
-                      {/* Contact & WhatsApp */}
                       <td className="py-3.5 px-4 text-xs whitespace-nowrap">
                         <div className="space-y-1.5">
-                          {/* Phone & WhatsApp Action */}
+
                           <div className="flex items-center gap-2">
                             {lead.phone ? (
                               <>
@@ -1098,7 +1078,6 @@ export default function LeadsPipelinePage() {
                             )}
                           </div>
 
-                          {/* Email & Status */}
                           <div>
                             {lead.email ? (
                               <div className="flex items-center gap-1.5 truncate max-w-[220px]">
@@ -1120,7 +1099,6 @@ export default function LeadsPipelinePage() {
                         </div>
                       </td>
 
-                      {/* Autonomous Mail Status */}
                       <td className="py-3.5 px-4 text-xs whitespace-nowrap">
                         <div className="space-y-1">
                           <div>{renderOutreachBadge(lead)}</div>
@@ -1138,7 +1116,6 @@ export default function LeadsPipelinePage() {
                         </div>
                       </td>
 
-                      {/* Score & Tier & Fit Gate */}
                       <td className="py-3.5 px-4 text-xs whitespace-nowrap">
                         <div className="space-y-1.5">
                           <div className="flex items-center gap-1.5">
@@ -1159,7 +1136,7 @@ export default function LeadsPipelinePage() {
                             >
                               {lead.tier}
                             </span>
-                            {/* Fit Gate Tier Badge */}
+
                             <span
                               className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
                                 lead.fit_tier === "HOT"
@@ -1177,7 +1154,6 @@ export default function LeadsPipelinePage() {
                         </div>
                       </td>
 
-                      {/* Primary Solvable Gap & Live Evidence */}
                       <td className="py-3.5 px-4 text-xs text-slate-300 max-w-xs">
                         <div className="space-y-1.5">
                           {lead.why_they_need_us ? (
@@ -1214,7 +1190,6 @@ export default function LeadsPipelinePage() {
                         </div>
                       </td>
 
-                      {/* Dossier Full View */}
                       <td className="py-3.5 px-4 text-right whitespace-nowrap space-x-2">
                         {isNeedsReview(lead) && (
                           <button
@@ -1262,7 +1237,6 @@ export default function LeadsPipelinePage() {
         )}
       </div>
 
-      {/* Staggered Dispatch Progress Modal */}
       {showDispatchModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">

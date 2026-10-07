@@ -1,6 +1,3 @@
-"""
-Business Identity & Profile Endpoints
-"""
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -15,7 +12,6 @@ from app.schemas.business import BusinessResponse
 
 router = APIRouter(prefix="/businesses", tags=["Businesses"])
 
-
 @router.get("", response_model=List[BusinessResponse])
 async def list_businesses(
     skip: int = Query(0, ge=0),
@@ -25,7 +21,6 @@ async def list_businesses(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List canonical businesses with filtering and search."""
     stmt = select(Business).options(selectinload(Business.locations))
 
     if search:
@@ -37,14 +32,12 @@ async def list_businesses(
     res = await db.execute(stmt)
     return res.scalars().all()
 
-
 @router.get("/{business_id}", response_model=BusinessResponse)
 async def get_business(
     business_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Retrieve detailed profile for a business."""
     stmt = select(Business).options(selectinload(Business.locations)).where(Business.id == business_id)
     res = await db.execute(stmt)
     biz = res.scalar_one_or_none()

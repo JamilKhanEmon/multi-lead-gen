@@ -1,7 +1,3 @@
-/**
- * Typed API Client for FastAPI backend
- */
-
 export function getApiBase(): string {
   if (typeof window !== "undefined") {
     return "/api/v1";
@@ -10,8 +6,8 @@ export function getApiBase(): string {
   return `${internal.replace(/\/+$/, "")}/api/v1`;
 }
 
-const API_BASE = typeof window !== "undefined" 
-  ? "/api/v1" 
+const API_BASE = typeof window !== "undefined"
+  ? "/api/v1"
   : `${(process.env.BACKEND_INTERNAL_URL || "http://127.0.0.1:8000").replace(/\/+$/, "")}/api/v1`;
 
 export interface ResearchRun {
@@ -362,10 +358,6 @@ export async function resetDatabase(purgeBusinesses: boolean = true): Promise<an
   return res.json();
 }
 
-// ==========================================
-// B2B Meta Ads Campaigns & Retargeting Funnel
-// ==========================================
-
 export interface MetaCampaign {
   id: string;
   name: string;
@@ -580,10 +572,6 @@ export async function generateB2BPoster(payload: {
   return res.json();
 }
 
-// ==============================================================================
-// B2B VOICE CALLING AGENT & INTERACTIVE SHEET VIEW API
-// ==============================================================================
-
 export interface VoiceKnowledgeBase {
   id?: string;
   name: string;
@@ -766,20 +754,16 @@ export async function checkOfficeHours(): Promise<{
   return res.json();
 }
 
-// ==============================================================================
-// Authentication & Role-Based Access Control (Super Admin, Admin, Sales)
-// ==============================================================================
-
 export interface DashboardPermissions {
   can_view_dashboard?: boolean;
   can_view_leads?: boolean;
-  can_delete_leads?: boolean;               // Human sales/QA team lead deletion
+  can_delete_leads?: boolean;
   can_export_leads?: boolean;
   can_run_research?: boolean;
   can_access_autopilot?: boolean;
-  can_create_autopilot_campaigns?: boolean; // Controls search input & campaign configuration
-  can_run_autopilot_cycle?: boolean;        // Controls manual trigger of discovery/outreach batches
-  can_verify_autopilot_leads?: boolean;     // Controls human quality verification & email approvals
+  can_create_autopilot_campaigns?: boolean;
+  can_run_autopilot_cycle?: boolean;
+  can_verify_autopilot_leads?: boolean;
   can_edit_campaigns?: boolean;
   can_access_voice?: boolean;
   can_manage_templates?: boolean;
@@ -815,7 +799,7 @@ export function hasPermission(
   if (user.permissions_json?.all) return true;
   const val = user.permissions_json?.[permissionKey];
   if (val !== undefined) return Boolean(val);
-  // Autonomous Cold Email & Autopilot search/cycle/verification permissions are strictly Super Admin controlled
+
   if (
     permissionKey === "can_access_autopilot" ||
     permissionKey === "can_create_autopilot_campaigns" ||
@@ -872,7 +856,6 @@ export async function loginUser(email: string, password: string): Promise<{ toke
     localStorage.setItem("leadgen_access_token", tokenData.access_token);
   }
 
-  // Fetch full user profile using the new token
   let profile: AuthUser | null = null;
   try {
     const meRes = await fetch(`${API_BASE}/auth/me`, {
@@ -1074,10 +1057,6 @@ export function renderEmailTemplate(
   return { subject: renderedSubject, body: renderedBody, fullEmail };
 }
 
-// ==============================================================================
-// User Management & Role-Based Access Control API Functions
-// ==============================================================================
-
 export async function fetchUsers(): Promise<AuthUser[]> {
   const token = getStoredToken();
   const headers: Record<string, string> = {};
@@ -1178,10 +1157,6 @@ export async function deleteUser(userId: string): Promise<{ status: string; mess
   }
   return res.json();
 }
-
-// ============================================================================
-// AUTOPILOT CAMPAIGNS & AUTONOMOUS COLD EMAIL OUTREACH
-// ============================================================================
 
 export interface AutopilotCampaign {
   id: string;
@@ -1563,7 +1538,6 @@ export async function deletePersonaSignature(personaId: string): Promise<any> {
   return res.json();
 }
 
-
 export async function purgeDatabaseData(target: "rejected_leads" | "search_runs" | "all_leads" | "factory_reset"): Promise<any> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -1663,10 +1637,3 @@ export async function resetCompanyKBDefaults(): Promise<CompanyKB> {
   }
   return res.json();
 }
-
-
-
-
-
-
-

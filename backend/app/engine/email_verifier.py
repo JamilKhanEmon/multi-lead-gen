@@ -1,14 +1,8 @@
-"""
-Real-time Autonomous Email Verification Engine
-Validates email syntax, domain MX records, disposable providers, and spam traps.
-Zero cost, high-speed, preventing hard bounces and protecting sender reputation.
-"""
 import re
 import socket
 import asyncio
 from typing import Tuple, Optional
 
-# Common disposable and spam-trap domains
 DISPOSABLE_DOMAINS = {
     "mailinator.com", "tempmail.com", "10minutemail.com", "guerrillamail.com",
     "yopmail.com", "trashmail.com", "sharklasers.com", "getairmail.com",
@@ -20,9 +14,7 @@ EMAIL_REGEX = re.compile(
     r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$"
 )
 
-
 class EmailVerifier:
-    """Zero-bounce verification filter for cold outreach."""
 
     @classmethod
     def verify_syntax(cls, email: str) -> bool:
@@ -36,11 +28,9 @@ class EmailVerifier:
 
     @classmethod
     async def check_domain_mx(cls, domain: str) -> Tuple[bool, str]:
-        """Verify if domain resolves and has active mail handling capability."""
         domain = domain.strip().lower()
         loop = asyncio.get_running_loop()
         
-        # 1. Try resolving DNS MX record via dnspython if installed, or fallback to socket lookup
         try:
             import dns.resolver
             def _resolve_mx():
@@ -60,7 +50,6 @@ class EmailVerifier:
         except ImportError:
             pass
 
-        # 2. Socket fallback resolution (check if domain exists in public DNS)
         try:
             def _resolve_host():
                 try:
@@ -78,18 +67,11 @@ class EmailVerifier:
 
     @classmethod
     async def verify(cls, email: Optional[str]) -> Tuple[str, str]:
-        """
-        Main verification entry point.
-        Returns:
-            status: "VALID" | "NEEDS_REVIEW" | "INVALID"
-            notes: Detailed explanation
-        """
         if not email or not email.strip():
             return "NEEDS_REVIEW", "Email address missing from business discovery"
 
         email = email.strip()
 
-        # Step 1: Syntax
         if not cls.verify_syntax(email):
             return "INVALID", f"Invalid email format syntax: {email}"
 
@@ -99,16 +81,13 @@ class EmailVerifier:
 
         user_part, domain = parts[0], parts[1]
 
-        # Step 2: Disposable Check
         if cls.is_disposable(domain):
             return "INVALID", f"Disposable or temporary email domain: {domain}"
 
-        # Step 3: Domain & MX Verification
         has_mx, note = await cls.check_domain_mx(domain)
         if not has_mx:
             return "INVALID", f"Unreachable domain: {note}"
 
-        # Step 4: Role-based or high-value inbox check
         is_role_based = user_part.lower() in {"admin", "support", "billing", "careers", "jobs", "privacy"}
         if is_role_based:
             return "NEEDS_REVIEW", f"Generic role-based inbox ({user_part}@) - review before cold outreach"

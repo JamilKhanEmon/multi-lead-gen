@@ -1,9 +1,5 @@
-"""
-Unit Tests for Global Email Template & Signature Rendering
-"""
 import pytest
 from app.models.email_template import EmailTemplate
-
 
 def test_email_template_default_signature_rendering():
     tpl = EmailTemplate(
@@ -28,7 +24,6 @@ def test_email_template_default_signature_rendering():
     assert "+880 1700-000000" in sig
     assert "https://leadgen.local" in sig
 
-
 def test_email_template_custom_signature_text_override():
     tpl = EmailTemplate(
         name="test_custom",
@@ -42,7 +37,6 @@ def test_email_template_custom_signature_text_override():
     assert "--- Custom Direct Signature Block ---" in sig
     assert "Direct Line: 12345" in sig
     assert "Senior Solutions Consultant" not in sig
-
 
 def test_persona_signature_raw_content_rendering():
     from app.models.email_template import PersonaSignature

@@ -49,7 +49,7 @@ export default function ParametersPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      {/* Header */}
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-violet-400 text-xs font-mono tracking-wider uppercase mb-1">
@@ -69,7 +69,6 @@ export default function ParametersPage() {
         </div>
       </div>
 
-      {/* Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="p-4 rounded-xl glass-panel border border-slate-800">
           <div className="text-[11px] text-slate-400 uppercase tracking-wider font-mono">Total Matrix</div>
@@ -102,10 +101,9 @@ export default function ParametersPage() {
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
       <div className="glass-panel p-4 rounded-xl border border-slate-800 space-y-3">
         <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-          {/* Search box */}
+
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -117,7 +115,6 @@ export default function ParametersPage() {
             />
           </div>
 
-          {/* Type Selector */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400 font-mono">Type:</span>
             <select
@@ -133,7 +130,6 @@ export default function ParametersPage() {
           </div>
         </div>
 
-        {/* Category Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 scrollbar-thin">
           <button
             onClick={() => setSelectedCategory("ALL")}
@@ -164,7 +160,6 @@ export default function ParametersPage() {
         </div>
       </div>
 
-      {/* Parameter Cards Grid */}
       {loading ? (
         <div className="text-center py-16 text-slate-400 text-xs font-mono">
           Loading 135 parameters from PostgreSQL...

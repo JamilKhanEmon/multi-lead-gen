@@ -1,20 +1,14 @@
-"""
-System Health & Admin Monitoring Schemas
-"""
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
 
-
 class ComponentHealth(BaseModel):
-    status: str  # healthy, degraded, down
+    status: str
     latency_ms: Optional[float] = None
     details: Optional[Dict[str, Any]] = None
 
-
 class SystemHealthResponse(BaseModel):
-    status: str  # healthy, degraded, down
+    status: str
     components: Dict[str, ComponentHealth]
-
 
 class SystemMetricsResponse(BaseModel):
     queue_depth: int
@@ -22,7 +16,6 @@ class SystemMetricsResponse(BaseModel):
     total_leads: int
     qualified_leads: int
     worker_concurrency: int
-
 
 class EmailTemplateResponse(BaseModel):
     id: str
@@ -42,7 +35,6 @@ class EmailTemplateResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-
 class EmailTemplateUpdate(BaseModel):
     subject: str
     body: str
@@ -56,7 +48,6 @@ class EmailTemplateUpdate(BaseModel):
     signature_text: Optional[str] = ""
     is_active: Optional[bool] = True
 
-
 class EmailPreviewRequest(BaseModel):
     subject: Optional[str] = None
     body: Optional[str] = None
@@ -68,7 +59,6 @@ class EmailPreviewRequest(BaseModel):
     sender_website: Optional[str] = None
     sign_off: Optional[str] = None
     signature_text: Optional[str] = None
-    # Sample lead variables for testing
     company_name: Optional[str] = "Tropical Homes Ltd."
     contact_person: Optional[str] = "Managing Director"
     location: Optional[str] = "Gulshan-2, Dhaka"
@@ -76,18 +66,15 @@ class EmailPreviewRequest(BaseModel):
     phone: Optional[str] = "+880 1711-223344"
     primary_gap: Optional[str] = "specifically mobile responsiveness and automated WhatsApp lead booking"
 
-
 class PersonaSignatureCreate(BaseModel):
     title: str = "Primary Signature"
     raw_content: str
     is_active: bool = True
 
-
 class PersonaSignatureUpdate(BaseModel):
     title: Optional[str] = None
     raw_content: Optional[str] = None
     is_active: Optional[bool] = None
-
 
 class PersonaSignatureResponse(BaseModel):
     id: str
@@ -96,7 +83,6 @@ class PersonaSignatureResponse(BaseModel):
     is_active: bool
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
-
 
 class CompanyKBResponse(BaseModel):
     id: str
@@ -111,7 +97,6 @@ class CompanyKBResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-
 class CompanyKBUpdate(BaseModel):
     company_name: Optional[str] = None
     tagline_experience: Optional[str] = None
@@ -121,5 +106,4 @@ class CompanyKBUpdate(BaseModel):
     website_url: Optional[str] = None
     services_json: Optional[List[Dict[str, Any]]] = None
     is_active: Optional[bool] = None
-
 

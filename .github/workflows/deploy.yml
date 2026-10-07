@@ -14,9 +14,6 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  # ==============================================================================
-  # Deploy directly to VPS via SSH (Builds on VPS with zero registry dependencies)
-  # ==============================================================================
   deploy:
     runs-on: ubuntu-latest
     if: github.repository == 'NIBIZ-SOFT/leadgenai'
@@ -39,7 +36,6 @@ jobs:
             
             echo "==> Deploying to $DEPLOY_PATH on VPS..."
             
-            # 1. Create or navigate to project directory
             if [ ! -d "$DEPLOY_PATH" ]; then
               echo "Directory does not exist. Cloning repository..."
               git clone https://github.com/NIBIZ-SOFT/leadgenai.git "$DEPLOY_PATH"
@@ -51,17 +47,14 @@ jobs:
               git reset --hard origin/main || git reset --hard origin/master
             fi
 
-            # 2. Inject real production .env from GitHub Secrets if configured
             if [ -n "$ENV_FILE" ]; then
               echo "==> Updating .env from GitHub Secrets..."
               printf '%s\n' "$ENV_FILE" > "$DEPLOY_PATH/.env"
             fi
 
-            # 3. Build & start production services
             echo "==> Building and starting production containers..."
             docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
 
-            # 4. Clean up old dangling images to save VPS disk space
             docker image prune -f
 
             echo "==> Deployment Successfully Completed!"

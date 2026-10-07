@@ -1,7 +1,3 @@
-"""
-Simulate client email reply test.
-Demonstrates sentiment classification (POSITIVE -> HOT_LEAD, NEGATIVE -> DISCARDED).
-"""
 import sys
 import os
 from pathlib import Path
@@ -21,10 +17,8 @@ from app.db.session import AsyncSessionLocal
 from app.models.lead import Lead
 from app.engine.outreach_engine import OutreachEngine
 
-
 async def test_reply_processing():
     async with AsyncSessionLocal() as session:
-        # Get one sent lead
         stmt = select(Lead).options(selectinload(Lead.business)).where(Lead.outreach_status == "SENT")
         res = await session.execute(stmt)
         lead = res.scalars().first()

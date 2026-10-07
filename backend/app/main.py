@@ -1,6 +1,3 @@
-"""
-Autonomous B2B Lead-Generation Platform — Main FastAPI Application
-"""
 import asyncio
 import json
 from contextlib import asynccontextmanager
@@ -14,9 +11,7 @@ from app.db.session import engine
 from app.models import Base
 import redis.asyncio as aioredis
 
-
 class ConnectionManager:
-    """Manages active WebSocket connections from Next.js dashboard clients."""
 
     def __init__(self):
         self.active_connections: Set[WebSocket] = set()
@@ -37,12 +32,9 @@ class ConnectionManager:
             except Exception:
                 self.disconnect(connection)
 
-
 manager = ConnectionManager()
 
-
 async def redis_event_listener():
-    """Background listener consuming 'leadgen:events' from Redis Pub/Sub and broadcasting via WebSockets."""
     while True:
         try:
             r = aioredis.from_url(settings.REDIS_URL)
@@ -62,12 +54,7 @@ async def redis_event_listener():
             logger.warning(f"Redis Pub/Sub listener disconnected: {e}. Retrying in 5s...")
             await asyncio.sleep(5)
 
-
 async def autonomous_outreach_scheduler():
-    """
-    Background worker loop that automatically polls for 'READY_FOR_OUTREACH' leads.
-    Enforces local business hours (09:00 AM - 05:30 PM BST / UTC+6) and anti-spam random delays (120-240s).
-    """
     from app.engine.outreach_engine import OutreachEngine
     from app.models.lead import Lead
     from app.models.autopilot import EmailOutreachLog
@@ -100,7 +87,6 @@ async def autonomous_outreach_scheduler():
                 res = await session.execute(stmt)
                 ready_leads = res.scalars().all()
 
-                # Fetch active personas and custom global email template for auto-rotation
                 from app.models.email_template import PersonaSignature, EmailTemplate
                 p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
                 p_res = await session.execute(p_stmt)
@@ -124,7 +110,6 @@ async def autonomous_outreach_scheduler():
                     lat = loc.latitude if loc else meta.get("latitude")
                     lon = loc.longitude if loc else meta.get("longitude")
 
-                    # 100% Dynamic GPS & IANA Time Zone / Weekend Check
                     is_valid_time, reason = OutreachEngine.is_within_target_business_hours(
                         lat=lat,
                         lon=lon,
@@ -172,7 +157,6 @@ async def autonomous_outreach_scheduler():
                         await session.commit()
                         logger.info(f"[AUTONOMOUS OUTREACH DAEMON] Dispatched lead email to {recipient} ({biz.canonical_name}).")
 
-                    # Enforce anti-spam random delay between individual emails (45 to 90 seconds)
                     if idx < len(ready_leads) - 1:
                         import random
                         await asyncio.sleep(random.uniform(45, 90))
@@ -182,13 +166,7 @@ async def autonomous_outreach_scheduler():
             logger.error(f"[OUTREACH DAEMON] Loop error: {err}")
             await asyncio.sleep(60)
 
-
 async def autonomous_campaign_discovery_loop():
-    """
-    Continuous 24/7 background scheduler for active Autopilot campaigns.
-    Automatically checks every 15 minutes for active campaigns and discovers new leads across all sub-cities.
-    Runs entirely decoupled from frontend browser session.
-    """
     from app.engine.autopilot_runner import AutopilotRunner
     from app.models.autopilot import AutopilotCampaign
     from app.db.session import AsyncSessionLocal
@@ -196,7 +174,7 @@ async def autonomous_campaign_discovery_loop():
     from datetime import datetime, timezone, timedelta
 
     logger.info("Started Autonomous Continuous Campaign Discovery Daemon.")
-    await asyncio.sleep(60)  # Initial grace delay after boot
+    await asyncio.sleep(60)
 
     while True:
         try:
@@ -209,7 +187,6 @@ async def autonomous_campaign_discovery_loop():
                 active_campaigns = res.scalars().all()
 
                 for camp in active_campaigns:
-                    # Run if never run, or if last run was > 3 hours ago
                     should_run = not camp.last_run_at or (datetime.now(timezone.utc) - camp.last_run_at) > timedelta(hours=3)
                     if should_run:
                         logger.info(f"[AUTONOMOUS DISCOVERY DAEMON] Scheduled run starting for campaign '{camp.name}'...")
@@ -222,7 +199,6 @@ async def autonomous_campaign_discovery_loop():
                         except Exception as ce:
                             logger.error(f"[AUTONOMOUS DISCOVERY DAEMON] Error running '{camp.name}': {ce}")
 
-            # Wait 15 minutes before checking next active schedule
             await asyncio.sleep(900)
         except asyncio.CancelledError:
             break
@@ -230,10 +206,8 @@ async def autonomous_campaign_discovery_loop():
             logger.error(f"[AUTONOMOUS DISCOVERY DAEMON] Daemon error: {err}")
             await asyncio.sleep(120)
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application startup and shutdown lifecycle management."""
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} [{settings.ENVIRONMENT}]")
     try:
         async with engine.begin() as conn:
@@ -248,7 +222,6 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions_json JSONB DEFAULT '{}'::jsonb;"))
                 await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by_id UUID;"))
                 
-                # Autonomous Outreach & Verification fields for leads
                 for col_name, col_type in [
                     ("email_status", "VARCHAR(50) DEFAULT 'UNVERIFIED'"),
                     ("verification_notes", "TEXT"),
@@ -265,12 +238,10 @@ async def lifespan(app: FastAPI):
                 ]:
                     await conn.execute(text(f"ALTER TABLE leads ADD COLUMN IF NOT EXISTS {col_name} {col_type};"))
                 
-                # Autopilot Campaign & Research migration fields
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_global_template BOOLEAN DEFAULT TRUE;"))
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
                 await conn.execute(text("ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
                 
-                # Persona Signatures Note migration fields
                 await conn.execute(text("ALTER TABLE persona_signatures ADD COLUMN IF NOT EXISTS title VARCHAR(150) DEFAULT 'Primary Signature';"))
                 await conn.execute(text("ALTER TABLE persona_signatures ADD COLUMN IF NOT EXISTS raw_content TEXT;"))
                 try:
@@ -282,7 +253,6 @@ async def lifespan(app: FastAPI):
                 logger.warning(f"Migration columns execution notice: {migration_err}")
         logger.info("PostgreSQL database tables, contact columns, user permissions, and outreach columns verified.")
 
-        # Auto-seed parameters, business types, and agency services if missing
         try:
             from app.db.session import AsyncSessionLocal
             from sqlalchemy import select, func
@@ -310,7 +280,6 @@ async def lifespan(app: FastAPI):
     discovery_daemon_task.cancel()
     logger.info("Shutdown complete.")
 
-
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
@@ -318,7 +287,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Middleware (Flexible for local dev & VPS production deployment)
 cors_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -338,13 +306,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API v1 Router
 app.include_router(api_v1_router, prefix=settings.API_V1_PREFIX)
-
 
 @app.get("/", tags=["System"])
 async def root():
-    """Basic root health check."""
     return {
         "project": settings.PROJECT_NAME,
         "version": settings.VERSION,
@@ -352,14 +317,11 @@ async def root():
         "docs": "/docs",
     }
 
-
 @app.websocket("/ws/events")
 async def websocket_events_endpoint(websocket: WebSocket):
-    """Real-time event stream for Next.js dashboard."""
     await manager.connect(websocket)
     try:
         while True:
-            # Keep-alive loop; receive heartbeats if sent
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")

@@ -1,28 +1,17 @@
-# FastAPI & Server
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 python-multipart>=0.0.12
-
-# Pydantic v2 & Settings
 pydantic>=2.9.2
 pydantic-settings>=2.6.0
-
-# Database & Migrations
 SQLAlchemy[asyncio]>=2.0.36
 asyncpg>=0.30.0
 psycopg2-binary>=2.9.10
 alembic>=1.14.0
-
-# Redis & Async I/O
 redis[hiredis]>=5.2.0
 websockets>=13.1
 httpx>=0.28.0
-
-# Authentication & Security
 python-jose[cryptography]>=3.3.0
 passlib[argon2]>=1.7.4
 argon2-cffi>=23.1.0
-
-# Testing
 pytest>=8.3.3
 pytest-asyncio>=0.24.0

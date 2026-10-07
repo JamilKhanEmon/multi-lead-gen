@@ -1,11 +1,7 @@
-"""
-Clear all test research runs, leads, businesses, and redis tasks.
-"""
 import asyncio
 import sys
 from pathlib import Path
 
-# Add backend directory to sys.path
 backend_dir = Path(__file__).resolve().parent.parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
@@ -22,7 +18,6 @@ from app.models.voice_agent import VoiceCallLog, VoiceCallQueueItem
 from app.models.campaign import MetaCampaign
 import redis.asyncio as aioredis
 from app.core.config import settings
-
 
 async def clear_all():
     print("[*] Purging all test leads, runs, voice queue items, and businesses from database...")
@@ -54,7 +49,6 @@ async def clear_all():
         print(f"[!] Redis notice: {e}")
 
     print("[SUCCESS] All test data removed completely. Dashboard is fresh and clean.")
-
 
 if __name__ == "__main__":
     asyncio.run(clear_all())

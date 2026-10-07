@@ -1,11 +1,7 @@
-"""
-Business Identity Pydantic Schemas
-"""
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
-
 
 class BusinessLocationResponse(BaseModel):
     id: uuid.UUID
@@ -18,7 +14,6 @@ class BusinessLocationResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class BusinessResponse(BaseModel):
     id: uuid.UUID

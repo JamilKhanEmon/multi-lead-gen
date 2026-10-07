@@ -1,15 +1,8 @@
-"""
-Qualification Engine: Enforces deterministic scoring, hard qualification gates,
-tier assignments, and human-readable explainability.
-"""
 from typing import Dict, List, Any, Tuple
 from app.core.logging import logger
 
-
 class QualificationEngine:
-    """Computes lead qualification score and applies hard qualification gates."""
 
-    # Weights for the 6 factors (total 100%)
     WEIGHTS = {
         "evidence_quality": 0.25,
         "problem_relevance": 0.20,
@@ -29,11 +22,6 @@ class QualificationEngine:
         business_impact: float,
         service_fit: float,
     ) -> float:
-        """
-        Calculates final score using normalized 0-100 factors:
-        score = 0.25*EQ + 0.20*PR + 0.15*Rep + 0.15*Rec + 0.10*BI + 0.15*SF
-        """
-        # Enforce 0-100 bounds on all inputs
         eq = max(0.0, min(100.0, evidence_quality))
         pr = max(0.0, min(100.0, problem_relevance))
         rep = max(0.0, min(100.0, problem_repetition))
@@ -65,41 +53,29 @@ class QualificationEngine:
         is_industry_verified: bool = True,
         industry_mismatch_reason: str = "",
     ) -> Tuple[bool, List[str]]:
-        """
-        Validates all mandatory hard qualification gates.
-        Returns: (passed: bool, failed_reasons: List[str])
-        """
         failed_reasons = []
 
-        # Gate 1: Solvable gap has verifiable Evidence Level >= 2
         if max_evidence_level < 2:
             failed_reasons.append(f"Insufficient evidence depth (Evidence Level {max_evidence_level} < 2 required).")
 
-        # Gate 2: Most recent supporting evidence has Recency >= 40 (within last 180 days)
         if max_recency < 40:
             failed_reasons.append(f"Evidence is stale (Recency score {max_recency} < 40 required, >180 days old).")
 
-        # Gate 3: Solvable gap is active for the identified business type
         if not is_relevant_to_business_type:
             failed_reasons.append("Identified gap is not active or relevant for this business type.")
 
-        # Gate 4: Service fit score >= 55.0
         if best_service_fit_score < 55.0:
             failed_reasons.append(f"Service fit score too low ({best_service_fit_score} < 55.0 required).")
 
-        # Gate 5: Inferable gaps require at least two independent sources
         if has_inferable_gaps and inferable_sources_count < 2:
             failed_reasons.append("Inferable findings require at least 2 independent source domains.")
 
-        # Gate 6: No unresolved active contradictions
         if has_primary_conflict:
             failed_reasons.append("Active unresolved contradiction between primary sources.")
 
-        # Gate 7: Target Industry Semantic Verification (Fatal gate)
         if not is_industry_verified:
             failed_reasons.append(f"Industry mismatch: {industry_mismatch_reason or 'Website content does not align with target industry'}.")
 
-        # Direct Contact check (non-fatal; routes to Review Needed instead of outright rejection)
         if not has_direct_contact:
             failed_reasons.append("Needs manual outreach review: Direct phone or email not yet verified.")
 
@@ -109,13 +85,6 @@ class QualificationEngine:
 
     @classmethod
     def assign_tier(cls, score: float, gates_passed: bool, has_direct_contact: bool = True) -> str:
-        """
-        Assigns lead tier based on score, gates, and contact reachability:
-        - If fatal gates failed: Rejected
-        - If score >= 80 and has_direct_contact: Strong Potential
-        - If score >= 60 OR missing direct contact: Review Needed
-        - Below 60: Rejected
-        """
         if not gates_passed:
             return "Rejected"
 
@@ -138,7 +107,6 @@ class QualificationEngine:
         tier: str,
         gate_failures: List[str],
     ) -> Dict[str, Any]:
-        """Generates structured explainability dossier answering all 7 required questions."""
         if tier == "Rejected":
             summary = f"{company_name} was rejected because: {'; '.join(gate_failures) or 'Score below threshold'}."
         else:

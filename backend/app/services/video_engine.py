@@ -1,12 +1,3 @@
-"""
-B2B AI Media Engine for Meta Campaigns.
-Handles:
-1. Multi-scene cinematic storyboard prompt expansion (Scene 1 Hook -> Scene 2 Problem -> Scene 3 Solution -> Scene 4 CTA).
-2. Reference Image & Character/Hardware consistency anchoring.
-3. Scene-by-scene video generation (Google Veo / Imagen 3 API integration with sandbox emulation fallback).
-4. Video stitching and composite assembly for Meta Ad format.
-5. High-converting B2B promotional poster generation.
-"""
 import os
 import uuid
 import json
@@ -16,9 +7,7 @@ from app.core.config import settings
 from app.services.ollama_client import OllamaClient
 from app.core.logging import logger
 
-
 class VideoMediaEngine:
-    """Production B2B video & poster generator with character/hardware consistency."""
 
     GOOGLE_GENAI_URL = "https://generativelanguage.googleapis.com/v1beta"
 
@@ -30,10 +19,6 @@ class VideoMediaEngine:
         selected_topic: str,
         reference_image_description: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """
-        Decomposes a B2B campaign topic into 4 cinematic, photorealistic scenes.
-        Maintains character/hardware consistency using reference descriptions.
-        """
         ollama = OllamaClient()
 
         prompt = f"""
@@ -101,7 +86,6 @@ For EACH scene return:
             },
         ]
 
-
         try:
             resp = await ollama.analyze(
                 system_prompt="Return ONLY a JSON list of 4 objects with keys: scene_number, scene_name, duration_seconds, prompt, camera_motion, narration.",
@@ -133,12 +117,7 @@ For EACH scene return:
         prompt: str,
         reference_image_url: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Renders or re-generates an individual scene using Google Veo / Imagen
-        or creates high-fidelity simulated MP4 asset URL.
-        """
         scene_id = uuid.uuid4().hex[:8]
-        # Realistic render delay simulation
         return {
             "scene_number": scene_number,
             "scene_id": scene_id,
@@ -155,9 +134,6 @@ For EACH scene return:
         scenes: List[Dict[str, Any]],
         campaign_name: str,
     ) -> Dict[str, Any]:
-        """
-        Merges 4 scenes into a single high-impact 20s B2B Meta commercial video.
-        """
         total_duration = sum(s.get("duration_seconds", 5) for s in scenes)
         stitched_id = f"stitched_{uuid.uuid4().hex[:10]}"
 
@@ -181,9 +157,6 @@ For EACH scene return:
         offer: str,
         reference_image_url: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Generates a high-converting B2B promotional poster image using Google Imagen.
-        """
         return {
             "poster_id": f"poster_{uuid.uuid4().hex[:8]}",
             "headline": headline,

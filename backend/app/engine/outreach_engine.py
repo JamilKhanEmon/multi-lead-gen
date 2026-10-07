@@ -1,8 +1,3 @@
-"""
-Autonomous Anti-Spam Email Outreach Engine
-Handles multi-step personalized sequences, random sending delays (120-240s),
-business-hour checks, SMTP dispatch, and sentiment-aware reply processing.
-"""
 import os
 import random
 import asyncio
@@ -14,15 +9,11 @@ from typing import Dict, Any, Optional, Tuple, List
 
 from app.core.logging import logger
 
-
 class OutreachEngine:
-    """Enterprise cold outreach and response management engine."""
 
-    # In-memory inbox rotation tracking (Daily limits)
     INBOX_STATS = {}
     _inbox_index = 0
 
-    # Default 3-step sequence templates
     TEMPLATES = {
         1: {
             "name": "Step 1: Strategic Initial Pitch",
@@ -82,17 +73,12 @@ class OutreachEngine:
 
     @classmethod
     def render_email(cls, step: int, lead_data: Dict[str, Any]) -> Tuple[str, str]:
-        """
-        Renders AI-adaptive, industry-tailored subject and body with 
-        dynamic round-robin persona signature rotation.
-        """
         company_name = lead_data.get("company_name") or "Your Team"
         contact_person = lead_data.get("contact_person") or "there"
         city = lead_data.get("city") or "your area"
         primary_gap = lead_data.get("primary_gap") or "optimizing your online presence and client acquisition"
         industry = (lead_data.get("industry") or lead_data.get("business_type") or "").lower()
 
-        # 1. Dynamic Persona Signature Rotation from Admin Pool
         personas = lead_data.get("personas") or []
         sig_block = ""
         if personas:
@@ -121,13 +107,11 @@ class OutreachEngine:
             sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or "Enterprise Solutions"
             sig_block = lead_data.get("signature_text") or f"Sincerely,\n{sender_name}\n{sender_title}, {sender_company}"
 
-        # 2. Check if Custom Global Email Template from Admin Panel is provided
         custom_tpl = lead_data.get("custom_template")
         if custom_tpl and step == 1:
             subj = custom_tpl.get("subject") if isinstance(custom_tpl, dict) else getattr(custom_tpl, "subject", "")
             bdy = custom_tpl.get("body") if isinstance(custom_tpl, dict) else getattr(custom_tpl, "body", "")
             
-            # If no signature was in personas, check if template has its own rendered signature
             if not sig_block and hasattr(custom_tpl, "render_signature"):
                 sig_block = custom_tpl.render_signature()
 
@@ -161,7 +145,6 @@ class OutreachEngine:
                 bdy = bdy.replace(tag, str(val))
             return subj, bdy
 
-        # 3. Industry-Specific Adaptive Value Propositions (Fallback/Auto-AI mode)
         if any(w in industry for w in ["dental", "clinic", "health", "medical", "doctor", "care"]):
             value_pitch = "increase direct patient bookings and modernize your digital inquiry capture"
             call_to_action = f"preview the patient acquisition audit we prepared specifically for {company_name}"
@@ -181,7 +164,6 @@ class OutreachEngine:
             value_pitch = "resolve key conversion bottlenecks and significantly increase your monthly inbound client inquiries"
             call_to_action = f"see the free growth audit report we prepared for {company_name}"
 
-        # 4. Generate Multi-Step Sequence Copy with raw signature block
         if step == 2:
             subject = f"Following up: Growth opportunity for {company_name}"
             body = (
@@ -201,7 +183,6 @@ class OutreachEngine:
                 f"{sig_block}"
             )
         else:
-            # Step 1: Initial Strategic Pitch
             subject = f"Quick question regarding {company_name} ({city})"
             body = (
                 f"Hi {contact_person},\n\n"
@@ -214,7 +195,6 @@ class OutreachEngine:
 
         return subject, body
 
-
     @classmethod
     def get_dynamic_iana_timezone(
         cls,
@@ -223,10 +203,6 @@ class OutreachEngine:
         country: Optional[str] = None,
         city: Optional[str] = None
     ) -> str:
-        """
-        Dynamically resolves standard IANA Timezone string anywhere on Earth.
-        Uses exact GPS coordinates (lat, lon) via TimezoneFinder, or fallback lookup.
-        """
         if lat is not None and lon is not None and (lat != 0 or lon != 0):
             try:
                 from timezonefinder import TimezoneFinder
@@ -237,7 +213,6 @@ class OutreachEngine:
             except Exception:
                 pass
 
-        # Fallback keyword match if GPS is absent
         text_search = f"{city or ''} {country or ''}".strip().lower()
         if any(k in text_search for k in ["new york", "usa", "us", "united states", "florida", "est"]):
             return "America/New_York"
@@ -270,11 +245,6 @@ class OutreachEngine:
         country: Optional[str] = None,
         city: Optional[str] = None
     ) -> Tuple[bool, str]:
-        """
-        100% Dynamic Worldwide Target Country Business Hours & Weekend Validator.
-        Converts GPS coordinates (lat, lon) directly to IANA Timezone via TimezoneFinder + ZoneInfo.
-        Handles Daylight Saving Time (DST) automatically anywhere on Earth.
-        """
         from zoneinfo import ZoneInfo
 
         iana_tz = cls.get_dynamic_iana_timezone(lat=lat, lon=lon, country=country, city=city)
@@ -283,23 +253,21 @@ class OutreachEngine:
         except Exception:
             target_time = datetime.now(timezone.utc) + timedelta(hours=6)
 
-        weekday = target_time.weekday()  # 0 = Monday, 6 = Sunday
+        weekday = target_time.weekday()
         hour = target_time.hour
         minute = target_time.minute
 
-        # Check weekend off-days (Middle East: Fri/Sat, Others: Sat/Sun)
         is_middle_east = iana_tz.startswith("Asia/Dubai") or iana_tz.startswith("Asia/Riyadh") or iana_tz.startswith("Asia/Qatar")
         if is_middle_east:
-            if weekday in (4, 5):  # Fri or Sat
+            if weekday in (4, 5):
                 return False, f"Target Location Weekend ({target_time.strftime('%A')} in {iana_tz})"
         else:
-            if weekday in (5, 6):  # Sat or Sun
+            if weekday in (5, 6):
                 return False, f"Target Location Weekend ({target_time.strftime('%A')} in {iana_tz})"
 
-        # Check 09:00 AM to 05:30 PM (17:30)
         current_minutes = hour * 60 + minute
-        start_minutes = 9 * 60      # 09:00 AM
-        end_minutes = 17 * 60 + 30  # 05:30 PM
+        start_minutes = 9 * 60
+        end_minutes = 17 * 60 + 30
 
         if not (start_minutes <= current_minutes <= end_minutes):
             return False, f"Outside Target Office Hours ({target_time.strftime('%I:%M %p %Z')} in {iana_tz})"
@@ -308,16 +276,11 @@ class OutreachEngine:
 
     @classmethod
     def is_within_business_hours(cls, target_timezone_offset_hours: int = 6) -> bool:
-        """Backwards compatible alias for local business hours check."""
         is_ok, _ = cls.is_within_target_business_hours(country=None, city=None)
         return is_ok
 
     @classmethod
     def get_active_smtp_inboxes(cls) -> List[Dict[str, Any]]:
-        """
-        Discovers and returns all configured SMTP accounts (up to 20 accounts).
-        Can be provided via SMTP_HOST, SMTP_USER, etc., or comma/JSON list.
-        """
         inboxes = []
         base_host = os.getenv("SMTP_HOST")
         base_user = os.getenv("SMTP_USER")
@@ -338,7 +301,6 @@ class OutreachEngine:
                 "daily_limit": 30
             })
 
-        # Check for multi-inbox env variables (e.g. SMTP_HOST_2, SMTP_USER_2, ... up to 20)
         for i in range(2, 21):
             h = os.getenv(f"SMTP_HOST_{i}")
             u = os.getenv(f"SMTP_USER_{i}")
@@ -369,20 +331,13 @@ class OutreachEngine:
         body: str,
         dry_run: bool = False
     ) -> Tuple[bool, str]:
-        """
-        Sends email via configured Multi-SMTP Pool with automatic load balancing and rotation.
-        Rotates across up to 20 inboxes to ensure zero spam flags and high inbox deliverability.
-        If SMTP host is not configured, logs a simulated successful send for dry-run testing.
-        """
         inboxes = cls.get_active_smtp_inboxes()
 
-        # Dry-run or test mode when credentials not yet configured
         if dry_run or not inboxes:
             logger.info(f"[OUTREACH SIMULATOR] Dispatching to {recipient_email} | Subject: '{subject}' | (Simulated 200 OK)")
             await asyncio.sleep(0.5)
             return True, "Simulated delivery successful (Dry-Run Mode)"
 
-        # Load balance: pick next available inbox
         cls._inbox_index = (cls._inbox_index + 1) % len(inboxes)
         selected_inbox = inboxes[cls._inbox_index]
 
@@ -393,11 +348,9 @@ class OutreachEngine:
         from_email = selected_inbox["from_email"]
         from_name = selected_inbox["from_name"]
 
-        # Track sent stats
         inbox_id = selected_inbox["id"]
         cls.INBOX_STATS[inbox_id] = cls.INBOX_STATS.get(inbox_id, 0) + 1
 
-        # Live SMTP delivery
         loop = asyncio.get_running_loop()
 
         def _send():
@@ -428,23 +381,15 @@ class OutreachEngine:
 
     @classmethod
     def classify_reply_sentiment(cls, reply_text: str) -> Tuple[str, str]:
-        """
-        Analyzes incoming reply text for Hot Lead / Positive vs Unsubscribe / Neutral.
-        Returns:
-            sentiment: "POSITIVE" | "NEGATIVE" | "NEUTRAL"
-            explanation: Reason
-        """
         if not reply_text:
             return "NEUTRAL", "Empty reply content"
 
         clean = reply_text.lower()
 
-        # Check negative/unsubscribe first
         for neg in cls.NEGATIVE_KEYWORDS:
             if neg in clean:
                 return "NEGATIVE", f"Opt-out or negative intent detected: '{neg}'"
 
-        # Check positive
         for pos in cls.POSITIVE_KEYWORDS:
             if pos in clean:
                 return "POSITIVE", f"Hot lead interest signal detected: '{pos}'"

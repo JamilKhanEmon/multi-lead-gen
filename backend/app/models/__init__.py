@@ -1,6 +1,3 @@
-"""
-SQLAlchemy ORM Models Package
-"""
 from .base import Base, TimestampMixin, UUIDMixin
 from .business import Business, BusinessLocation
 from .parameter import Parameter, BusinessType, BusinessTypeParameter
@@ -54,5 +51,4 @@ __all__ = [
     "SMTPInbox",
     "PersonaSignature",
 ]
-
 
