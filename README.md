@@ -213,8 +213,6 @@ multi-lead-gen/
 │   └── scripts/                   # Startup & shutdown bash automation
 ├── storage/                       # Preserved evidence snapshots & downloaded media
 ├── .env                           # Active environment credentials (git-ignored)
-├── .env.example                   # Local configuration template
-├── .env.production.example        # VPS production deployment template
 ├── docker-compose.prod.yml        # Multi-container production deployment manifest
 ├── deploy.sh                      # 1-click VPS installation and update script
 ├── start.sh                       # 1-click local development launcher
@@ -231,10 +229,10 @@ multi-lead-gen/
 * **Docker Desktop** (for running PostgreSQL & Redis locally)
 
 ### 2. Configure Environment Variables
+Create your `.env` file in the project root with your database, SMTP, and OpenClaw configuration:
 ```bash
-cp .env.example .env
+nano .env
 ```
-Open `.env` and fill in your database, SMTP, and OpenClaw configuration.
 
 ### 3. Start Database & Cache Containers
 ```bash
@@ -298,7 +296,6 @@ To gracefully shut down all services:
    ```
 2. Configure production environment variables:
    ```bash
-   cp .env.production.example .env
    nano .env
    ```
 3. Run the automated deployment script:
