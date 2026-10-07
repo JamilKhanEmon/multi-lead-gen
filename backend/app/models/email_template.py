@@ -70,11 +70,26 @@ class SMTPInbox(Base, UUIDMixin, TimestampMixin):
 
 
 class PersonaSignature(Base, UUIDMixin, TimestampMixin):
-    """Custom executive persona signatures pool for round-robin rotation."""
+    """Custom executive signature note cards pool for anti-spam random rotation."""
     __tablename__ = "persona_signatures"
 
-    name: Mapped[str] = mapped_column(String(150), nullable=False)
-    title: Mapped[str] = mapped_column(String(150), nullable=False)
-    company: Mapped[str] = mapped_column(String(150), nullable=False)
+    title: Mapped[str] = mapped_column(String(150), default="Primary Signature", nullable=False)
+    raw_content: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    company: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    def render_signature(self) -> str:
+        """Returns the raw note signature block verbatim."""
+        if self.raw_content and self.raw_content.strip():
+            return self.raw_content.strip()
+        parts = []
+        if self.name:
+            parts.append(self.name)
+        if self.title:
+            parts.append(self.title)
+        if self.company:
+            parts.append(self.company)
+        return "\n".join(parts)
+
 

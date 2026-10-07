@@ -92,17 +92,34 @@ class OutreachEngine:
         primary_gap = lead_data.get("primary_gap") or "optimizing your online presence and client acquisition"
         industry = (lead_data.get("industry") or lead_data.get("business_type") or "").lower()
 
-        # 1. Dynamic Persona Rotation from Admin Pool
+        # 1. Dynamic Persona Signature Rotation from Admin Pool
         personas = lead_data.get("personas") or []
+        sig_block = ""
         if personas:
             p = personas[hash(company_name) % len(personas)]
-            sender_name = p.get("name") if isinstance(p, dict) else getattr(p, "name", "Growth Team")
-            sender_title = p.get("title") if isinstance(p, dict) else getattr(p, "title", "Solutions Specialist")
-            sender_company = p.get("company") if isinstance(p, dict) else getattr(p, "company", os.getenv("COMPANY_NAME", "Enterprise Solutions"))
+            if isinstance(p, dict):
+                raw_sig = p.get("raw_content") or p.get("raw_signature") or ""
+                if not raw_sig and (p.get("name") or p.get("title")):
+                    raw_sig = f"{p.get('name', '')}\n{p.get('title', '')}\n{p.get('company', '')}".strip()
+                sig_block = raw_sig.strip()
+                sender_name = p.get("name") or "Growth Team"
+                sender_title = p.get("title") or "Solutions Specialist"
+                sender_company = p.get("company") or os.getenv("COMPANY_NAME", "Enterprise Solutions")
+            else:
+                raw_sig = getattr(p, "raw_content", "") or ""
+                if not raw_sig and hasattr(p, "render_signature"):
+                    raw_sig = p.render_signature()
+                elif not raw_sig and (getattr(p, "name", None) or getattr(p, "title", None)):
+                    raw_sig = f"{getattr(p, 'name', '')}\n{getattr(p, 'title', '')}\n{getattr(p, 'company', '')}".strip()
+                sig_block = raw_sig.strip()
+                sender_name = getattr(p, "name", "Growth Team")
+                sender_title = getattr(p, "title", "Solutions Specialist")
+                sender_company = getattr(p, "company", os.getenv("COMPANY_NAME", "Enterprise Solutions"))
         else:
             sender_name = lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or "Growth Team"
             sender_title = lead_data.get("sender_title") or "Solutions Specialist"
             sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or "Enterprise Solutions"
+            sig_block = lead_data.get("signature_text") or f"Sincerely,\n{sender_name}\n{sender_title}, {sender_company}"
 
         # 2. Check if Custom Global Email Template from Admin Panel is provided
         custom_tpl = lead_data.get("custom_template")
@@ -110,7 +127,10 @@ class OutreachEngine:
             subj = custom_tpl.get("subject") if isinstance(custom_tpl, dict) else getattr(custom_tpl, "subject", "")
             bdy = custom_tpl.get("body") if isinstance(custom_tpl, dict) else getattr(custom_tpl, "body", "")
             
-            sig_block = f"{sender_name}\n{sender_title}\n{sender_company}"
+            # If no signature was in personas, check if template has its own rendered signature
+            if not sig_block and hasattr(custom_tpl, "render_signature"):
+                sig_block = custom_tpl.render_signature()
+
             replacements = {
                 "{{company_name}}": company_name,
                 "{{business_name}}": company_name,
@@ -158,7 +178,7 @@ class OutreachEngine:
             value_pitch = "resolve key conversion bottlenecks and significantly increase your monthly inbound client inquiries"
             call_to_action = f"see the free growth audit report we prepared for {company_name}"
 
-        # 3. Generate Multi-Step Sequence Copy
+        # 4. Generate Multi-Step Sequence Copy with raw signature block
         if step == 2:
             subject = f"Following up: Growth opportunity for {company_name}"
             body = (
@@ -166,10 +186,7 @@ class OutreachEngine:
                 f"Just following up on my previous note regarding {company_name}. I know you're busy managing operations in {city}.\n\n"
                 f"Did you have a chance to review our observation regarding {primary_gap}?\n\n"
                 f"We help businesses in your space {value_pitch}. Happy to email over a concise 1-page summary if that's more convenient.\n\n"
-                f"Best regards,\n\n"
-                f"{sender_name}\n"
-                f"{sender_title}\n"
-                f"{sender_company}"
+                f"{sig_block}"
             )
         elif step == 3:
             subject = f"Permission to close your file, {contact_person}?"
@@ -178,10 +195,7 @@ class OutreachEngine:
                 f"I haven't heard back, so I assume addressing {primary_gap} isn't an active priority for {company_name} right now.\n\n"
                 f"I won't take up any more of your time. If you ever want to explore modernizing this in the future to {value_pitch}, feel free to reach out anytime.\n\n"
                 f"Wishing {company_name} continued success!\n\n"
-                f"Warm regards,\n\n"
-                f"{sender_name}\n"
-                f"{sender_title}\n"
-                f"{sender_company}"
+                f"{sig_block}"
             )
         else:
             # Step 1: Initial Strategic Pitch
@@ -192,13 +206,11 @@ class OutreachEngine:
                 f"While reviewing your digital touchpoints online, I noticed a key opportunity regarding {primary_gap}.\n\n"
                 f"We recently helped similar businesses in your industry {value_pitch} by over 30% within 48 hours.\n\n"
                 f"Would you be open to a brief 3-minute chat this week to {call_to_action}?\n\n"
-                f"Best regards,\n\n"
-                f"{sender_name}\n"
-                f"{sender_title}\n"
-                f"{sender_company}"
+                f"{sig_block}"
             )
 
         return subject, body
+
 
     @classmethod
     def get_dynamic_iana_timezone(

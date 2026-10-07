@@ -262,6 +262,15 @@ async def lifespan(app: FastAPI):
                 
                 # Autopilot Campaign migration fields
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_global_template BOOLEAN DEFAULT TRUE;"))
+                
+                # Persona Signatures Note migration fields
+                await conn.execute(text("ALTER TABLE persona_signatures ADD COLUMN IF NOT EXISTS title VARCHAR(150) DEFAULT 'Primary Signature';"))
+                await conn.execute(text("ALTER TABLE persona_signatures ADD COLUMN IF NOT EXISTS raw_content TEXT;"))
+                try:
+                    await conn.execute(text("ALTER TABLE persona_signatures ALTER COLUMN name DROP NOT NULL;"))
+                    await conn.execute(text("ALTER TABLE persona_signatures ALTER COLUMN company DROP NOT NULL;"))
+                except Exception:
+                    pass
             except Exception as migration_err:
                 logger.warning(f"Migration columns execution notice: {migration_err}")
         logger.info("PostgreSQL database tables, contact columns, user permissions, and outreach columns verified.")
