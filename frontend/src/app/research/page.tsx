@@ -41,6 +41,7 @@ export default function ResearchInitiatorPage() {
   const [industry, setIndustry] = useState("");
   const [depth, setDepth] = useState("DEEP");
   const [autoMailEnabled, setAutoMailEnabled] = useState(true);
+  const [useCompanyKb, setUseCompanyKb] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -127,6 +128,7 @@ export default function ResearchInitiatorPage() {
         company_limit: 0, // Auto-exhaustion loop (no artificial limit)
         business_type_override: cleanOverride,
         auto_mail_enabled: autoMailEnabled,
+        use_company_kb: useCompanyKb,
       });
 
       setActiveRun(run);
@@ -578,6 +580,35 @@ export default function ResearchInitiatorPage() {
               <span className="text-amber-400 font-medium flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
                 OFF: Emails won't send automatically. Valid leads will be held in the Outreach Queue for human-paced batch mailing.
+              </span>
+            )}
+          </p>
+        </div>
+
+        {/* Company Knowledge Base Mode Toggle */}
+        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
+              <Building2 className="w-4 h-4 text-purple-400" />
+              <span>Use Company KB & Branded Pitch</span>
+            </label>
+            <input
+              type="checkbox"
+              checked={useCompanyKb}
+              onChange={(e) => setUseCompanyKb(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-purple-500 focus:ring-purple-500 cursor-pointer"
+            />
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            {useCompanyKb ? (
+              <span className="text-purple-400 font-medium flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-purple-400" />
+                ON: Company KB Active — Uses your agency profile & custom service catalog from Admin for discovery call pitch & value wedges.
+              </span>
+            ) : (
+              <span className="text-amber-400 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                OFF: Generic AI Pitch Mode — Zero company branding or specific agency name; generates clean, consultative B2B digital transformation pitches.
               </span>
             )}
           </p>

@@ -13,6 +13,7 @@ from .campaign import MetaCampaign
 from .voice_agent import VoiceKnowledgeBase, VoiceCallQueueItem, VoiceCallLog
 from .email_template import EmailTemplate, SMTPInbox, PersonaSignature
 from .autopilot import AutopilotCampaign, EmailOutreachLog
+from .company_kb import CompanyKB, DEFAULT_SERVICES
 
 __all__ = [
     "Base",
@@ -20,6 +21,8 @@ __all__ = [
     "UUIDMixin",
     "AutopilotCampaign",
     "EmailOutreachLog",
+    "CompanyKB",
+    "DEFAULT_SERVICES",
     "Business",
     "BusinessLocation",
     "Parameter",

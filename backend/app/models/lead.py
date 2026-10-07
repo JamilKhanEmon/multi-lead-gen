@@ -31,6 +31,14 @@ class Lead(Base, UUIDMixin, TimestampMixin):
     followup_step: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     outreach_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # v2 Demand-Side Fit Gate & Sales Intelligence Fields
+    fit_tier: Mapped[str] = mapped_column(String(50), default="HOT", nullable=False, index=True)  # HOT, WARM, COLD, DROPPED
+    why_they_need_us: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Live evidence quote
+    what_they_need: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Service solution
+    discovery_call_script: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 30-sec sales opener
+    matched_service: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # Matched catalog service
+
+
     business: Mapped["Business"] = relationship("Business", back_populates="leads")
     scores: Mapped[List["LeadScore"]] = relationship("LeadScore", back_populates="lead", cascade="all, delete-orphan")
     service_matches: Mapped[List["ServiceMatch"]] = relationship("ServiceMatch", back_populates="lead", cascade="all, delete-orphan")

@@ -15,6 +15,7 @@ from app.models.lead import Lead
 from app.models.research import ResearchRun
 from app.models.audit import User
 from app.models.email_template import EmailTemplate, SMTPInbox, PersonaSignature
+from app.models.company_kb import CompanyKB, DEFAULT_SERVICES
 from app.schemas.admin import (
     SystemHealthResponse,
     SystemMetricsResponse,
@@ -25,6 +26,8 @@ from app.schemas.admin import (
     PersonaSignatureCreate,
     PersonaSignatureUpdate,
     PersonaSignatureResponse,
+    CompanyKBResponse,
+    CompanyKBUpdate,
 )
 import redis.asyncio as aioredis
 import httpx
@@ -692,6 +695,132 @@ async def delete_persona_signature(
     await db.commit()
     return {"status": "SUCCESS", "message": "Signature Card deleted successfully"}
 
+
+# ==============================================================================
+# Company Knowledge Base & Service Catalog (Admin Management)
+# ==============================================================================
+@router.get("/company-kb", response_model=CompanyKBResponse)
+async def get_company_kb(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Retrieves the active company profile and service catalog for Fit Gate pitches."""
+    stmt = select(CompanyKB).order_by(CompanyKB.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    kb = res.scalar_one_or_none()
+
+    if not kb:
+        # Auto-initialize default company KB record
+        kb = CompanyKB(
+            company_name="Enterprise Solutions",
+            tagline_experience="10+ years of digital transformation & custom software engineering",
+            headquarters="Dhaka, Bangladesh",
+            contact_phone=None,
+            contact_email=None,
+            website_url=None,
+            services_json=DEFAULT_SERVICES,
+            is_active=True,
+        )
+        db.add(kb)
+        await db.commit()
+        await db.refresh(kb)
+
+    return CompanyKBResponse(
+        id=str(kb.id),
+        company_name=kb.company_name,
+        tagline_experience=kb.tagline_experience,
+        headquarters=kb.headquarters,
+        contact_phone=kb.contact_phone,
+        contact_email=kb.contact_email,
+        website_url=kb.website_url,
+        services_json=kb.services_json or DEFAULT_SERVICES,
+        is_active=kb.is_active,
+        created_at=kb.created_at.isoformat() if kb.created_at else None,
+        updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
+    )
+
+
+@router.put("/company-kb", response_model=CompanyKBResponse)
+async def update_company_kb(
+    payload: CompanyKBUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Updates company profile and services catalog."""
+    stmt = select(CompanyKB).order_by(CompanyKB.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    kb = res.scalar_one_or_none()
+
+    if not kb:
+        kb = CompanyKB()
+        db.add(kb)
+
+    if payload.company_name is not None:
+        kb.company_name = payload.company_name.strip()
+    if payload.tagline_experience is not None:
+        kb.tagline_experience = payload.tagline_experience.strip()
+    if payload.headquarters is not None:
+        kb.headquarters = payload.headquarters.strip() or None
+    if payload.contact_phone is not None:
+        kb.contact_phone = payload.contact_phone.strip() or None
+    if payload.contact_email is not None:
+        kb.contact_email = payload.contact_email.strip() or None
+    if payload.website_url is not None:
+        kb.website_url = payload.website_url.strip() or None
+    if payload.services_json is not None:
+        kb.services_json = payload.services_json
+    if payload.is_active is not None:
+        kb.is_active = payload.is_active
+
+    await db.commit()
+    await db.refresh(kb)
+
+    return CompanyKBResponse(
+        id=str(kb.id),
+        company_name=kb.company_name,
+        tagline_experience=kb.tagline_experience,
+        headquarters=kb.headquarters,
+        contact_phone=kb.contact_phone,
+        contact_email=kb.contact_email,
+        website_url=kb.website_url,
+        services_json=kb.services_json or DEFAULT_SERVICES,
+        is_active=kb.is_active,
+        created_at=kb.created_at.isoformat() if kb.created_at else None,
+        updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
+    )
+
+
+@router.post("/company-kb/reset-defaults", response_model=CompanyKBResponse)
+async def reset_company_kb_defaults(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Resets company service offerings back to the system default 5 core software products."""
+    stmt = select(CompanyKB).order_by(CompanyKB.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    kb = res.scalar_one_or_none()
+
+    if not kb:
+        kb = CompanyKB()
+        db.add(kb)
+
+    kb.services_json = DEFAULT_SERVICES
+    await db.commit()
+    await db.refresh(kb)
+
+    return CompanyKBResponse(
+        id=str(kb.id),
+        company_name=kb.company_name,
+        tagline_experience=kb.tagline_experience,
+        headquarters=kb.headquarters,
+        contact_phone=kb.contact_phone,
+        contact_email=kb.contact_email,
+        website_url=kb.website_url,
+        services_json=kb.services_json or DEFAULT_SERVICES,
+        is_active=kb.is_active,
+        created_at=kb.created_at.isoformat() if kb.created_at else None,
+        updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
+    )
 
 
 # ==============================================================================

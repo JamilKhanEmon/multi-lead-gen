@@ -4,7 +4,7 @@ Research Run & Worker Job Execution Models
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
-from sqlalchemy import String, Text, Integer, DateTime, ForeignKey, Index
+from sqlalchemy import String, Text, Integer, Boolean, DateTime, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin, UUIDMixin
@@ -18,6 +18,7 @@ class ResearchRun(Base, UUIDMixin, TimestampMixin):
     location: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     depth: Mapped[str] = mapped_column(String(20), default="STANDARD", nullable=False)  # QUICK, STANDARD, DEEP
     status: Mapped[str] = mapped_column(String(50), default="PENDING", nullable=False, index=True)  # PENDING, RUNNING, COMPLETED, CANCELLED, FAILED
+    use_company_kb: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     
     discovered_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     researched_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

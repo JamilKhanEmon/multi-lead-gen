@@ -47,6 +47,7 @@ async def create_research_run(
         depth=data.depth.upper(),
         status="RUNNING",
         started_at=datetime.now(timezone.utc),
+        use_company_kb=data.use_company_kb,
     )
     db.add(run)
     await db.flush()
@@ -65,10 +66,10 @@ async def create_research_run(
             "sub_city": sub_city,
             "location": computed_location,
             "depth": data.depth,
-            "company_limit": data.company_limit,
             "target_services": data.target_services,
             "business_type_override": data.business_type_override,
             "auto_mail_enabled": data.auto_mail_enabled,
+            "use_company_kb": data.use_company_kb,
         },
     )
     db.add(job)

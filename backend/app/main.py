@@ -257,11 +257,18 @@ async def lifespan(app: FastAPI):
                     ("last_contacted_at", "TIMESTAMPTZ"),
                     ("followup_step", "INTEGER DEFAULT 0"),
                     ("outreach_notes", "TEXT"),
+                    ("fit_tier", "VARCHAR(50) DEFAULT 'HOT'"),
+                    ("why_they_need_us", "TEXT"),
+                    ("what_they_need", "TEXT"),
+                    ("discovery_call_script", "TEXT"),
+                    ("matched_service", "VARCHAR(255)"),
                 ]:
                     await conn.execute(text(f"ALTER TABLE leads ADD COLUMN IF NOT EXISTS {col_name} {col_type};"))
                 
-                # Autopilot Campaign migration fields
+                # Autopilot Campaign & Research migration fields
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_global_template BOOLEAN DEFAULT TRUE;"))
+                await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
+                await conn.execute(text("ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
                 
                 # Persona Signatures Note migration fields
                 await conn.execute(text("ALTER TABLE persona_signatures ADD COLUMN IF NOT EXISTS title VARCHAR(150) DEFAULT 'Primary Signature';"))

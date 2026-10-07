@@ -56,6 +56,11 @@ export interface Lead {
   google_search_url?: string;
   latitude?: number;
   longitude?: number;
+  fit_tier?: "HOT" | "WARM" | "COLD" | "DROPPED" | string;
+  why_they_need_us?: string;
+  what_they_need?: string;
+  discovery_call_script?: string;
+  matched_service?: string;
 }
 
 export interface ParameterCatalogItem {
@@ -167,7 +172,8 @@ export async function fetchLeads(
   tier?: string,
   runId?: string,
   outreachStatus?: string,
-  dealStatus?: string
+  dealStatus?: string,
+  fitTier?: string
 ): Promise<Lead[]> {
   try {
     const params = new URLSearchParams();
@@ -175,6 +181,7 @@ export async function fetchLeads(
     if (runId && runId !== "ALL") params.append("run_id", runId);
     if (outreachStatus && outreachStatus !== "ALL") params.append("outreach_status", outreachStatus);
     if (dealStatus && dealStatus !== "ALL") params.append("deal_status", dealStatus);
+    if (fitTier && fitTier !== "ALL") params.append("fit_tier", fitTier);
     const queryString = params.toString() ? `?${params.toString()}` : "";
     const token = getStoredToken();
     const headers: Record<string, string> = {};
@@ -205,6 +212,18 @@ export async function fetchLeadDetail(id: string): Promise<any> {
   }
 }
 
+export async function evaluateLeadFitGate(id: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/leads/${id}/evaluate-fit`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) throw new Error("Failed to evaluate lead fit gate");
+  return res.json();
+}
+
 export async function createResearchRun(data: {
   industry: string;
   country?: string;
@@ -215,6 +234,7 @@ export async function createResearchRun(data: {
   company_limit?: number;
   business_type_override?: string;
   auto_mail_enabled?: boolean;
+  use_company_kb?: boolean;
 }): Promise<ResearchRun> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -226,6 +246,7 @@ export async function createResearchRun(data: {
       ...data,
       company_limit: data.company_limit ?? 0,
       auto_mail_enabled: data.auto_mail_enabled ?? true,
+      use_company_kb: data.use_company_kb ?? true,
     }),
   });
   if (!res.ok) throw new Error("Failed to start research run");
@@ -267,6 +288,11 @@ export async function updateLeadDetails(leadId: string, data: {
   address?: string;
   primary_gap_summary?: string;
   tier?: string;
+  fit_tier?: string;
+  why_they_need_us?: string;
+  what_they_need?: string;
+  discovery_call_script?: string;
+  matched_service?: string;
   approve_for_outreach?: boolean;
   outreach_status?: string;
 }): Promise<any> {
@@ -1223,6 +1249,7 @@ export async function createAutopilotCampaign(data: {
   is_unlimited_leads: boolean;
   auto_mail_enabled: boolean;
   use_global_template?: boolean;
+  use_company_kb?: boolean;
 }): Promise<AutopilotCampaign> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -1565,6 +1592,75 @@ export async function simulateLeadReply(leadId: string, replyText: string): Prom
     body: JSON.stringify({ reply_text: replyText }),
   });
   if (!res.ok) throw new Error("Failed to simulate reply");
+  return res.json();
+}
+
+export interface ServiceCatalogItem {
+  key: string;
+  name: string;
+  wedge: string;
+  description: string;
+}
+
+export interface CompanyKB {
+  id: string;
+  company_name: string;
+  tagline_experience: string;
+  headquarters?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  website_url?: string | null;
+  services_json: ServiceCatalogItem[];
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export async function fetchCompanyKB(): Promise<CompanyKB> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/company-kb`, {
+    headers,
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error("Failed to fetch Company Knowledge Base");
+  }
+  return res.json();
+}
+
+export async function updateCompanyKB(data: Partial<CompanyKB>): Promise<CompanyKB> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/company-kb`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update Company Knowledge Base");
+  }
+  return res.json();
+}
+
+export async function resetCompanyKBDefaults(): Promise<CompanyKB> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/company-kb/reset-defaults`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to reset Company KB defaults");
+  }
   return res.json();
 }
 

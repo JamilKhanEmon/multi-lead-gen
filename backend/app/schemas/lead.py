@@ -62,6 +62,11 @@ class LeadResponse(BaseModel):
     google_search_url: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    fit_tier: Optional[str] = "HOT"
+    why_they_need_us: Optional[str] = None
+    what_they_need: Optional[str] = None
+    discovery_call_script: Optional[str] = None
+    matched_service: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -127,6 +132,11 @@ class LeadUpdate(BaseModel):
     address: Optional[str] = None
     primary_gap_summary: Optional[str] = None
     tier: Optional[str] = None
+    fit_tier: Optional[str] = None
+    why_they_need_us: Optional[str] = None
+    what_they_need: Optional[str] = None
+    discovery_call_script: Optional[str] = None
+    matched_service: Optional[str] = None
     approve_for_outreach: Optional[bool] = None
     outreach_status: Optional[str] = None
 
