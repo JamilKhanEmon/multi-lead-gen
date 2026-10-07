@@ -7,14 +7,8 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
 if [ ! -f "$PROJECT_DIR/.env" ]; then
-    if [ -f "$PROJECT_DIR/.env.production.example" ]; then
-        echo "[!] .env not found. Creating from .env.production.example..."
-        cp "$PROJECT_DIR/.env.production.example" "$PROJECT_DIR/.env"
-        echo "[!] Please review and edit $PROJECT_DIR/.env with your real credentials before proceeding."
-    else
-        echo "[ERROR] Neither .env nor .env.production.example was found!"
-        exit 1
-    fi
+    echo "[ERROR] .env file not found! Please create your .env configuration before proceeding."
+    exit 1
 fi
 
 if ! command -v docker &> /dev/null; then
