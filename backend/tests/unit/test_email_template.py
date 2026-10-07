@@ -41,5 +41,19 @@ def test_email_template_custom_signature_text_override():
     sig = tpl.render_signature()
     assert "--- Custom Direct Signature Block ---" in sig
     assert "Direct Line: 12345" in sig
-    # When custom signature_text is provided, it takes precedence
     assert "Senior Solutions Consultant" not in sig
+
+
+def test_persona_signature_raw_content_rendering():
+    from app.models.email_template import PersonaSignature
+    ps = PersonaSignature(
+        title="Consultant Note",
+        raw_content="Sincerely,\ntest\nSenior Solutions Consultant, Multi-Lead Gen AI\nEmail: contact@leadgen.local | Phone: +880 1700-000000\nhttps://leadgen.local",
+        is_active=True,
+    )
+    sig = ps.render_signature()
+    assert "Sincerely," in sig
+    assert "test" in sig
+    assert "Senior Solutions Consultant, Multi-Lead Gen AI" in sig
+    assert "https://leadgen.local" in sig
+

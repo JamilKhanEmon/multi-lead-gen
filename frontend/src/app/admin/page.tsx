@@ -42,6 +42,11 @@ import {
   Server,
   Activity,
   RotateCcw,
+  Edit3,
+  Shuffle,
+  Power,
+  FileText,
+  Layers,
 } from "lucide-react";
 import {
   loginUser,
@@ -61,6 +66,8 @@ import {
   deleteSMTPInbox,
   testSMTPInbox,
   createPersonaSignature,
+  updatePersonaSignature,
+  togglePersonaSignature,
   deletePersonaSignature,
   purgeDatabaseData,
   AuthUser,
@@ -103,12 +110,20 @@ export default function AdminPortalPage() {
 
   // Persona Modal & Action States
   const [showAddPersonaModal, setShowAddPersonaModal] = useState(false);
+  const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
   const [personaForm, setPersonaForm] = useState({
-    name: "",
-    title: "",
-    company: "",
+    title: "Primary Signature",
+    raw_content: `Sincerely,
+test
+Senior Solutions Consultant, Multi-Lead Gen AI
+Email: contact@leadgen.local | Phone: +880 1700-000000
+https://leadgen.local`,
+    is_active: true,
   });
   const [personaSubmitting, setPersonaSubmitting] = useState(false);
+  const [selectedPreviewSigIdx, setSelectedPreviewSigIdx] = useState<number>(0);
+  const [copiedSigId, setCopiedSigId] = useState<string | null>(null);
+
 
   // Purge Modal & Action States
   const [showPurgeModal, setShowPurgeModal] = useState(false);
@@ -519,37 +534,80 @@ export default function AdminPortalPage() {
     }
   };
 
-  // Persona Signatures Handlers
-  const handleAddPersonaSubmit = async (e: React.FormEvent) => {
+  // Persona Note Signatures Handlers
+  const handleOpenAddPersona = () => {
+    setEditingPersonaId(null);
+    const count = (inboxMonitorData?.persona_signatures?.length || 0) + 1;
+    setPersonaForm({
+      title: `Signature Note #${count}`,
+      raw_content: `Sincerely,
+test
+Senior Solutions Consultant, Multi-Lead Gen AI
+Email: contact@leadgen.local | Phone: +880 1700-000000
+https://leadgen.local`,
+      is_active: true,
+    });
+    setShowAddPersonaModal(true);
+  };
+
+  const handleOpenEditPersona = (p: PersonaSignatureItem) => {
+    setEditingPersonaId(p.id);
+    setPersonaForm({
+      title: p.title || "Signature Note",
+      raw_content: p.raw_content || `${p.name || ''}\n${p.title || ''}\n${p.company || ''}`.trim(),
+      is_active: p.is_active !== false,
+    });
+    setShowAddPersonaModal(true);
+  };
+
+  const handleAddOrEditPersonaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPersonaSubmitting(true);
     setUserActionError(null);
     setUserActionSuccess(null);
     try {
-      await createPersonaSignature(personaForm);
-      setUserActionSuccess("Persona signature added to rotation pool!");
+      if (editingPersonaId) {
+        await updatePersonaSignature(editingPersonaId, personaForm);
+        setUserActionSuccess("Signature Note Card updated successfully!");
+      } else {
+        await createPersonaSignature(personaForm);
+        setUserActionSuccess("Signature Note Card added to rotation pool!");
+      }
       setShowAddPersonaModal(false);
-      setPersonaForm({ name: "", title: "", company: "" });
+      setEditingPersonaId(null);
       await loadInboxMonitor();
     } catch (err: any) {
-      setUserActionError(err.message || "Failed to add persona");
+      setUserActionError(err.message || "Failed to save Signature Card");
     } finally {
       setPersonaSubmitting(false);
     }
   };
 
+  const handleTogglePersona = async (personaId: string) => {
+    setUserActionError(null);
+    setUserActionSuccess(null);
+    try {
+      const res = await togglePersonaSignature(personaId);
+      setUserActionSuccess(res.message || "Signature Card status updated");
+      await loadInboxMonitor();
+    } catch (err: any) {
+      setUserActionError(err.message || "Failed to toggle Signature Card");
+    }
+  };
+
   const handleDeletePersona = async (personaId: string) => {
-    if (!confirm("Are you sure you want to delete this Persona signature?")) return;
+    if (!confirm("Are you sure you want to delete this Signature Note Card?")) return;
     setUserActionError(null);
     setUserActionSuccess(null);
     try {
       await deletePersonaSignature(personaId);
-      setUserActionSuccess("Persona signature removed from rotation.");
+      setUserActionSuccess("Signature Note Card removed from rotation pool.");
       await loadInboxMonitor();
     } catch (err: any) {
-      setUserActionError(err.message || "Failed to remove persona");
+      setUserActionError(err.message || "Failed to remove Signature Card");
     }
   };
+
 
   // Database Purge Handler
   const handlePurgeData = async () => {
@@ -600,6 +658,11 @@ export default function AdminPortalPage() {
     },
   };
 
+  const activeSigs = inboxMonitorData?.persona_signatures?.filter((p) => p.is_active !== false) || [];
+  const currentPreviewSig = activeSigs.length > 0
+    ? (activeSigs[selectedPreviewSigIdx % activeSigs.length]?.raw_content || "")
+    : (signatureText || `Sincerely,\ntest\nSenior Solutions Consultant, Multi-Lead Gen AI\nEmail: contact@leadgen.local | Phone: +880 1700-000000\nhttps://leadgen.local`);
+
   const currentPreviewLead = sampleLeads[previewSample];
   const renderedPreview = renderEmailTemplate(
     {
@@ -612,11 +675,12 @@ export default function AdminPortalPage() {
       sender_phone: senderPhone,
       sender_website: senderWebsite,
       sign_off: signOff,
-      signature_text: signatureText,
+      signature_text: currentPreviewSig,
       is_active: true,
     },
     currentPreviewLead
   );
+
 
   if (loading) {
     return (
@@ -1840,48 +1904,39 @@ export default function AdminPortalPage() {
                 />
               </div>
 
-              {/* Sender Details */}
+              {/* Dynamic Signature Cards Integration */}
               <div className="pt-2 border-t border-slate-800 space-y-3">
-                <span className="text-xs font-bold text-sky-400 uppercase tracking-wider block">
-                  Sender Contact Information
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Sender Name</label>
-                    <input
-                      type="text"
-                      value={senderName}
-                      onChange={(e) => setSenderName(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200"
-                    />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Dynamic Signature Cards Rotation</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("inboxes");
+                      handleOpenAddPersona();
+                    }}
+                    className="text-[11px] text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1 cursor-pointer bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1 rounded-lg border border-sky-500/30 transition"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>+ Add Signature Note Card</span>
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-emerald-400" />
+                      <span className="font-semibold text-slate-200">Active Multi-Signature Pool</span>
+                    </div>
+                    <span className="font-mono text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
+                      {activeSigs.length} Note Card{activeSigs.length !== 1 ? "s" : ""} Active
+                    </span>
                   </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Title / Designation</label>
-                    <input
-                      type="text"
-                      value={senderTitle}
-                      onChange={(e) => setSenderTitle(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Company Name</label>
-                    <input
-                      type="text"
-                      value={senderCompany}
-                      onChange={(e) => setSenderCompany(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] text-slate-400 mb-1">Direct Phone</label>
-                    <input
-                      type="text"
-                      value={senderPhone}
-                      onChange={(e) => setSenderPhone(e.target.value)}
-                      className="w-full px-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200"
-                    />
-                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Whenever cold outreach emails are prepared across the platform, the <code className="text-amber-300 bg-amber-500/10 px-1 py-0.5 rounded font-mono">{"{{signature}}"}</code> placeholder automatically attaches one of your saved signature notes at random to guarantee human variance and prevent spam clustering.
+                  </p>
                 </div>
               </div>
 
@@ -1899,23 +1954,37 @@ export default function AdminPortalPage() {
 
             {/* Right Column: Live Rendered Preview */}
             <div className="lg:col-span-5 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Live Rendered Preview
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(renderedPreview.fullEmail);
-                    setCopiedPreview(true);
-                    setTimeout(() => setCopiedPreview(false), 2000);
-                  }}
-                  className="text-[11px] text-sky-400 hover:text-sky-300 font-mono flex items-center gap-1 cursor-pointer"
-                >
-                  {copiedPreview ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                  <span>{copiedPreview ? "Copied!" : "Copy Full Email"}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {activeSigs.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPreviewSigIdx((prev) => (prev + 1) % activeSigs.length)}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded-lg border border-amber-500/30 flex items-center gap-1 cursor-pointer transition font-mono"
+                      title="Shuffle signature card to test variation"
+                    >
+                      <Shuffle className="w-3 h-3" />
+                      <span>Shuffle Sig ({((selectedPreviewSigIdx % activeSigs.length) + 1)}/{activeSigs.length})</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(renderedPreview.fullEmail);
+                      setCopiedPreview(true);
+                      setTimeout(() => setCopiedPreview(false), 2000);
+                    }}
+                    className="text-[11px] text-sky-400 hover:text-sky-300 font-mono flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedPreview ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedPreview ? "Copied!" : "Copy Full Email"}</span>
+                  </button>
+                </div>
               </div>
+
 
               <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 font-mono text-[11px] text-slate-300 whitespace-pre-wrap leading-relaxed shadow-inner max-h-[500px] overflow-y-auto">
                 <div className="text-amber-300/90 pb-2 mb-2 border-b border-slate-800/80 font-bold">
@@ -1976,11 +2045,11 @@ export default function AdminPortalPage() {
 
                 <button
                   type="button"
-                  onClick={() => setShowAddPersonaModal(true)}
+                  onClick={handleOpenAddPersona}
                   className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-sky-500/20"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Add Persona</span>
+                  <span>Add Signature Card</span>
                 </button>
 
                 {isSuperAdmin && (
@@ -2097,52 +2166,137 @@ export default function AdminPortalPage() {
             </div>
           </div>
 
-          {/* 10 Persona Signatures Pool */}
+          {/* Multi-Card Note Signatures Pool */}
           <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                <Users className="w-4 h-4 text-sky-400" />
-                <span>Persona Sender Signatures Pool ({inboxMonitorData?.persona_signatures.length || 0} Registered)</span>
-              </h4>
-              <span className="text-[11px] text-slate-400">
-                Varied sender signatures prevent algorithmic template spam clustering
-              </span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-sky-400" />
+                  <span>Multi-Card Signature Notes Pool ({inboxMonitorData?.persona_signatures?.length || 0} Cards)</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30">
+                    Random Outreach Delivery
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Verbatim note cards attached randomly to each lead's cold outreach to bypass AI spam detectors.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOpenAddPersona}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-sky-500/20 self-start sm:self-auto"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Add Signature Card</span>
+              </button>
             </div>
 
             {inboxMonitorData && inboxMonitorData.persona_signatures && inboxMonitorData.persona_signatures.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {inboxMonitorData.persona_signatures.map((p, idx) => (
-                  <div key={p.id || idx} className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-1.5 hover:border-slate-700 transition relative group">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-xs text-slate-200">{p.name}</span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-mono text-sky-400">Persona #{idx + 1}</span>
-                        {p.id && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {inboxMonitorData.persona_signatures.map((p, idx) => {
+                  const content = p.raw_content || `${p.name || ''}\n${p.title || ''}\n${p.company || ''}`.trim();
+                  const isCopied = copiedSigId === p.id;
+                  const isActive = p.is_active !== false;
+
+                  return (
+                    <div
+                      key={p.id || idx}
+                      className={`p-4 rounded-xl border transition relative flex flex-col justify-between space-y-3 ${
+                        isActive
+                          ? "bg-slate-950/80 border-slate-800 hover:border-sky-500/50"
+                          : "bg-slate-950/40 border-slate-800/40 opacity-70"
+                      }`}
+                    >
+                      {/* Card Top */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-bold text-white truncate">
+                            {p.title || `Signature Card #${idx + 1}`}
+                          </span>
+                          <span
+                            className={`text-[9px] font-mono px-2 py-0.5 rounded-full uppercase font-bold border ${
+                              isActive
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                : "bg-slate-800 text-slate-400 border-slate-700"
+                            }`}
+                          >
+                            {isActive ? "Active" : "Inactive"}
+                          </span>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(content);
+                              setCopiedSigId(p.id);
+                              setTimeout(() => setCopiedSigId(null), 1800);
+                            }}
+                            className="p-1 rounded text-slate-400 hover:text-sky-400 hover:bg-slate-800 transition cursor-pointer"
+                            title="Copy Signature Note"
+                          >
+                            {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePersona(p.id)}
+                            className={`p-1 rounded transition cursor-pointer ${
+                              isActive
+                                ? "text-emerald-400 hover:bg-emerald-500/10"
+                                : "text-slate-500 hover:text-slate-300 hover:bg-slate-800"
+                            }`}
+                            title={isActive ? "Deactivate Card" : "Activate Card"}
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditPersona(p)}
+                            className="p-1 rounded text-slate-400 hover:text-sky-400 hover:bg-slate-800 transition cursor-pointer"
+                            title="Edit Card Note"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => handleDeletePersona(p.id)}
-                            className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition"
-                            title="Delete Persona"
+                            className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
+                            title="Delete Card"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        )}
+                        </div>
+                      </div>
+
+                      {/* Note Content Box */}
+                      <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800/80 font-mono text-[11px] text-slate-300 whitespace-pre-wrap leading-relaxed shadow-inner max-h-44 overflow-y-auto select-text">
+                        {content || <span className="text-slate-600 italic">No signature note content</span>}
+                      </div>
+
+                      {/* Card Footer */}
+                      <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono pt-1 border-t border-slate-800/50">
+                        <span>Card #{idx + 1}</span>
+                        <span>{isActive ? "Included in rotation" : "Excluded"}</span>
                       </div>
                     </div>
-                    <div className="text-[11px] text-slate-400">{p.title}</div>
-                    <div className="text-[10px] font-mono text-slate-500">{p.company}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="p-8 rounded-xl bg-slate-950/50 border border-dashed border-slate-800 text-center space-y-2">
-                <div className="text-xs text-slate-400 font-medium">No custom personas registered yet.</div>
+                <div className="text-xs text-slate-400 font-medium">No custom signature cards registered yet.</div>
                 <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
-                  Click the <strong>"+ Add Persona"</strong> button above to add your team members, titles, and company signatures to the rotation pool.
+                  Click <strong>"+ Add Signature Card"</strong> above to write or paste your freeform signature note box.
                 </p>
               </div>
             )}
           </div>
+
 
           {/* Super Admin Database Control & Storage Purge Panel */}
           {isSuperAdmin && (
@@ -2380,88 +2534,111 @@ export default function AdminPortalPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 2: ADD PERSONA SIGNATURE                                            */}
+      {/* MODAL 2: ADD / EDIT SIGNATURE CARD (FREEFORM NOTE BOX)                   */}
       {/* ========================================================================= */}
       {showAddPersonaModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-sky-400" />
-                <h3 className="text-base font-bold text-white">Add Executive Persona</h3>
+                <Layers className="w-5 h-5 text-sky-400" />
+                <h3 className="text-base font-bold text-white">
+                  {editingPersonaId ? "Edit Signature Note Card" : "Add New Signature Card"}
+                </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setShowAddPersonaModal(false)}
+                onClick={() => {
+                  setShowAddPersonaModal(false);
+                  setEditingPersonaId(null);
+                }}
                 className="text-slate-400 hover:text-white"
               >
                 <XCircle className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleAddPersonaSubmit} className="space-y-4">
+            <form onSubmit={handleAddOrEditPersonaSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={personaForm.name}
-                  onChange={(e) => setPersonaForm({ ...personaForm, name: e.target.value })}
-                  placeholder="e.g. Sarah Jenkins"
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Professional Title / Role
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Card Label / Reference Name
                 </label>
                 <input
                   type="text"
                   required
                   value={personaForm.title}
                   onChange={(e) => setPersonaForm({ ...personaForm, title: e.target.value })}
-                  placeholder="e.g. Growth Strategy Consultant"
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                  placeholder="e.g. Lead Gen AI Main, Senior Consultant Note"
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 font-sans"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Company / Organization Name
-                </label>
-                <input
-                  type="text"
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Verbatim Signature Note Box
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    Replaces <code className="text-amber-300">{"{{signature}}"}</code> verbatim
+                  </span>
+                </div>
+                <textarea
+                  rows={8}
                   required
-                  value={personaForm.company}
-                  onChange={(e) => setPersonaForm({ ...personaForm, company: e.target.value })}
-                  placeholder="e.g. ScaleUp Advisory"
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                  value={personaForm.raw_content}
+                  onChange={(e) => setPersonaForm({ ...personaForm, raw_content: e.target.value })}
+                  placeholder={`Sincerely,\ntest\nSenior Solutions Consultant, Multi-Lead Gen AI\nEmail: contact@leadgen.local | Phone: +880 1700-000000\nhttps://leadgen.local`}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono leading-relaxed resize-y"
                 />
+                <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                  Type or paste whatever signature format you want. Line breaks, URLs, phone numbers, and job titles are preserved exactly as written.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="card_is_active"
+                  checked={personaForm.is_active}
+                  onChange={(e) => setPersonaForm({ ...personaForm, is_active: e.target.checked })}
+                  className="rounded border-slate-700 bg-slate-950 text-sky-500 focus:ring-0 w-4 h-4 cursor-pointer"
+                />
+                <label htmlFor="card_is_active" className="text-xs text-slate-300 cursor-pointer select-none">
+                  Active in Rotation (Automatically included when cold outreach emails are dispatched)
+                </label>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowAddPersonaModal(false)}
-                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                  onClick={() => {
+                    setShowAddPersonaModal(false);
+                    setEditingPersonaId(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={personaSubmitting}
-                  className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shadow-lg shadow-sky-500/20 disabled:opacity-50 cursor-pointer"
                 >
-                  {personaSubmitting ? "Adding..." : "Add to Rotation Pool"}
+                  <Save className="w-3.5 h-3.5" />
+                  <span>
+                    {personaSubmitting
+                      ? "Saving Card..."
+                      : editingPersonaId
+                      ? "Update Signature Card"
+                      : "Save Signature Card"}
+                  </span>
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
 
       {/* ========================================================================= */}
       {/* MODAL 3: SUPER ADMIN DATABASE PURGE CONFIRMATION                          */}

@@ -1369,10 +1369,12 @@ export interface SMTPInboxItem {
 
 export interface PersonaSignatureItem {
   id: string;
-  name: string;
   title: string;
-  company: string;
+  raw_content: string;
+  name?: string;
+  company?: string;
   is_active?: boolean;
+  created_at?: string;
 }
 
 export async function fetchInboxMonitorStats(): Promise<{
@@ -1386,6 +1388,16 @@ export async function fetchInboxMonitorStats(): Promise<{
 
   const res = await fetch(`${API_BASE}/admin/inbox-monitor`, { headers });
   if (!res.ok) throw new Error("Failed to fetch inbox monitor stats");
+  return res.json();
+}
+
+export async function fetchPersonaSignatures(): Promise<PersonaSignatureItem[]> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/persona-signatures`, { headers });
+  if (!res.ok) throw new Error("Failed to fetch persona signatures");
   return res.json();
 }
 
@@ -1448,9 +1460,8 @@ export async function testSMTPInbox(inboxId: string): Promise<any> {
 }
 
 export async function createPersonaSignature(data: {
-  name: string;
   title: string;
-  company: string;
+  raw_content: string;
   is_active?: boolean;
 }): Promise<any> {
   const token = getStoredToken();
@@ -1464,7 +1475,47 @@ export async function createPersonaSignature(data: {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to add Persona Signature");
+    throw new Error(err.detail || "Failed to add Signature Card");
+  }
+  return res.json();
+}
+
+export async function updatePersonaSignature(
+  personaId: string,
+  data: {
+    title?: string;
+    raw_content?: string;
+    is_active?: boolean;
+  }
+): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/persona-signatures/${personaId}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update Signature Card");
+  }
+  return res.json();
+}
+
+export async function togglePersonaSignature(personaId: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/persona-signatures/${personaId}/toggle`, {
+    method: "PATCH",
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to toggle Signature Card");
   }
   return res.json();
 }
@@ -1480,10 +1531,11 @@ export async function deletePersonaSignature(personaId: string): Promise<any> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Failed to delete Persona Signature");
+    throw new Error(err.detail || "Failed to delete Signature Card");
   }
   return res.json();
 }
+
 
 export async function purgeDatabaseData(target: "rejected_leads" | "search_runs" | "all_leads" | "factory_reset"): Promise<any> {
   const token = getStoredToken();

@@ -76,3 +76,25 @@ class EmailPreviewRequest(BaseModel):
     phone: Optional[str] = "+880 1711-223344"
     primary_gap: Optional[str] = "specifically mobile responsiveness and automated WhatsApp lead booking"
 
+
+class PersonaSignatureCreate(BaseModel):
+    title: str = "Primary Signature"
+    raw_content: str
+    is_active: bool = True
+
+
+class PersonaSignatureUpdate(BaseModel):
+    title: Optional[str] = None
+    raw_content: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class PersonaSignatureResponse(BaseModel):
+    id: str
+    title: str
+    raw_content: str
+    is_active: bool
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+

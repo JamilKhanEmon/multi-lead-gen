@@ -22,6 +22,9 @@ from app.schemas.admin import (
     EmailTemplateResponse,
     EmailTemplateUpdate,
     EmailPreviewRequest,
+    PersonaSignatureCreate,
+    PersonaSignatureUpdate,
+    PersonaSignatureResponse,
 )
 import redis.asyncio as aioredis
 import httpx
@@ -374,22 +377,9 @@ class SMTPInboxUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class PersonaSignatureCreate(BaseModel):
-    name: str
-    title: str
-    company: str
-    is_active: bool = True
-
-
-class PersonaSignatureUpdate(BaseModel):
-    name: Optional[str] = None
-    title: Optional[str] = None
-    company: Optional[str] = None
-    is_active: Optional[bool] = None
-
-
 class PurgeRequest(BaseModel):
     target: str = Field(..., description="rejected_leads | search_runs | all_leads | factory_reset")
+
 
 
 @router.get("/inbox-monitor")
@@ -445,7 +435,7 @@ async def get_inbox_monitor_stats(
             })
 
     # 2. Fetch Personas from Database
-    db_personas_stmt = select(PersonaSignature).order_by(PersonaSignature.created_at)
+    db_personas_stmt = select(PersonaSignature).order_by(PersonaSignature.created_at.desc())
     p_res = await db.execute(db_personas_stmt)
     db_personas = p_res.scalars().all()
     
@@ -454,10 +444,12 @@ async def get_inbox_monitor_stats(
         for p in db_personas:
             persona_list.append({
                 "id": str(p.id),
-                "name": p.name,
-                "title": p.title,
-                "company": p.company,
+                "title": p.title or "Signature Note",
+                "raw_content": p.raw_content if (p.raw_content and p.raw_content.strip()) else p.render_signature(),
+                "name": p.name or "",
+                "company": p.company or "",
                 "is_active": p.is_active,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
             })
 
     return {
@@ -571,25 +563,58 @@ async def test_smtp_inbox(
 
 
 # ==============================================================================
-# Persona Signatures CRUD
+# Persona Note Signatures CRUD
 # ==============================================================================
+@router.get("/persona-signatures")
+async def get_persona_signatures(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Retrieve all signature note cards from database."""
+    stmt = select(PersonaSignature).order_by(PersonaSignature.created_at.desc())
+    res = await db.execute(stmt)
+    personas = res.scalars().all()
+    return [
+        {
+            "id": str(p.id),
+            "title": p.title or "Signature Note",
+            "raw_content": p.raw_content if (p.raw_content and p.raw_content.strip()) else p.render_signature(),
+            "name": p.name or "",
+            "company": p.company or "",
+            "is_active": p.is_active,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in personas
+    ]
+
+
 @router.post("/persona-signatures")
 async def create_persona_signature(
     data: PersonaSignatureCreate,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    """Add a new Persona Signature."""
+    """Add a new Persona / Custom Note Signature Card."""
     persona = PersonaSignature(
-        name=data.name,
-        title=data.title,
-        company=data.company,
+        title=data.title or "Signature Note",
+        raw_content=data.raw_content.strip(),
         is_active=data.is_active,
     )
     db.add(persona)
     await db.commit()
     await db.refresh(persona)
-    return {"status": "SUCCESS", "id": str(persona.id), "message": "Persona Signature created"}
+    return {
+        "status": "SUCCESS",
+        "id": str(persona.id),
+        "message": "Signature Card created successfully",
+        "card": {
+            "id": str(persona.id),
+            "title": persona.title,
+            "raw_content": persona.raw_content,
+            "is_active": persona.is_active,
+            "created_at": persona.created_at.isoformat() if persona.created_at else None,
+        }
+    }
 
 
 @router.put("/persona-signatures/{persona_id}")
@@ -599,19 +624,55 @@ async def update_persona_signature(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    """Update a Persona Signature."""
+    """Update an existing Signature Card."""
     stmt = select(PersonaSignature).where(PersonaSignature.id == persona_id)
     res = await db.execute(stmt)
     persona = res.scalar_one_or_none()
     if not persona:
-        raise HTTPException(status_code=404, detail="Persona not found")
+        raise HTTPException(status_code=404, detail="Signature Card not found")
 
-    for key, val in data.model_dump(exclude_unset=True).items():
-        setattr(persona, key, val)
+    if data.title is not None:
+        persona.title = data.title
+    if data.raw_content is not None:
+        persona.raw_content = data.raw_content.strip()
+    if data.is_active is not None:
+        persona.is_active = data.is_active
 
     await db.commit()
     await db.refresh(persona)
-    return {"status": "SUCCESS", "message": "Persona updated"}
+    return {
+        "status": "SUCCESS",
+        "message": "Signature Card updated successfully",
+        "card": {
+            "id": str(persona.id),
+            "title": persona.title,
+            "raw_content": persona.raw_content,
+            "is_active": persona.is_active,
+        }
+    }
+
+
+@router.patch("/persona-signatures/{persona_id}/toggle")
+async def toggle_persona_signature(
+    persona_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    """Toggle active status of a Signature Card."""
+    stmt = select(PersonaSignature).where(PersonaSignature.id == persona_id)
+    res = await db.execute(stmt)
+    persona = res.scalar_one_or_none()
+    if not persona:
+        raise HTTPException(status_code=404, detail="Signature Card not found")
+
+    persona.is_active = not persona.is_active
+    await db.commit()
+    await db.refresh(persona)
+    return {
+        "status": "SUCCESS",
+        "is_active": persona.is_active,
+        "message": f"Signature Card {'activated' if persona.is_active else 'deactivated'}"
+    }
 
 
 @router.delete("/persona-signatures/{persona_id}")
@@ -620,16 +681,17 @@ async def delete_persona_signature(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    """Delete a Persona Signature."""
+    """Delete a Signature Card."""
     stmt = select(PersonaSignature).where(PersonaSignature.id == persona_id)
     res = await db.execute(stmt)
     persona = res.scalar_one_or_none()
     if not persona:
-        raise HTTPException(status_code=404, detail="Persona not found")
+        raise HTTPException(status_code=404, detail="Signature Card not found")
 
     await db.delete(persona)
     await db.commit()
-    return {"status": "SUCCESS", "message": "Persona deleted"}
+    return {"status": "SUCCESS", "message": "Signature Card deleted successfully"}
+
 
 
 # ==============================================================================
