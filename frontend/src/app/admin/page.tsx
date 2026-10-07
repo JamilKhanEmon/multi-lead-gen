@@ -477,9 +477,23 @@ https://leadgen.local`,
   };
 
   // SMTP Inboxes Handlers
+  const handleOpenAddInbox = () => {
+    setInboxForm({
+      host: "",
+      port: 587,
+      username: "",
+      password: "",
+      from_email: "",
+      from_name: "Growth Team",
+      daily_limit: 30,
+    });
+    setShowAddInboxModal(true);
+  };
+
   const handleAddInboxSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setInboxSubmitting(true);
+
     setUserActionError(null);
     setUserActionSuccess(null);
     try {
@@ -2036,7 +2050,7 @@ https://leadgen.local`,
 
                 <button
                   type="button"
-                  onClick={() => setShowAddInboxModal(true)}
+                  onClick={handleOpenAddInbox}
                   className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-emerald-500/20"
                 >
                   <Plus className="w-4 h-4" />
@@ -2406,7 +2420,7 @@ https://leadgen.local`,
               </button>
             </div>
 
-            <form onSubmit={handleAddInboxSubmit} className="space-y-4">
+            <form onSubmit={handleAddInboxSubmit} className="space-y-4" autoComplete="off">
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
                   <label className="block text-xs font-medium text-slate-300 mb-1">
@@ -2414,6 +2428,8 @@ https://leadgen.local`,
                   </label>
                   <input
                     type="text"
+                    name="smtp_server_host"
+                    autoComplete="off"
                     required
                     value={inboxForm.host}
                     onChange={(e) => setInboxForm({ ...inboxForm, host: e.target.value })}
@@ -2427,6 +2443,8 @@ https://leadgen.local`,
                   </label>
                   <input
                     type="number"
+                    name="smtp_server_port"
+                    autoComplete="off"
                     required
                     value={inboxForm.port}
                     onChange={(e) => setInboxForm({ ...inboxForm, port: parseInt(e.target.value) || 587 })}
@@ -2443,6 +2461,11 @@ https://leadgen.local`,
                   </label>
                   <input
                     type="text"
+                    name="smtp_account_username"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     required
                     value={inboxForm.username}
                     onChange={(e) => setInboxForm({ ...inboxForm, username: e.target.value })}
@@ -2456,6 +2479,8 @@ https://leadgen.local`,
                   </label>
                   <input
                     type="password"
+                    name="smtp_account_credential_secret"
+                    autoComplete="new-password"
                     required
                     value={inboxForm.password}
                     onChange={(e) => setInboxForm({ ...inboxForm, password: e.target.value })}
@@ -2464,6 +2489,7 @@ https://leadgen.local`,
                   />
                 </div>
               </div>
+
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
