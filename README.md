@@ -340,4 +340,8 @@ Add the following repository secrets (**Settings ➔ Secrets and variables ➔ A
 
 ## 📜 License
 
-Distributed under the **MIT License**. See `LICENSE` for more information.
+**Proprietary / All Rights Reserved.**
+
+Copyright © 2026 Jamil Khan Emon. All rights reserved.
+
+Unauthorized copying, reverse engineering, distribution, or commercial use of this software and source code, via any medium, is strictly prohibited without explicit written permission.
