@@ -23,6 +23,7 @@ from app.engine.evidence_engine import EvidenceEngine
 from app.engine.service_matcher import ServiceMatcher
 from app.engine.qualification_engine import QualificationEngine
 from app.engine.discovery_optimizer import DiscoveryOptimizer
+from app.engine.fit_gate import FitGateEngine
 import redis.asyncio as aioredis
 
 
@@ -769,6 +770,23 @@ async def _execute_research_and_qualify(
             await session.commit()
             return {"status": "REJECTED", "business_id": str(business_id), "reason": fit_reason}
 
+        use_kb = payload.get("use_company_kb", True)
+        kb_dict = await FitGateEngine.fetch_active_kb_dict(session) if use_kb else None
+
+        gate_res = FitGateEngine.evaluate_candidate(
+            business_name=business_name,
+            domain=domain,
+            phone=payload.get("phone") or (website_data.get("extracted_phone") if website_data else None),
+            email=payload.get("email") or (website_data.get("extracted_email") if website_data else None),
+            business_type=business_type,
+            city=payload.get("city") or "Dhaka",
+            audit_res=website_data,
+            detected_weaknesses=[e["evidence_text"] for e in evidence_records if e.get("evidence_text")],
+            metadata_json=payload,
+            company_kb=kb_dict,
+            use_company_kb=use_kb,
+        )
+
         if lead:
             lead.run_id = valid_run_id
             lead.tier = tier
@@ -776,6 +794,11 @@ async def _execute_research_and_qualify(
             lead.is_qualified = is_qualified
             lead.primary_gap_summary = gap_summary
             lead.explanation_json = explanation
+            lead.fit_tier = gate_res["fit_tier"]
+            lead.why_they_need_us = gate_res["why_they_need_us"]
+            lead.what_they_need = gate_res["what_they_need"]
+            lead.matched_service = gate_res["matched_service"]
+            lead.discovery_call_script = gate_res["discovery_call_script"]
             if is_qualified and has_email and lead.outreach_status in ("PENDING", "HOLD"):
                 lead.outreach_status = target_outreach_status
         else:
@@ -789,6 +812,11 @@ async def _execute_research_and_qualify(
                 primary_gap_summary=gap_summary,
                 explanation_json=explanation,
                 outreach_status=initial_outreach,
+                fit_tier=gate_res["fit_tier"],
+                why_they_need_us=gate_res["why_they_need_us"],
+                what_they_need=gate_res["what_they_need"],
+                matched_service=gate_res["matched_service"],
+                discovery_call_script=gate_res["discovery_call_script"],
             )
             session.add(lead)
             await session.flush()

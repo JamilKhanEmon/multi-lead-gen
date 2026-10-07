@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { fetchLeadDetail, submitLeadFeedback, updateLeadDetails, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate } from "@/lib/api";
+import { fetchLeadDetail, submitLeadFeedback, updateLeadDetails, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate, evaluateLeadFitGate } from "@/lib/api";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -40,6 +40,9 @@ import {
   Edit3,
   MessageSquare,
   Flame,
+  PhoneCall,
+  Quote,
+  RefreshCw,
 } from "lucide-react";
 
 export default function LeadDetailPage() {
@@ -68,6 +71,36 @@ export default function LeadDetailPage() {
   const [showJsonModal, setShowJsonModal] = useState(false);
   const [copiedFullJson, setCopiedFullJson] = useState(false);
 
+  // Demand-Side Fit Gate & Sales Intelligence State
+  const [copiedEvidence, setCopiedEvidence] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
+  const [isEvaluatingFit, setIsEvaluatingFit] = useState(false);
+
+  const handleEvaluateFit = async () => {
+    if (!lead) return;
+    setIsEvaluatingFit(true);
+    try {
+      const updated = await evaluateLeadFitGate(lead.id);
+      setLead(updated);
+    } catch (err: any) {
+      alert("Fit Gate evaluation failed: " + err.message);
+    } finally {
+      setIsEvaluatingFit(false);
+    }
+  };
+
+  const copyEvidenceToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedEvidence(true);
+    setTimeout(() => setCopiedEvidence(false), 2000);
+  };
+
+  const copyScriptToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedScript(true);
+    setTimeout(() => setCopiedScript(false), 2000);
+  };
+
   // Manual Lead Edit Modal State
   const [showEditModal, setShowEditModal] = useState(false);
   const [editEmail, setEditEmail] = useState("");
@@ -76,6 +109,9 @@ export default function LeadDetailPage() {
   const [editContactTitle, setEditContactTitle] = useState("");
   const [editAddress, setEditAddress] = useState("");
   const [editPrimaryGap, setEditPrimaryGap] = useState("");
+  const [editWhyUs, setEditWhyUs] = useState("");
+  const [editWhatNeed, setEditWhatNeed] = useState("");
+  const [editMatchedService, setEditMatchedService] = useState("");
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
 
   const openEditModal = () => {
@@ -86,6 +122,9 @@ export default function LeadDetailPage() {
     setEditContactTitle(lead.contact_title || "");
     setEditAddress(lead.address || "");
     setEditPrimaryGap(lead.primary_gap_summary || "");
+    setEditWhyUs(lead.why_they_need_us || "");
+    setEditWhatNeed(lead.what_they_need || "");
+    setEditMatchedService(lead.matched_service || "");
     setShowEditModal(true);
   };
 
@@ -100,6 +139,9 @@ export default function LeadDetailPage() {
         contact_title: editContactTitle,
         address: editAddress,
         primary_gap_summary: editPrimaryGap,
+        why_they_need_us: editWhyUs,
+        what_they_need: editWhatNeed,
+        matched_service: editMatchedService,
         approve_for_outreach: approveForOutreach,
       });
       setLead(updated);
@@ -465,6 +507,128 @@ export default function LeadDetailPage() {
         {feedbackSuccess && (
           <div className="text-xs text-emerald-400 font-medium">{feedbackSuccess}</div>
         )}
+      </div>
+
+      {/* v2 Demand-Side Fit Gate & Sales Intelligence Dossier */}
+      <div className="glass-panel p-6 rounded-2xl border border-amber-500/30 bg-gradient-to-b from-slate-900/95 via-slate-950 to-slate-900/90 space-y-5 shadow-xl shadow-amber-500/5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              <Flame className="w-5 h-5 fill-amber-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">Demand-Side Sales Intelligence & Call Pitch</h3>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono uppercase tracking-wider font-semibold">
+                  Evidence-First Framework
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Live buying signals matched to solution catalog. Sales representatives pitch only verified client bottlenecks.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Fit Tier Badge */}
+            <div className={`px-3 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1.5 ${
+              lead.fit_tier === "HOT"
+                ? "bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-sm shadow-rose-500/20"
+                : lead.fit_tier === "WARM"
+                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                : lead.fit_tier === "DROPPED"
+                ? "bg-slate-800 text-slate-400 border-slate-700"
+                : "bg-sky-500/20 text-sky-300 border-sky-500/40"
+            }`}>
+              {lead.fit_tier === "HOT" && <Flame className="w-3.5 h-3.5 fill-rose-400" />}
+              {lead.fit_tier === "WARM" && <Sparkles className="w-3.5 h-3.5 text-amber-400" />}
+              <span>{lead.fit_tier || "HOT"} LEAD</span>
+            </div>
+
+            <button
+              onClick={handleEvaluateFit}
+              disabled={isEvaluatingFit}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              title="Re-run Fit Gate Evaluation against live website & footprint"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isEvaluatingFit ? "animate-spin text-amber-400" : ""}`} />
+              <span>{isEvaluatingFit ? "Scanning..." : "Re-Scan Fit Gate"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 2-Column Grid: Live Evidence & Matched Solution */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Why They Need Us (Live Evidence) */}
+          <div className="p-4 rounded-xl bg-gradient-to-br from-amber-950/30 to-slate-900/80 border border-amber-500/30 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Quote className="w-3.5 h-3.5 text-amber-400" /> Why They Need Us (Live Evidence)
+              </span>
+              <button
+                onClick={() => copyEvidenceToClipboard(lead.why_they_need_us || lead.primary_gap_summary)}
+                className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-semibold transition border border-amber-500/30 flex items-center gap-1 cursor-pointer"
+              >
+                {copiedEvidence ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                <span>{copiedEvidence ? "Copied!" : "Copy Proof"}</span>
+              </button>
+            </div>
+            <blockquote className="text-xs text-amber-100/90 leading-relaxed italic bg-black/30 p-3 rounded-lg border border-amber-500/20 select-all">
+              "{lead.why_they_need_us || lead.primary_gap_summary}"
+            </blockquote>
+            <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              Sales rule: Open the call with this exact observed proof to disarm skepticism.
+            </div>
+          </div>
+
+          {/* What They Need & Matched Service */}
+          <div className="p-4 rounded-xl bg-gradient-to-br from-sky-950/30 to-slate-900/80 border border-sky-500/30 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-sky-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-sky-400" /> Solution & Recommended Service
+              </span>
+              <span className="text-[10px] bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full border border-sky-500/30 font-medium">
+                Wedge Strategy
+              </span>
+            </div>
+            <div className="p-3 rounded-lg bg-black/30 border border-sky-500/20 space-y-1.5">
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span>🎯 Matched Service:</span>
+                <span className="text-sky-300">{lead.matched_service || "Web Design & Digital Growth Pipeline"}</span>
+              </div>
+              <div className="text-xs text-slate-300 leading-relaxed">
+                <span className="font-semibold text-slate-400">What They Need: </span>
+                {lead.what_they_need || "Modern digital presence with automated lead capture and customer inquiry management."}
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+              Pitch low-friction wedge product first before proposing large enterprise systems.
+            </div>
+          </div>
+        </div>
+
+        {/* Discovery-First Sales Call Script */}
+        <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+              <PhoneCall className="w-3.5 h-3.5 text-emerald-400" /> Discovery-First Sales Call Script (30-Sec Opener)
+            </span>
+            <button
+              onClick={() => copyScriptToClipboard(lead.discovery_call_script || "")}
+              className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold transition border border-emerald-500/30 flex items-center gap-1.5 cursor-pointer"
+            >
+              {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedScript ? "Copied Script!" : "Copy Call Script"}</span>
+            </button>
+          </div>
+          <div className="text-xs text-slate-200 font-mono bg-slate-900/90 p-3.5 rounded-lg border border-slate-800/80 whitespace-pre-wrap leading-relaxed select-all">
+            {lead.discovery_call_script || (
+              `1. OPENING EVIDENCE:\n   "Hello, is this ${lead.business_name}? I was reviewing your online presence and noticed you don't have an automated inquiry capture form on your website."\n\n2. DISCOVERY QUESTION (Wait for their answer):\n   "How are you currently tracking inbound client inquiries and follow-ups right now?"\n\n3. VALUE PITCH (${lead.matched_service || "Digital Growth Solutions"}):\n   "Our growth solutions team specializes in solving this with quick setup. Would you be open to a 5-minute preview of the custom audit report we prepared for ${lead.business_name}?"`
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Client Outreach & Inbound Reply Audit History */}
@@ -1411,6 +1575,40 @@ export default function LeadDetailPage() {
                   placeholder="Summarize the core weakness or service gap..."
                   className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 resize-y font-sans"
                 />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-amber-300 mb-1">Why They Need Us (Live Evidence Quote):</label>
+                <textarea
+                  rows={2}
+                  value={editWhyUs}
+                  onChange={(e) => setEditWhyUs(e.target.value)}
+                  placeholder="Live observable proof on website/digital touchpoints..."
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 resize-y font-sans"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-sky-300 mb-1">Matched Service:</label>
+                  <input
+                    type="text"
+                    value={editMatchedService}
+                    onChange={(e) => setEditMatchedService(e.target.value)}
+                    placeholder="e.g. Web Design & Development (Site in 7 Days)"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">What They Need (Solution):</label>
+                  <input
+                    type="text"
+                    value={editWhatNeed}
+                    onChange={(e) => setEditWhatNeed(e.target.value)}
+                    placeholder="e.g. Modern web presence with WhatsApp booking"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
               </div>
             </div>
 

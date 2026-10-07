@@ -48,6 +48,7 @@ export default function LeadsPipelinePage() {
   const [runs, setRuns] = useState<ResearchRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string>("ALL");
   const [activeTier, setActiveTier] = useState<string>("ALL");
+  const [fitTierFilter, setFitTierFilter] = useState<string>("ALL");
   const [pipelineStage, setPipelineStage] = useState<PipelineStage>("ALL");
   const [websiteFilter, setWebsiteFilter] = useState<"ALL" | "WITH_WEBSITE" | "NO_WEBSITE">("ALL");
   const [searchTerm, setSearchTerm] = useState("");
@@ -64,9 +65,9 @@ export default function LeadsPipelinePage() {
     results: Array<{ lead_id: string; company: string; email: string; status: string; note?: string }>;
   } | null>(null);
 
-  const loadLeads = (tier?: string, runId?: string) => {
+  const loadLeads = (tier?: string, runId?: string, fitTier?: string) => {
     setLoading(true);
-    fetchLeads(tier, runId)
+    fetchLeads(tier, runId, undefined, undefined, fitTier)
       .then((data) => setLeads(data))
       .catch((e) => console.error("Error loading leads:", e))
       .finally(() => setLoading(false));
@@ -254,6 +255,9 @@ export default function LeadsPipelinePage() {
       // Tier Filter
       if (activeTier !== "ALL" && lead.tier !== activeTier) return false;
 
+      // Fit Gate Tier Filter (HOT, WARM, COLD, DROPPED)
+      if (fitTierFilter !== "ALL" && (lead.fit_tier || "HOT") !== fitTierFilter) return false;
+
       // Run Batch Filter
       if (selectedRunId !== "ALL" && lead.run_id !== selectedRunId) return false;
 
@@ -266,17 +270,19 @@ export default function LeadsPipelinePage() {
         const q = searchTerm.toLowerCase();
         const matchName = lead.business_name && lead.business_name.toLowerCase().includes(q);
         const matchGap = lead.primary_gap_summary && lead.primary_gap_summary.toLowerCase().includes(q);
+        const matchEvidence = lead.why_they_need_us && lead.why_they_need_us.toLowerCase().includes(q);
+        const matchSvc = lead.matched_service && lead.matched_service.toLowerCase().includes(q);
         const matchAddr = lead.address && lead.address.toLowerCase().includes(q);
         const matchPhone = lead.phone && lead.phone.toLowerCase().includes(q);
         const matchEmail = lead.email && lead.email.toLowerCase().includes(q);
-        if (!matchName && !matchGap && !matchAddr && !matchPhone && !matchEmail) {
+        if (!matchName && !matchGap && !matchEvidence && !matchSvc && !matchAddr && !matchPhone && !matchEmail) {
           return false;
         }
       }
 
       return true;
     });
-  }, [leads, pipelineStage, activeTier, selectedRunId, websiteFilter, searchTerm]);
+  }, [leads, pipelineStage, activeTier, fitTierFilter, selectedRunId, websiteFilter, searchTerm]);
 
   const exportToCsv = (items: Lead[], customName?: string) => {
     if (!items || items.length === 0) {
@@ -296,6 +302,11 @@ export default function LeadsPipelinePage() {
       "Cadence Step",
       "Deal Status",
       "Primary Solvable Gap",
+      "Why They Need Us (Live Evidence)",
+      "What They Need",
+      "Matched Service",
+      "Discovery Call Script (30-Sec Opener)",
+      "Fit Gate Tier",
       "Lead Score",
       "Qualification Tier",
       "Business Type",
@@ -327,6 +338,11 @@ export default function LeadsPipelinePage() {
         escapeCell(l.followup_step || 1),
         escapeCell(l.deal_status || "COLD"),
         escapeCell(l.primary_gap_summary || ""),
+        escapeCell(l.why_they_need_us || l.primary_gap_summary || ""),
+        escapeCell(l.what_they_need || "Modern lead capture and CRM pipeline"),
+        escapeCell(l.matched_service || "Web Design & Development"),
+        escapeCell(l.discovery_call_script || ""),
+        escapeCell(l.fit_tier || "HOT"),
         escapeCell(l.final_score !== undefined ? Number(l.final_score).toFixed(1) : ""),
         escapeCell(l.tier || ""),
         escapeCell(l.business_type || ""),
@@ -765,6 +781,33 @@ export default function LeadsPipelinePage() {
               ))}
             </div>
 
+            {/* Fit Gate Filter */}
+            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-950 border border-amber-500/30 text-[11px]">
+              <span className="text-[10px] text-amber-400 font-semibold px-1.5 hidden sm:inline">Fit Gate:</span>
+              {[
+                { id: "ALL", label: "All Fits" },
+                { id: "HOT", label: "🔥 HOT" },
+                { id: "WARM", label: "⚡ WARM" },
+                { id: "DROPPED", label: "⛔ Filtered" },
+              ].map((fg) => (
+                <button
+                  key={fg.id}
+                  onClick={() => setFitTierFilter(fg.id)}
+                  className={`px-2 py-0.5 rounded transition cursor-pointer font-medium ${
+                    fitTierFilter === fg.id
+                      ? fg.id === "HOT"
+                        ? "bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30"
+                        : fg.id === "WARM"
+                        ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30"
+                        : "bg-slate-800 text-white font-bold"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {fg.label}
+                </button>
+              ))}
+            </div>
+
             {/* Website Status Filter */}
             <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px]">
               <button
@@ -1095,16 +1138,16 @@ export default function LeadsPipelinePage() {
                         </div>
                       </td>
 
-                      {/* Score & Tier */}
+                      {/* Score & Tier & Fit Gate */}
                       <td className="py-3.5 px-4 text-xs whitespace-nowrap">
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                           <div className="flex items-center gap-1.5">
                             <span className="font-extrabold text-sm font-mono text-white">
                               {Number(lead.final_score).toFixed(1)}
                             </span>
                             <span className="text-[10px] text-slate-500">/100</span>
                           </div>
-                          <div>
+                          <div className="flex items-center gap-1 flex-wrap">
                             <span
                               className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
                                 lead.tier === "Strong Potential"
@@ -1116,17 +1159,42 @@ export default function LeadsPipelinePage() {
                             >
                               {lead.tier}
                             </span>
+                            {/* Fit Gate Tier Badge */}
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                                lead.fit_tier === "HOT"
+                                  ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                                  : lead.fit_tier === "WARM"
+                                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                  : lead.fit_tier === "DROPPED"
+                                  ? "bg-slate-800 text-slate-400 border-slate-700"
+                                  : "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                              }`}
+                            >
+                              {lead.fit_tier === "HOT" ? "🔥 HOT" : lead.fit_tier === "WARM" ? "⚡ WARM" : lead.fit_tier === "DROPPED" ? "⛔ DROPPED" : `${lead.fit_tier || "HOT"}`}
+                            </span>
                           </div>
                         </div>
                       </td>
 
-                      {/* Primary Solvable Gap */}
+                      {/* Primary Solvable Gap & Live Evidence */}
                       <td className="py-3.5 px-4 text-xs text-slate-300 max-w-xs">
                         <div className="space-y-1.5">
-                          <div className="font-medium text-slate-200 line-clamp-2">
-                            {lead.primary_gap_summary || "Solvable gap identified in digital footprint"}
-                          </div>
+                          {lead.why_they_need_us ? (
+                            <div className="text-[11px] text-amber-300/90 italic bg-amber-500/10 p-1.5 rounded border border-amber-500/20 line-clamp-2">
+                              "{lead.why_they_need_us}"
+                            </div>
+                          ) : (
+                            <div className="font-medium text-slate-200 line-clamp-2">
+                              {lead.primary_gap_summary || "Solvable gap identified in digital footprint"}
+                            </div>
+                          )}
                           <div className="flex items-center gap-1.5 flex-wrap">
+                            {lead.matched_service && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/25 font-semibold">
+                                🎯 {lead.matched_service.split(" ")[0]}
+                              </span>
+                            )}
                             {!cleanDomain && (
                               <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/25">
                                 Missing Website

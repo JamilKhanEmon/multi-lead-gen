@@ -47,6 +47,8 @@ import {
   Power,
   FileText,
   Layers,
+  Building2,
+  Briefcase,
 } from "lucide-react";
 import {
   loginUser,
@@ -70,6 +72,11 @@ import {
   togglePersonaSignature,
   deletePersonaSignature,
   purgeDatabaseData,
+  fetchCompanyKB,
+  updateCompanyKB,
+  resetCompanyKBDefaults,
+  CompanyKB,
+  ServiceCatalogItem,
   AuthUser,
   EmailTemplate,
   DashboardPermissions,
@@ -84,7 +91,112 @@ export default function AdminPortalPage() {
   const [loading, setLoading] = useState(true);
 
   // Active top navigation tab (defaults to Operations Modules)
-  const [activeTab, setActiveTab] = useState<"users" | "modules" | "template" | "inboxes">("modules");
+  const [activeTab, setActiveTab] = useState<"users" | "modules" | "company_kb" | "template" | "inboxes">("modules");
+
+  // Company Knowledge Base & Service Catalog states
+  const [companyKb, setCompanyKb] = useState<CompanyKB | null>(null);
+  const [kbLoading, setKbLoading] = useState(false);
+  const [kbSaving, setKbSaving] = useState(false);
+  const [kbResetting, setKbResetting] = useState(false);
+  const [kbCompanyName, setKbCompanyName] = useState("Enterprise Solutions");
+  const [kbTagline, setKbTagline] = useState("10+ years of digital transformation & custom software engineering");
+  const [kbHeadquarters, setKbHeadquarters] = useState("Dhaka, Bangladesh");
+  const [kbPhone, setKbPhone] = useState("");
+  const [kbEmail, setKbEmail] = useState("");
+  const [kbWebsite, setKbWebsite] = useState("");
+  const [kbServices, setKbServices] = useState<ServiceCatalogItem[]>([]);
+  const [kbIsActive, setKbIsActive] = useState(true);
+  const [kbActionSuccess, setKbActionSuccess] = useState<string | null>(null);
+  const [kbActionError, setKbActionError] = useState<string | null>(null);
+
+  const loadCompanyKBData = async () => {
+    try {
+      setKbLoading(true);
+      const data = await fetchCompanyKB();
+      if (data) {
+        setCompanyKb(data);
+        setKbCompanyName(data.company_name || "");
+        setKbTagline(data.tagline_experience || "");
+        setKbHeadquarters(data.headquarters || "");
+        setKbPhone(data.contact_phone || "");
+        setKbEmail(data.contact_email || "");
+        setKbWebsite(data.website_url || "");
+        setKbServices(data.services_json || []);
+        setKbIsActive(data.is_active ?? true);
+      }
+    } catch (e: any) {
+      console.warn("Could not load Company KB:", e);
+    } finally {
+      setKbLoading(false);
+    }
+  };
+
+  const handleSaveCompanyKB = async () => {
+    try {
+      setKbSaving(true);
+      setKbActionError(null);
+      const updated = await updateCompanyKB({
+        company_name: kbCompanyName,
+        tagline_experience: kbTagline,
+        headquarters: kbHeadquarters,
+        contact_phone: kbPhone,
+        contact_email: kbEmail,
+        website_url: kbWebsite,
+        services_json: kbServices,
+        is_active: kbIsActive,
+      });
+      setCompanyKb(updated);
+      setKbActionSuccess("✓ Company Knowledge Base and Services saved successfully!");
+      setTimeout(() => setKbActionSuccess(null), 4000);
+    } catch (e: any) {
+      setKbActionError(e.message || "Failed to update Company Knowledge Base");
+      setTimeout(() => setKbActionError(null), 5000);
+    } finally {
+      setKbSaving(false);
+    }
+  };
+
+  const handleResetKBDefaults = async () => {
+    if (!confirm("Are you sure you want to reset all service offerings back to the 5 default core products?")) return;
+    try {
+      setKbResetting(true);
+      setKbActionError(null);
+      const reset = await resetCompanyKBDefaults();
+      setCompanyKb(reset);
+      setKbServices(reset.services_json || []);
+      setKbActionSuccess("✓ Reverted services to 5 core default software products.");
+      setTimeout(() => setKbActionSuccess(null), 4000);
+    } catch (e: any) {
+      setKbActionError(e.message || "Failed to reset defaults");
+    } finally {
+      setKbResetting(false);
+    }
+  };
+
+  const handleUpdateServiceField = (index: number, field: keyof ServiceCatalogItem, value: string) => {
+    setKbServices((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  };
+
+  const handleAddService = () => {
+    const newKey = `custom_service_${Date.now()}`;
+    setKbServices((prev) => [
+      ...prev,
+      {
+        key: newKey,
+        name: "New Solution / Software Offering",
+        wedge: "Free Initial Gap Audit & Workflow Demo",
+        description: "Specialized service offering for businesses needing operational automation.",
+      },
+    ]);
+  };
+
+  const handleRemoveService = (index: number) => {
+    setKbServices((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const [inboxMonitorData, setInboxMonitorData] = useState<{
     total_inboxes_configured: number;
@@ -124,7 +236,6 @@ https://leadgen.local`,
   const [selectedPreviewSigIdx, setSelectedPreviewSigIdx] = useState<number>(0);
   const [copiedSigId, setCopiedSigId] = useState<string | null>(null);
 
-
   // Purge Modal & Action States
   const [showPurgeModal, setShowPurgeModal] = useState(false);
   const [purgeTarget, setPurgeTarget] = useState<"rejected_leads" | "search_runs" | "all_leads" | "factory_reset">("rejected_leads");
@@ -143,13 +254,15 @@ https://leadgen.local`,
     }
   };
 
-  const handleSelectTab = (tab: "users" | "modules" | "template" | "inboxes") => {
+  const handleSelectTab = (tab: "users" | "modules" | "company_kb" | "template" | "inboxes") => {
     setActiveTab(tab);
     if (typeof window !== "undefined") {
       sessionStorage.setItem("admin_active_tab", tab);
     }
     if (tab === "inboxes") {
       loadInboxMonitor();
+    } else if (tab === "company_kb") {
+      loadCompanyKBData();
     }
   };
 
@@ -307,6 +420,7 @@ https://leadgen.local`,
         }
       }
       loadTemplate();
+      loadCompanyKBData();
     }
   }, [currentUser]);
 
@@ -862,6 +976,21 @@ https://leadgen.local`,
           <Compass className="w-4 h-4" />
           <span>Operations Modules</span>
         </button>
+
+        {!isMember && (
+          <button
+            type="button"
+            onClick={() => handleSelectTab("company_kb")}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
+              activeTab === "company_kb"
+                ? "bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+            }`}
+          >
+            <Briefcase className="w-4 h-4 text-purple-400" />
+            <span>Company KB & Service Catalog</span>
+          </button>
+        )}
 
         {!isMember && (
           <button
@@ -1840,6 +1969,297 @@ https://leadgen.local`,
                 <Lock className="w-3.5 h-3.5 text-amber-400" />
                 <span className="font-mono uppercase tracking-wider text-[11px]">Coming Soon</span>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: COMPANY KNOWLEDGE BASE & SERVICE CATALOG                             */}
+      {/* ========================================================================= */}
+      {activeTab === "company_kb" && (
+        <div className="rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 p-6 sm:p-7 shadow-xl space-y-6 relative overflow-hidden animate-in fade-in duration-200">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
+
+          {/* Section Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-800">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-500/20 to-indigo-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <span>Company Knowledge Base & Service Catalog</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                      Demand-Side Gate v2
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Configure your agency identity and custom software wedge offers. Used dynamically by Fit Gate and discovery call scripts.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={handleResetKBDefaults}
+                disabled={kbResetting || kbLoading}
+                className="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-2 transition disabled:opacity-50 cursor-pointer"
+                title="Reset service catalog to the 5 default core software offerings"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${kbResetting ? "animate-spin" : ""}`} />
+                <span>Reset Defaults</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveCompanyKB}
+                disabled={kbSaving || kbLoading}
+                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-purple-600/20 transition disabled:opacity-50 cursor-pointer"
+              >
+                <Save className={`w-3.5 h-3.5 ${kbSaving ? "animate-spin" : ""}`} />
+                <span>{kbSaving ? "Saving..." : "Save Knowledge Base"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Feedback Banners */}
+          {kbActionSuccess && (
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2.5 text-xs text-emerald-300 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{kbActionSuccess}</span>
+            </div>
+          )}
+
+          {kbActionError && (
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center gap-2.5 text-xs text-rose-300 animate-in fade-in">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{kbActionError}</span>
+            </div>
+          )}
+
+          {/* CARD 1: COMPANY IDENTITY & CREDENTIALS */}
+          <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
+                <Building2 className="w-4 h-4 text-purple-400" />
+                <span>Agency / Company Identity & Credentials</span>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                <span>Active Profile</span>
+                <input
+                  type="checkbox"
+                  checked={kbIsActive}
+                  onChange={(e) => setKbIsActive(e.target.checked)}
+                  className="w-4 h-4 rounded text-purple-600 bg-slate-900 border-slate-700 cursor-pointer"
+                />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                  Company / Agency Name <span className="text-purple-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={kbCompanyName}
+                  onChange={(e) => setKbCompanyName(e.target.value)}
+                  placeholder="e.g. Enterprise Solutions / NiBiz Soft"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                  Experience & Value Tagline
+                </label>
+                <input
+                  type="text"
+                  value={kbTagline}
+                  onChange={(e) => setKbTagline(e.target.value)}
+                  placeholder="e.g. 10+ years in custom web & ERP software development"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                  Headquarters / Primary City
+                </label>
+                <input
+                  type="text"
+                  value={kbHeadquarters}
+                  onChange={(e) => setKbHeadquarters(e.target.value)}
+                  placeholder="e.g. Dhaka, Bangladesh or London, UK"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                  Official Website URL
+                </label>
+                <input
+                  type="text"
+                  value={kbWebsite}
+                  onChange={(e) => setKbWebsite(e.target.value)}
+                  placeholder="e.g. https://yourcompany.com"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                  Direct Contact Phone
+                </label>
+                <input
+                  type="text"
+                  value={kbPhone}
+                  onChange={(e) => setKbPhone(e.target.value)}
+                  placeholder="e.g. +880 1700-000000"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                  Direct Contact Email
+                </label>
+                <input
+                  type="email"
+                  value={kbEmail}
+                  onChange={(e) => setKbEmail(e.target.value)}
+                  placeholder="e.g. contact@yourcompany.com"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 2: SERVICES & SOLUTION OFFERINGS CATALOG */}
+          <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
+                  <Layers className="w-4 h-4 text-purple-400" />
+                  <span>Solutions & Value Wedge Catalog ({kbServices.length} Active Services)</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  When prospects have website friction or lack lead funnels, Fit Gate maps their specific gap to these offerings.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAddService}
+                className="px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer self-start sm:self-auto"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Offering</span>
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              {kbServices.map((svc, idx) => (
+                <div
+                  key={svc.key || idx}
+                  className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition space-y-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono text-[10px] font-semibold border border-purple-500/30">
+                        {svc.key}
+                      </span>
+                      <span className="text-xs text-slate-400 font-medium">#{idx + 1} Offering</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveService(idx)}
+                      className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                      title="Remove service offering"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
+                        Service Offering Name
+                      </label>
+                      <input
+                        type="text"
+                        value={svc.name}
+                        onChange={(e) => handleUpdateServiceField(idx, "name", e.target.value)}
+                        placeholder="e.g. Web Design & Development (Site in 7 Days)"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
+                        Value Wedge Offer (Lead Hook)
+                      </label>
+                      <input
+                        type="text"
+                        value={svc.wedge}
+                        onChange={(e) => handleUpdateServiceField(idx, "wedge", e.target.value)}
+                        placeholder="e.g. High-Converting Mobile Landing Page / Website Revamp"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
+                      Service Scope / Description
+                    </label>
+                    <input
+                      type="text"
+                      value={svc.description}
+                      onChange={(e) => handleUpdateServiceField(idx, "description", e.target.value)}
+                      placeholder="e.g. Custom modern responsive website with instant WhatsApp & lead capture forms."
+                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* CARD 3: LIVE DISCOVERY PITCH SANDBOX PREVIEW */}
+          <div className="p-5 rounded-xl bg-purple-950/20 border border-purple-500/20 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-purple-300 uppercase tracking-wider">
+              <Sparkles className="w-4 h-4 text-purple-400" />
+              <span>Live Pitch Preview & Discovery Script Sandbox</span>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              When sales representatives open any hot lead dossier, or when the system drafts cold outreach emails, this is how your Company KB dynamically armors them:
+            </p>
+
+            <div className="p-3.5 rounded-lg bg-slate-950/80 border border-slate-800 font-mono text-[11px] text-slate-300 space-y-2">
+              <div className="text-slate-400">
+                <span className="text-purple-400 font-bold">1. OPENING EVIDENCE:</span> &quot;Hello, is this [Candidate Business]? I was reviewing your online presence in [City] and noticed orders and customer bookings are still being taken manually over phone calls...&quot;
+              </div>
+              <div className="text-slate-400">
+                <span className="text-sky-400 font-bold">2. DISCOVERY QUESTION:</span> &quot;How are you currently managing daily order tracking and repeat customer notifications?&quot;
+              </div>
+              <div className="text-emerald-400">
+                <span className="text-purple-400 font-bold">3. VALUE PITCH:</span> &quot;At <span className="text-white font-bold underline">{kbCompanyName || "our solutions team"}</span>, we specialize in solving this with our <span className="text-white font-bold underline">{kbServices[0]?.wedge || "High-Converting Solution"}</span>. Would you be open to a 5-minute preview of the custom audit report we prepared for [Candidate Business]?&quot;
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-slate-400 pt-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>
+                <strong>Optional Per Batch:</strong> In both <strong>/research</strong> and <strong>/autopilot</strong>, you can toggle &quot;Use Company KB &amp; Branded Pitch&quot; ON or OFF. Turning it OFF switches the engine into <strong>Generic AI Mode</strong> with zero company branding.
+              </span>
             </div>
           </div>
         </div>

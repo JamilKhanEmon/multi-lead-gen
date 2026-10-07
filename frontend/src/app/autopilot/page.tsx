@@ -82,6 +82,7 @@ export default function AutopilotPage() {
   const [cUnlimited, setCUnlimited] = useState(false);
   const [cAutoMail, setCAutoMail] = useState(true);
   const [cUseGlobalTemplate, setCUseGlobalTemplate] = useState(true);
+  const [cUseCompanyKb, setCUseCompanyKb] = useState(true);
   const [creatingCampaign, setCreatingCampaign] = useState(false);
   const [runningBatchId, setRunningBatchId] = useState<string | null>(null);
 
@@ -176,7 +177,8 @@ export default function AutopilotPage() {
         daily_email_limit: 50,
         is_unlimited_leads: cUnlimited,
         auto_mail_enabled: cAutoMail,
-        use_global_template: cUseGlobalTemplate
+        use_global_template: cUseGlobalTemplate,
+        use_company_kb: cUseCompanyKb,
       });
       showToast("✓ Autopilot Campaign launched successfully!");
       setShowCreateModal(false);
@@ -937,6 +939,29 @@ export default function AutopilotPage() {
                   checked={cUseGlobalTemplate}
                   onChange={(e) => setCUseGlobalTemplate(e.target.checked)}
                   className="w-5 h-5 rounded text-sky-500 bg-slate-900 border-slate-700 cursor-pointer"
+                />
+              </div>
+
+              {/* Field 8: Company KB vs Generic AI Mode Toggle */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-white block">Use Company KB & Branded Pitch</span>
+                    <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-medium">
+                      {cUseCompanyKb ? "Company KB Active" : "Generic AI Mode"}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    {cUseCompanyKb
+                      ? "Checked: Uses company profile & custom service catalog from Admin for discovery call pitch & value wedges"
+                      : "Unchecked: Zero company branding; pitches clean consultative B2B digital transformation"}
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={cUseCompanyKb}
+                  onChange={(e) => setCUseCompanyKb(e.target.checked)}
+                  className="w-5 h-5 rounded text-purple-500 bg-slate-900 border-slate-700 cursor-pointer"
                 />
               </div>
 

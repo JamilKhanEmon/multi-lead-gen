@@ -1,7 +1,7 @@
 """
 System Health & Admin Monitoring Schemas
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
 
 
@@ -96,5 +96,30 @@ class PersonaSignatureResponse(BaseModel):
     is_active: bool
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
+
+class CompanyKBResponse(BaseModel):
+    id: str
+    company_name: str
+    tagline_experience: str
+    headquarters: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
+    website_url: Optional[str] = None
+    services_json: List[Dict[str, Any]]
+    is_active: bool
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class CompanyKBUpdate(BaseModel):
+    company_name: Optional[str] = None
+    tagline_experience: Optional[str] = None
+    headquarters: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
+    website_url: Optional[str] = None
+    services_json: Optional[List[Dict[str, Any]]] = None
+    is_active: Optional[bool] = None
 
 

@@ -23,6 +23,7 @@ from app.models.research import ResearchJob
 from app.models.audit import User
 from app.engine.discovery_optimizer import DiscoveryOptimizer
 from app.engine.deduplication import DeduplicationEngine, GENERIC_PLATFORM_DOMAINS
+from app.engine.fit_gate import FitGateEngine
 from app.schemas.lead import (
     LeadResponse,
     LeadDetailResponse,
@@ -42,6 +43,7 @@ async def list_leads(
     skip: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=10000),
     tier: Optional[str] = None,  # Strong Potential, Review Needed, Rejected
+    fit_tier: Optional[str] = None,  # HOT, WARM, COLD, DROPPED
     run_id: Optional[uuid.UUID] = None,
     is_qualified: Optional[bool] = None,
     min_score: Optional[float] = Query(None, ge=0.0, le=100.0),
@@ -66,8 +68,10 @@ async def list_leads(
         )
     )
 
-    if tier:
+    if tier and tier != "ALL":
         stmt = stmt.where(Lead.tier == tier)
+    if fit_tier and fit_tier != "ALL":
+        stmt = stmt.where(Lead.fit_tier == fit_tier)
     if run_id:
         stmt = stmt.where(Lead.run_id == run_id)
     if is_qualified is not None:
@@ -199,6 +203,11 @@ async def list_leads(
                 google_search_url=gsearch_url,
                 latitude=lat,
                 longitude=lon,
+                fit_tier=getattr(l, "fit_tier", None) or "HOT",
+                why_they_need_us=getattr(l, "why_they_need_us", None),
+                what_they_need=getattr(l, "what_they_need", None),
+                discovery_call_script=getattr(l, "discovery_call_script", None),
+                matched_service=getattr(l, "matched_service", None),
             )
         )
 
@@ -1012,10 +1021,50 @@ async def get_lead_detail(
 
     if lead.business and not lead.business.email and resolved_email:
         lead.business.email = resolved_email
-        try:
-            await db.commit()
-        except Exception:
-            pass
+
+    # Demand-Side Fit Gate Intelligence: Ensure why_they_need_us & discovery_call_script exist
+    fit_t = getattr(lead, "fit_tier", None)
+    why_us = getattr(lead, "why_they_need_us", None)
+    what_need = getattr(lead, "what_they_need", None)
+    call_script = getattr(lead, "discovery_call_script", None)
+    matched_svc = getattr(lead, "matched_service", None)
+
+    if not why_us or not call_script:
+        loc_city = (loc.city if loc else None) or meta.get("city") or "Dhaka"
+        use_kb = True
+        if lead.run and hasattr(lead.run, "use_company_kb"):
+            use_kb = bool(lead.run.use_company_kb)
+
+        kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
+
+        gate_res = FitGateEngine.evaluate_candidate(
+            business_name=lead.business.canonical_name if lead.business else "Business",
+            domain=clean_biz_dom,
+            phone=lead.business.phone if lead.business else None,
+            email=resolved_email,
+            business_type=btype,
+            city=loc_city,
+            audit_res=meta.get("audit_summary") or {},
+            detected_weaknesses=meta.get("detected_weaknesses") or [],
+            metadata_json=meta,
+            company_kb=kb_dict,
+            use_company_kb=use_kb,
+        )
+        fit_t = gate_res["fit_tier"]
+        why_us = gate_res["why_they_need_us"]
+        what_need = gate_res["what_they_need"]
+        call_script = gate_res["discovery_call_script"]
+        matched_svc = gate_res["matched_service"]
+        lead.fit_tier = fit_t
+        lead.why_they_need_us = why_us
+        lead.what_they_need = what_need
+        lead.discovery_call_script = call_script
+        lead.matched_service = matched_svc
+
+    try:
+        await db.commit()
+    except Exception:
+        pass
 
     return LeadDetailResponse(
         id=lead.id,
@@ -1039,6 +1088,11 @@ async def get_lead_detail(
         is_qualified=lead.is_qualified,
         primary_gap_summary=lead.primary_gap_summary,
         explanation_json=lead.explanation_json,
+        fit_tier=fit_t or "HOT",
+        why_they_need_us=why_us,
+        what_they_need=what_need,
+        discovery_call_script=call_script,
+        matched_service=matched_svc,
         scores=lead.scores,
         feedback_entries=lead.feedback_entries,
         evidence=evidence_list,
@@ -1218,6 +1272,16 @@ async def update_lead_details(
         lead.tier = data.tier
     if data.outreach_status is not None:
         lead.outreach_status = data.outreach_status
+    if data.fit_tier is not None:
+        lead.fit_tier = data.fit_tier
+    if data.why_they_need_us is not None:
+        lead.why_they_need_us = data.why_they_need_us.strip()
+    if data.what_they_need is not None:
+        lead.what_they_need = data.what_they_need.strip()
+    if data.discovery_call_script is not None:
+        lead.discovery_call_script = data.discovery_call_script.strip()
+    if data.matched_service is not None:
+        lead.matched_service = data.matched_service.strip()
 
     if data.approve_for_outreach is True:
         lead.outreach_status = "READY_FOR_OUTREACH"
@@ -1226,6 +1290,61 @@ async def update_lead_details(
         if lead.email_status == "NEEDS_REVIEW" or not lead.email_status:
             lead.email_status = "VALID"
 
+    await db.commit()
+    return await get_lead_detail(lead_id=lead.id, db=db, current_user=current_user)
+
+
+@router.post("/{lead_id}/evaluate-fit", response_model=LeadDetailResponse)
+async def evaluate_lead_fit_gate(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Re-runs the demand-side Fit Gate on a lead to detect buying signals, assign fit tier, and generate sales pitch."""
+    stmt = (
+        select(Lead)
+        .options(
+            selectinload(Lead.business).selectinload(Business.locations),
+        )
+        .where((Lead.id == lead_id) | (Lead.business_id == lead_id))
+    )
+    res = await db.execute(stmt)
+    lead = res.scalar_one_or_none()
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+    biz = lead.business
+    meta = (biz.metadata_json or {}) if biz else {}
+    loc = biz.locations[0] if (biz and biz.locations) else None
+    loc_city = (loc.city if loc else None) or meta.get("city") or "Dhaka"
+    clean_dom = biz.domain if biz else None
+    if DeduplicationEngine.is_generic_platform(clean_dom):
+        clean_dom = None
+
+    use_kb = True
+    if lead.run and hasattr(lead.run, "use_company_kb"):
+        use_kb = bool(lead.run.use_company_kb)
+
+    kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
+
+    gate_res = FitGateEngine.evaluate_candidate(
+        business_name=biz.canonical_name if biz else "Business",
+        domain=clean_dom,
+        phone=biz.phone if biz else None,
+        email=biz.email if biz else None,
+        business_type=biz.business_type if biz else "commercial",
+        city=loc_city,
+        audit_res=meta.get("audit_summary") or {},
+        detected_weaknesses=meta.get("detected_weaknesses") or [],
+        metadata_json=meta,
+        company_kb=kb_dict,
+        use_company_kb=use_kb,
+    )
+    lead.fit_tier = gate_res["fit_tier"]
+    lead.why_they_need_us = gate_res["why_they_need_us"]
+    lead.what_they_need = gate_res["what_they_need"]
+    lead.discovery_call_script = gate_res["discovery_call_script"]
+    lead.matched_service = gate_res["matched_service"]
     await db.commit()
     return await get_lead_detail(lead_id=lead.id, db=db, current_user=current_user)
 

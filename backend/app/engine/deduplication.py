@@ -60,8 +60,12 @@ class DeduplicationEngine:
 
     @staticmethod
     def normalize_name(name: str) -> str:
-        """Removes punctuation, corporate suffixes, and excess spaces."""
-        cleaned = name.lower().strip()
+        """Removes punctuation, corporate suffixes, unicode math glyphs (NFKC), and excess spaces."""
+        import unicodedata
+        if not name:
+            return ""
+        # Convert unicode stylized fonts/math glyphs (e.g., 𝙎𝙦𝙪𝙖𝙧𝙚 -> Square)
+        cleaned = unicodedata.normalize("NFKC", name).lower().strip()
         # Remove punctuation
         cleaned = re.sub(r"[^\w\s]", " ", cleaned)
         # Remove corporate suffixes
@@ -100,14 +104,24 @@ class DeduplicationEngine:
         """Strips formatting and standardizes phone digits."""
         if not phone:
             return None
-        # Keep digits and leading +
         cleaned = re.sub(r"[^\d+]", "", phone)
-        # Remove leading country codes if local formatting matches
         if cleaned.startswith("+880"):
             cleaned = "0" + cleaned[4:]
         elif cleaned.startswith("880"):
             cleaned = "0" + cleaned[3:]
         return cleaned if len(cleaned) >= 7 else None
+
+    @staticmethod
+    def normalize_phone_last10(phone: Optional[str]) -> Optional[str]:
+        """Extracts only the last 10 digits for robust deduplication across different country prefix formats."""
+        if not phone:
+            return None
+        digits = re.sub(r"\D", "", phone)
+        if len(digits) >= 10:
+            return digits[-10:]
+        elif len(digits) >= 7:
+            return digits
+        return None
 
     @classmethod
     def are_duplicate_candidates(
@@ -117,21 +131,30 @@ class DeduplicationEngine:
     ) -> Tuple[bool, str]:
         """
         Determines if two business records refer to the same canonical entity.
+        Uses verified domain, last-10 phone digits, and fuzzy name similarity >= 0.90.
         Returns: (is_duplicate: bool, reason: str)
         """
+        import difflib
+
         d1 = cls.normalize_domain(domain1)
         d2 = cls.normalize_domain(domain2)
         if d1 and d2 and d1 == d2:
             return True, f"Identical verified domain: {d1}"
 
-        p1 = cls.normalize_phone(phone1)
-        p2 = cls.normalize_phone(phone2)
-        if p1 and p2 and p1 == p2:
-            return True, f"Identical verified phone number: {p1}"
+        p1_10 = cls.normalize_phone_last10(phone1)
+        p2_10 = cls.normalize_phone_last10(phone2)
+        if p1_10 and p2_10 and p1_10 == p2_10:
+            return True, f"Identical phone digits: {p1_10}"
 
         n1 = cls.normalize_name(name1)
         n2 = cls.normalize_name(name2)
-        if n1 and n2 and n1 == n2:
-            return True, f"Identical canonical name: '{n1}'"
+        if n1 and n2:
+            if n1 == n2:
+                return True, f"Identical canonical name: '{n1}'"
+            # Fuzzy match threshold 0.90
+            sim = difflib.SequenceMatcher(None, n1, n2).ratio()
+            if sim >= 0.90:
+                return True, f"High name similarity ({int(sim*100)}%): '{n1}' ~= '{n2}'"
 
         return False, "Distinct business entities"
+

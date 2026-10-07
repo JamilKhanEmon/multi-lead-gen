@@ -20,6 +20,7 @@ from app.engine.email_verifier import EmailVerifier
 from app.engine.outreach_engine import OutreachEngine
 from app.services.openclaw_client import LiveResearchEngine
 from app.engine.deduplication import DeduplicationEngine
+from app.engine.fit_gate import FitGateEngine
 
 
 class AutopilotRunner:
@@ -131,6 +132,9 @@ class AutopilotRunner:
                 except Exception as e:
                     logger.warning(f"[AUTOPILOT] Discovery failed for {target_city_clean}: {e}")
                     discovered_candidates = []
+
+                use_kb = getattr(campaign, "use_company_kb", True)
+                kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
 
                 # Process discovered genuine businesses
                 for cand in discovered_candidates:
@@ -303,11 +307,42 @@ class AutopilotRunner:
                         calc_score += 10.0
                     final_lead_score = min(98.0, calc_score)
 
+                    # Evaluate Demand-Side Fit Gate (Evidence-First Standards)
+                    gate_eval = FitGateEngine.evaluate_candidate(
+                        business_name=c_name,
+                        domain=c_dom,
+                        phone=c_phone,
+                        email=resolved_email,
+                        business_type=b_type,
+                        city=target_city_clean,
+                        audit_res=audit_res,
+                        detected_weaknesses=detected_weaknesses,
+                        metadata_json=biz.metadata_json,
+                        company_kb=kb_dict,
+                        use_company_kb=use_kb,
+                    )
+
+                    fit_tier = gate_eval["fit_tier"]
+                    why_they_need_us = gate_eval["why_they_need_us"]
+                    what_they_need = gate_eval["what_they_need"]
+                    matched_service = gate_eval["matched_service"]
+                    discovery_call_script = gate_eval["discovery_call_script"]
+
+                    # If healthy modern site with 0 gaps, Dada directive: DROP to prevent spam
+                    is_dropped = (fit_tier == "DROPPED")
+                    if is_dropped:
+                        outreach_status = "FILTERED_HEALTHY"
+                        lead_tier = "Rejected"
+                        is_qualified = False
+                    else:
+                        lead_tier = "Strong Potential" if has_email else "Review Needed"
+                        is_qualified = True
+
                     lead = Lead(
                         business_id=biz.id,
-                        tier="Strong Potential" if has_email else "Review Needed",
-                        final_score=final_lead_score,
-                        is_qualified=True,
+                        tier=lead_tier,
+                        final_score=final_lead_score if not is_dropped else 40.0,
+                        is_qualified=is_qualified,
                         primary_gap_summary=primary_gap,
                         explanation_json={
                             "source": "openclaw_deep_intelligence",
@@ -325,13 +360,23 @@ class AutopilotRunner:
                                 "has_google_analytics": audit_res.get("has_google_analytics"),
                                 "rendered_by": audit_res.get("rendered_by", "playwright-chromium")
                             } if audit_res else None,
-                            "detected_weaknesses": detected_weaknesses
+                            "detected_weaknesses": detected_weaknesses,
+                            "fit_gate": {
+                                "fit_tier": fit_tier,
+                                "passed_gate": not is_dropped,
+                                "evidence_tags": gate_eval.get("evidence_tags", []),
+                            }
                         },
                         email_status=email_status,
                         verification_notes=verify_note,
                         outreach_status=outreach_status,
                         deal_status="COLD",
-                        followup_step=0
+                        followup_step=0,
+                        fit_tier=fit_tier,
+                        why_they_need_us=why_they_need_us,
+                        what_they_need=what_they_need,
+                        discovery_call_script=discovery_call_script,
+                        matched_service=matched_service,
                     )
                     db.add(lead)
                     await db.flush()
