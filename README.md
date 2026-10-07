@@ -1,34 +1,29 @@
-# 🎯 Multi-Lead-Gen — Autonomous B2B Lead Intelligence, Retargeting & Voice Outreach Platform
+# 🎯 LeadGen AI — Autonomous B2B Lead Generation, Qualification & Outreach Engine
 
-[![Next.js](https://img.shields.io/badge/Next.js-15.5-black?style=flat&logo=next.js)](https://nextjs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?style=flat&logo=python)](https://python.org)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg?style=flat&logo=postgresql)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-7-DC382D.svg?style=flat&logo=redis)](https://redis.io/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6.svg?style=flat&logo=typescript)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC.svg?style=flat&logo=tailwind-css)](https://tailwindcss.com/)
-[![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED.svg?style=flat&logo=docker)](https://www.docker.com/)
+[![CI/CD Pipeline](https://github.com/NIBIZ-SOFT/leadgenai/actions/workflows/deploy.yml/badge.svg)](https://github.com/NIBIZ-SOFT/leadgenai/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black)](https://nextjs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)](https://fastapi.tiangolo.com)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg)](https://python.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-7-DC382D.svg)](https://redis.io/)
+[![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED.svg)](https://www.docker.com/)
 
-**Multi-Lead-Gen** is an enterprise-grade, local-first autonomous intelligence platform designed to replace manual B2B prospecting, research, ad creation, and sales qualification. It automatically discovers niche businesses, performs headless web extraction with visual evidence capture, evaluates targets against **135 deterministic parameters**, generates high-converting **2-Step Meta Ads Retargeting funnels with AI video**, and powers **Autonomous Voice Calling Agents** and **Anti-Spam Email Outreach**.
+**LeadGen AI** is an enterprise-grade, autonomous B2B lead generation, research, qualification, and automated outreach platform. It automatically discovers prospective businesses, executes deep web crawling via autonomous agents, captures immutable visual evidence proof, scores leads across **135 deterministic parameters**, and manages high-converting marketing campaigns (automated SMTP Cold Emails with Human Approval Queue, Meta Ads & AI Voice outreach).
 
 ---
 
 ## 📑 Table of Contents
-
-1. [System Architecture](#-system-architecture)
-2. [Core Modules Explained](#-core-modules-explained)
-   - [1. Lead Discovery & Autonomous Autopilot](#1-lead-discovery--autonomous-autopilot)
-   - [2. 135-Parameter Qualification & Demand-Side Fit Gate](#2-135-parameter-qualification--demand-side-fit-gate)
-   - [3. Anti-Spam Cold Email Outreach & Multi-Inbox Rotation](#3-anti-spam-cold-email-outreach--multi-inbox-rotation)
-   - [4. Meta Ads Intelligence & AI Video Studio](#4-meta-ads-intelligence--ai-video-studio)
-   - [5. Autonomous B2B Voice Calling Agent](#5-autonomous-b2b-voice-calling-agent)
-   - [6. Company Knowledge Base & Admin Control Plane](#6-company-knowledge-base--admin-control-plane)
-3. [Technology Stack](#-technology-stack)
-4. [Project Directory Structure](#-project-directory-structure)
-5. [Local Development Setup](#-local-development-setup)
-6. [Production Deployment (VPS & Docker)](#-production-deployment-vps--docker)
-7. [Environment Variables Reference](#-environment-variables-reference)
-8. [License](#-license)
+1. [🏗️ System Architecture](#-system-architecture)
+2. [⚙️ Tech Stack](#️-tech-stack)
+3. [✨ Key Features](#-key-features)
+4. [🔄 How It Works (Workflow)](#-how-it-works-workflow)
+5. [👥 Component Responsibilities](#-component-responsibilities)
+6. [📂 Project Structure](#-project-structure)
+7. [🚀 Local Development Setup](#-local-development-setup)
+8. [🚢 Production VPS Deployment](#-production-vps-deployment)
+9. [🔐 Environment Variables Reference](#-environment-variables-reference)
+10. [📜 License](#-license)
 
 ---
 
@@ -36,187 +31,162 @@
 
 ```mermaid
 graph TD
-    UI[Next.js 15 Client / Dashboard :3000] -->|REST API & WebSockets| API[FastAPI Async Server :8000]
-    API -->|Persistence| DB[(PostgreSQL 16 Database)]
-    API -->|Pub/Sub & Task Dispatch| Redis[(Redis 7 Queue)]
+    Client[Next.js 15 Dashboard / Port 3000] -->|REST API & WebSockets| API[FastAPI Core Server / Port 8000]
+    API -->|Async Read/Write| DB[(PostgreSQL 16 Database)]
+    API -->|Task Queue & PubSub| Redis[(Redis 7 Queue)]
     
-    subgraph Workers & Research Fleet
-        Worker[Python Worker Fleet - runner.py] -->|Dequeue Tasks| Redis
-        Worker -->|Crawl & Screenshot Protocol 4| OpenClaw[OpenClaw AI Gateway :18789]
-        Worker -->|135 Deterministic Rules| QualEngine[Qualification & Scoring Engine]
-        Worker -->|Save Evidence & Snapshots| DB
-    end
-
-    subgraph Autonomous Pipelines
-        Autopilot[Autopilot Daemon] -->|Continuous Scheduling| API
-        OutreachDaemon[Outreach Daemon] -->|Anti-Spam 240-480s Jitter| SMTP[Multi-Inbox SMTP Rotation]
-        MetaEngine[Meta Ads Engine] -->|Veo / Imagen 3 / FFmpeg| VideoStudio[AI Video & Poster Studio]
-        VoiceService[Voice Agent Service] -->|Simulated Call Stream| VoiceQueue[Outbound Call Queue]
-    end
-
-    Redis -->|WebSocket Events Stream| UI
+    WorkerFleet[Python Worker Fleet - runner.py] -->|Dequeue Jobs| Redis
+    WorkerFleet -->|Autonomous Research & Screenshots| OpenClaw[OpenClaw AI Gateway]
+    WorkerFleet -->|135 Parameter Evaluation| QualEngine[Deterministic Qualification Engine]
+    WorkerFleet -->|Save Evidence & Scores| DB
+    
+    Autopilot[Autopilot Runner Service] -->|Continuous Scheduling| API
+    OutreachEngine[Smart Email Outreach Engine] -->|Human Approval Check| DB
+    OutreachEngine -->|Live SMTP Dispatch| SMTP[SMTP Server - Gmail / SES / Custom]
+    
+    API -->|Campaign Generation| Meta[Meta Graph Marketing API]
+    API -->|Voice Calling| VoiceAgent[AI Voice Agent Engine]
 ```
 
 ---
 
-## 💡 Core Modules Explained
+## ⚙️ Tech Stack
 
-### 1. Lead Discovery & Autonomous Autopilot
+### 1. Frontend Client
+* **Framework:** Next.js 15 (App Router, Standalone Build)
+* **UI Library:** React 19 & React DOM 19
+* **Language:** TypeScript 5
+* **Styling:** Tailwind CSS 3.4 & PostCSS
+* **Icons:** Lucide React
 
-The discovery system identifies target B2B prospects across specific geographic regions and niches without manual input:
+### 2. Backend & Core Engine
+* **Language:** Python 3.11+
+* **API Framework:** FastAPI (Async REST API & WebSockets)
+* **ASGI Server:** Uvicorn
+* **Data Validation:** Pydantic v2 & Pydantic-Settings
+* **ORM & Database:** SQLAlchemy 2.0 (Asyncio) + `asyncpg` + `psycopg2`
+* **Migrations:** Alembic
+* **Task Queue & Cache:** Redis 7 (`redis-py` & `hiredis`)
+* **HTTP Client:** HTTPX (Async HTTP Requests)
+* **Security & JWT:** Python-Jose, Passlib, Argon2
 
-* **Dynamic Geo & Query Expander:** Takes a high-level industry (e.g., *Commercial Contracting*) and location (e.g., *Austin, TX*) and expands search vectors across target sub-cities and commercial districts.
-* **Smart Deduplication Engine:** Before any external network request is made, every prospect is normalized:
-  * Company names are cleaned of corporate suffixes (`Ltd`, `LLC`, `Limited`, `Inc`).
-  * Domains are normalized (stripping `https://`, `www.`, tracking parameters, sub-pages).
-  * Phone numbers are parsed into standardized E.164 formats.
-  * Ensures no company or domain is researched more than once.
-* **Autonomous Autopilot Daemon:** Runs in the background, continuously finding pending targets, triggering the research workers, and transitioning verified leads into the outreach cycle.
-
----
-
-### 2. 135-Parameter Qualification & Demand-Side Fit Gate
-
-Unlike superficial scrapers that just fetch emails, Multi-Lead-Gen conducts deep technical and commercial audits:
-
-* **OpenClaw Sandbox Crawling:** Connects via loopback WebSocket Protocol 4 to an isolated headless Chromium instance to inspect the target's live DOM, meta tags, responsive viewport, social links, contact forms, and capture visual snapshot evidence.
-* **135 Deterministic Parameter Rules:** Evaluates the website against 135 objective parameters, including:
-  * Missing SSL certificate or insecure HTTP links.
-  * Slow mobile page load times and unoptimized viewport rendering.
-  * Absence of instant contact mechanisms (missing WhatsApp CTA, click-to-call buttons, or inquiries form).
-  * Outdated copyright notices or inactive social media links.
-  * Lack of Meta Pixel, Google Tag Manager, or conversion tracking.
-* **Demand-Side Fit Gate:** Segregates businesses into distinct action tiers:
-  * **HOT:** High-revenue business with critical digital bottlenecks (immediate high-value pitch target).
-  * **WARM:** Moderate gaps with clear upsell potential (nurture sequence target).
-  * **COLD:** Minor optimization potential.
-  * **DROPPED:** Healthy businesses with no identifiable pain points (prevents spamming).
-* **Multi-Tenant Service Matcher:** Automatically pairs the detected weakness with your agency's exact offering:
-  * *No Mobile Booking* ➔ Web Design & Mobile Landing Page Revamp.
-  * *No Inquiry Storage* ➔ Custom CRM & Automated WhatsApp Lead Alerts.
-  * *Disorganized Billing* ➔ Lightweight Cloud ERP & Operations Tracker.
-  * *No Conversion Pixels* ➔ Meta Ads & Local SEO Growth Wedge.
+### 3. Intelligence, Scraping & Automation
+* **Autonomous Web Crawling:** OpenClaw Cloud Gateway (Headless Chromium crawling, screenshot proof, DOM extraction)
+* **Qualification System:** 135-Parameter Rule & Parameter Scoring Engine
+* **Cold Outreach Dispatch:** Async SMTP Client (`smtplib` with SSL/TLS support & dry-run fallback)
+* **Autopilot Service:** Continuous scheduled discovery & automated lead processing
+* **Local LLM Offline Engine (Optional):** Ollama (`qwen2.5:7b` / `gemma3:4b`)
+* **Meta Ads Generation:** Meta Marketing Graph API integration
+* **Voice Agent:** Automated AI Voice phone calling integration
 
 ---
 
-### 3. Anti-Spam Cold Email Outreach & Multi-Inbox Rotation
+## ✨ Key Features
 
-The outreach pipeline is built for high deliverability and compliance:
+1. **Autonomous Lead Discovery:**
+   - Expands search terms dynamically to discover prospective B2B targets based on industry, niche, and city/region.
+   - Built-in deduplication ensures no duplicate domain or company is processed twice.
 
-* **3-Step Strategic Cadence:**
-  * **Step 1:** Initial Strategic Wedge pitch highlighting the lead's exact website gap.
-  * **Step 2 (Day 4):** Gentle follow-up with a free audit offer.
-  * **Step 3 (Day 8):** Professional break-up email with an open invitation.
-* **Template Engine:** Supports both Global Admin Templates (with dynamic tokens like `{{company_name}}`, `{{primary_gap}}`, `{{city}}`, `{{why_they_need_us}}`) and LLM-crafted tailored pitches.
-* **Multi-Inbox Rotation & Persona Signatures:** Rotates across multiple configured SMTP inboxes (`SMTP_HOST_1`, `SMTP_HOST_2`) and authentic sender personas (Solutions Consultants, Account Executives) to protect domain reputation.
-* **Anti-Spam Rate Guard:** Employs randomized delay intervals (**240 to 480 seconds**) during local business hours (09:00 AM - 05:30 PM) to mirror human sending behavior.
-* **Inbound Reply Sentiment Classifier:**
-  * **POSITIVE:** Automatically marks the lead as `HOT_LEAD`, flags positive sentiment, and notifies the team.
-  * **NEGATIVE:** Instantly opts out the domain and blacklists it from future cycles.
-  * **NEUTRAL:** Logs the inquiry for manual agent follow-up.
+2. **OpenClaw Sandboxed Web Research:**
+   - Connects to OpenClaw AI Gateway to execute headless browser visits on target sites.
+   - Captures screenshot proof, extracts contact info, social handles, modern tech stacks, and website metrics.
 
----
+3. **135-Parameter Qualification Scoring:**
+   - Evaluates each target across 135 objective parameters (SEO health, page load speeds, mobile responsiveness, social presence, ad activity, clear CTA presence).
+   - Computes an objective Lead Score and highlights key business gaps.
 
-### 4. Meta Ads Intelligence & AI Video Studio
+4. **Smart Cold Email Outreach & Approval Queue:**
+   - Generates personalized cold email templates tailored to each lead's specific weak spots.
+   - Includes a **Human Approval Queue** to inspect, edit, approve, or reject email drafts before dispatch.
+   - Supports live SMTP dispatch (Gmail, SES, SendGrid, Zoho) as well as simulation dry-run mode.
 
-A complete in-app ad creation suite implementing a **2-Step Video Retargeting Funnel**:
+5. **Autopilot Runner Engine:**
+   - Background daemon that continuously scans for unresearched targets, triggers qualification workflows, and schedules email outreach automatically.
 
-* **Funnel Strategy:**
-  * **Post 1 (Cold Hook Video Ad):** Designed to capture 3-second hook attention from cold prospects, agitating their industry problem.
-  * **Post 2 (Retargeting Offer Ad):** Targets prospects who watched 50%+ of Post 1, presenting an irresistible B2B offer with a direct **Click-to-WhatsApp** call to action.
-* **Competitor & Spy Intelligence:** Uses OpenClaw to analyze live market competitors, extracting ad angles, positioning hooks, and customer objections.
-* **AI Multi-Scene Video Production:**
-  * Generates structured 4-scene video storyboards (Hook, Problem, Solution, CTA).
-  * Produces visual prompts and voiceover scripts for each scene.
-  * Integrates with Google Veo / Imagen 3 for cinematic scene rendering.
-  * Stitches rendered clips into a final MP4 video using **FFmpeg**.
-* **AI B2B Poster Mode:** Generates ultra-high-resolution marketing banners via Google Imagen 3.
-* **Interactive Mobile Feed Mockup:** Previews ad creatives inside a live, responsive smartphone simulation (Facebook / Instagram mobile feed).
-* **Meta Graph API Integration:** Allows 1-click campaign deployment directly to Meta Ads Manager, tracking live spend, impressions, Video ThruPlays, and direct WhatsApp conversations.
+6. **Meta Ads & AI Voice Integration:**
+   - Automatically drafts high-converting Facebook/Instagram ad copy and visual briefs targeting lead weaknesses.
+   - Integrates with AI Voice agents for automated appointment booking calls.
+
+7. **Real-Time Dashboard Streaming:**
+   - WebSocket streaming updates the Next.js 15 dashboard live with worker logs, research progress, and qualification results.
 
 ---
 
-### 5. Autonomous B2B Voice Calling Agent
+## 🔄 How It Works (Workflow)
 
-Provides interactive phone qualification and automated outbound sales calls:
-
-* **Dynamic Prompt Interpolation:** Automatically injects verified dossier fields into the agent's speech system:
-  * Company Name, Contact Person, City, Primary Technical Gap, Recommended Wedge Offer.
-* **Interactive Sheet View:** A dedicated dashboard for sales reps to manage outbound queues, start simulated calls, and monitor call progress.
-* **Stateful Call Lifecycle:** Tracks statuses in real time:
-  * `READY` ➔ `IN_PROGRESS` ➔ `MEETING_BOOKED` ➔ `CALL_DONE` ➔ `FAILED`.
-* **Live Transcripts:** Visualizes turn-by-turn dialogue between the AI agent and the prospect with timestamp tracking.
-* **Automated Meeting Booking:** Automatically generates and delivers Google Meet / calendar demo links upon successful qualification.
-
----
-
-### 6. Company Knowledge Base & Admin Control Plane
-
-* **Branded Company KB:** Store your agency's real-world case studies, core value propositions, client testimonials, and pricing tiers. When enabled, the AI tailors all email and ad copy around your actual business assets rather than generic templates.
-* **Role-Based Access Control (RBAC):**
-  * **Super Admin:** Full access to system configuration, user permissions, SMTP inboxes, and data purges.
-  * **Admin:** Campaign management, lead editing, manual outreach triggers.
-  * **Sales Team:** Read-only leads view, manual email review, and voice simulation access.
-* **Emergency Data Utilities:** 1-click tools to purge rejected leads, reset test runs, or perform a clean factory state reset.
+```
+[1. Target Niche Input]   ➔ Specify Industry (e.g. Dental Clinics) & Location (e.g. Austin, TX)
+          ↓
+[2. Discovery Query]      ➔ Optimizer expands search terms & fetches candidate companies
+          ↓
+[3. Deduplication Check]  ➔ Filters out existing domains & invalid targets
+          ↓
+[4. OpenClaw Deep Crawl]  ➔ Headless browser visits site, extracts data & takes screenshots
+          ↓
+[5. 135-Parameter Score]  ➔ Deterministic engine evaluates 135 parameters & identifies gaps
+          ↓
+[6. Approval Queue]       ➔ Draft personalized email & queue for human review / approval
+          ↓
+[7. Automated Dispatch]   ➔ Live SMTP send to prospect or launch Meta Ad Campaign
+```
 
 ---
 
-## ⚙️ Technology Stack
+## 👥 Component Responsibilities
 
-| Layer | Technologies |
-| :--- | :--- |
-| **Frontend Framework** | **Next.js 15.5** (App Router, Standalone Build), **React 19**, **TypeScript 5** |
-| **Styling & UI** | **Tailwind CSS 3.4**, **Lucide React Icons**, **PostCSS** |
-| **Backend API** | **FastAPI 0.115+** (Python 3.11+), **Uvicorn ASGI**, **WebSockets** |
-| **Validation & Settings** | **Pydantic v2**, **Pydantic-Settings** |
-| **Database & ORM** | **PostgreSQL 16**, **SQLAlchemy 2.0 (Asyncio)**, **asyncpg**, **Alembic** |
-| **Task Queue & Caching** | **Redis 7** (`redis-py`, `hiredis`, Redis Pub/Sub) |
-| **Headless Scraping** | **OpenClaw AI Gateway** (Headless Chromium, WebSocket Protocol 4) |
-| **AI & Multimodal Media** | **Google Gemini / Imagen 3 / Veo API**, **Ollama** (Local fallback), **FFmpeg** |
-| **Email Protocol** | **Python smtplib** (SSL/TLS support, multi-inbox rotation, anti-spam delay loops) |
-| **Authentication & Crypto** | **Argon2id**, **Passlib**, **Python-Jose** (JWT tokens) |
-| **Containerization & CI/CD** | **Docker**, **Docker Compose**, **GitHub Actions CI/CD** |
+| Component | Directory / File | Description & Responsibility |
+| :--- | :--- | :--- |
+| **Frontend Dashboard** | `frontend/` | Next.js 15 dashboard for managing leads, inspecting evidence, reviewing email drafts, and monitoring system status. |
+| **API Control Plane** | `backend/app/main.py` | FastAPI gateway handling REST endpoints, WebSocket streaming, authentication, and task dispatching. |
+| **Worker Fleet** | `backend/app/workers/runner.py` | Standalone Python background workers that dequeue tasks from Redis and run deep lead research. |
+| **Autopilot Engine** | `backend/app/engine/autopilot_runner.py` | Background runner executing continuous discovery and outreach processing. |
+| **Outreach Engine** | `backend/app/engine/outreach_engine.py` | Handles cold email generation, human approval workflows, and live SMTP delivery. |
+| **OpenClaw Client** | `backend/app/services/openclaw_client.py` | Communicates with OpenClaw Gateway to crawl sites and capture screenshot evidence. |
+| **Qualification Engine**| `backend/app/engine/qualification_engine.py` | Evaluates raw web evidence against 135 deterministic parameters to calculate lead score. |
+| **Meta Intelligence** | `backend/app/engine/meta_intelligence.py` | Drafts targeted Facebook & Instagram marketing campaigns based on lead weaknesses. |
 
 ---
 
-## 📂 Project Directory Structure
+## 📂 Project Structure
 
-```text
-multi-lead-gen/
-├── .github/workflows/deploy.yml   # Production CI/CD automated deployment workflow
+```bash
+leadgenai/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml            # CI/CD pipeline (Builds Docker images & deploys to VPS)
 ├── backend/
-│   ├── alembic/                   # Database schema migrations
 │   ├── app/
-│   │   ├── api/v1/                # REST endpoints (auth, leads, autopilot, campaigns, voice)
-│   │   ├── core/                  # App configuration, security (Argon2), logging
-│   │   ├── db/                    # Async SQLAlchemy session and base models
-│   │   ├── engine/                # Core engines (fit gate, qualification, outreach, deduplication)
-│   │   ├── models/                # SQLAlchemy database schemas
-│   │   ├── schemas/               # Pydantic request & response validation schemas
-│   │   ├── services/              # External integrations (OpenClaw, Meta, Video, Voice)
-│   │   ├── workers/               # Redis background runner and task handlers
-│   │   └── main.py                # Main FastAPI entry point and background daemons
-│   ├── tests/                     # Unit test suite (pytest)
-│   ├── Dockerfile                 # Backend container definition
-│   └── requirements.txt           # Python backend dependencies
+│   │   ├── api/                  # API router endpoints (leads, campaigns, auth, autopilot, ws)
+│   │   ├── core/                 # Config (Pydantic), security, logging
+│   │   ├── db/                   # Database sessions, SQLAlchemy models, Alembic migrations
+│   │   ├── engine/               # Core intelligence (qualification, discovery, outreach, autopilot)
+│   │   ├── models/               # Database ORM schemas (Lead, Evidence, Campaign, OutreachLog)
+│   │   ├── schemas/              # Pydantic validation schemas
+│   │   ├── services/             # External services (OpenClaw, Ollama, Meta, Voice)
+│   │   └── workers/              # Redis background task runners
+│   ├── tests/                    # Pytest test suite
+│   ├── alembic/                  # Database migration scripts
+│   ├── Dockerfile                # Production Dockerfile for FastAPI Backend & Workers
+│   └── requirements.txt          # Python dependencies
 ├── frontend/
 │   ├── src/
-│   │   ├── app/                   # Next.js App Router (dashboard, leads, autopilot, campaigns, voice)
-│   │   ├── components/            # Reusable UI components & application layout
-│   │   ├── hooks/                 # WebSocket and state management hooks
-│   │   └── lib/                   # API client and TypeScript definitions
-│   ├── Dockerfile                 # Standalone production frontend Dockerfile
-│   └── package.json               # Frontend dependencies
+│   │   ├── app/                  # Next.js 15 App router pages (dashboard, leads, outreach, campaigns)
+│   │   ├── components/           # Reusable UI components & navigation sidebar
+│   │   ├── hooks/                # React custom hooks (WebSockets, API data fetching)
+│   │   └── lib/                  # Axios HTTP client & helper utilities
+│   ├── Dockerfile                # Production Dockerfile for Next.js Standalone
+│   └── package.json              # Frontend Node dependencies
 ├── infra/
-│   ├── docker-compose.yml         # Local development PostgreSQL 16 & Redis 7 stack
-│   ├── init_db.sql                # Initial database extension triggers
-│   └── scripts/                   # Startup & shutdown bash automation
-├── storage/                       # Preserved evidence snapshots & downloaded media
-├── .env                           # Active environment credentials (git-ignored)
-├── docker-compose.prod.yml        # Multi-container production deployment manifest
-├── deploy.sh                      # 1-click VPS installation and update script
-├── start.sh                       # 1-click local development launcher
-└── README.md                      # Project documentation
+│   ├── docker-compose.yml        # Local development PostgreSQL 16 & Redis 7 services
+│   ├── init_db.sql               # Database initialization script
+│   └── scripts/                  # Management shell scripts (start_all.sh, stop_all.sh)
+├── storage/                      # Storage directory for lead evidence snapshots & screenshots
+├── .env                          # Active local environment configuration file
+├── .env.example                  # Documented environment template for local setup
+├── .env.production.example       # Documented environment template for VPS deployment
+├── docker-compose.prod.yml       # Production multi-container Docker compose manifest
+├── deploy.sh                     # VPS automated setup script
+└── README.md                     # Main project documentation
 ```
 
 ---
@@ -224,27 +194,38 @@ multi-lead-gen/
 ## 🚀 Local Development Setup
 
 ### 1. Prerequisites
-* **Python 3.11+**
 * **Node.js 18+** & **npm**
-* **Docker Desktop** (for running PostgreSQL & Redis locally)
+* **Python 3.11+**
+* **Docker Desktop** (For PostgreSQL 16 & Redis 7)
+
+---
 
 ### 2. Configure Environment Variables
-Create your `.env` file in the project root with your database, SMTP, and OpenClaw configuration:
+Copy `.env.example` to create your active `.env` file:
 ```bash
-nano .env
+cp .env.example .env
 ```
+Open `.env` and verify or update database credentials, SMTP email credentials, and OpenClaw tokens.
+
+---
 
 ### 3. Start Database & Cache Containers
+Launch PostgreSQL 16 and Redis 7 using Docker Compose:
 ```bash
 cd infra
 docker compose up -d
 cd ..
 ```
 
-### 4. Setup Python Virtual Environment & Backend
+---
+
+### 4. Setup & Start Backend API
 ```bash
+# Create Python virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
+
+# Install dependencies
 pip install -r backend/requirements.txt
 
 # Run database migrations
@@ -252,96 +233,95 @@ cd backend
 alembic upgrade head
 cd ..
 
-# Launch FastAPI Core Server
+# Launch FastAPI Core Server (Port 8000)
 uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### 5. Start Background Workers (In a separate terminal)
+---
+
+### 5. Launch Background Worker Fleet (In a separate terminal)
 ```bash
 source .venv/bin/activate
 python3 -m backend.app.workers.runner
 ```
 
-### 6. Setup & Launch Frontend Dashboard (In a separate terminal)
+---
+
+### 6. Setup & Start Frontend Dashboard (In a separate terminal)
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-
-Navigate to **[http://localhost:3000](http://localhost:3000)** in your browser.
+Open your browser and navigate to: **[http://localhost:3000](http://localhost:3000)**
 
 ---
 
-### 💡 1-Click Startup Script
-You can launch the entire stack (Databases, FastAPI, Background Workers, and Next.js Frontend) using:
+### 💡 One-Click Startup Script
+To launch all services (Databases, FastAPI, Workers, and Next.js Frontend) in one command:
 ```bash
 ./start.sh
 ```
-
-To gracefully shut down all services:
+To stop all background processes anytime:
 ```bash
 ./infra/scripts/stop_all.sh
 ```
 
 ---
 
-## 🚢 Production Deployment (VPS & Docker)
+## 🚢 Production VPS Deployment
 
-### Manual VPS Deployment
-1. Clone the repository onto your server:
-   ```bash
-   git clone https://github.com/JamilKhanEmon/multi-lead-gen.git /var/www/leadgenai
-   cd /var/www/leadgenai
-   ```
-2. Configure production environment variables:
-   ```bash
-   nano .env
-   ```
-3. Run the automated deployment script:
-   ```bash
-   bash deploy.sh
-   ```
+### 1. Manual Deployment with Docker Compose
+On your VPS server:
+```bash
+git clone https://github.com/NIBIZ-SOFT/leadgenai.git /var/www/leadgenai
+cd /var/www/leadgenai
 
-### Automated GitHub Actions CI/CD
-Whenever code is pushed to `main` or `master`, the GitHub Actions workflow at `.github/workflows/deploy.yml` automatically triggers an SSH deployment onto your VPS, rebuilding images and restarting services with zero downtime.
+# Copy production template and configure secrets
+cp .env.production.example .env
+nano .env
 
-Add the following repository secrets (**Settings ➔ Secrets and variables ➔ Actions**):
-* `VPS_HOST`: Public IP of your server.
-* `VPS_USER`: SSH user (e.g., `root`).
-* `VPS_SSH_KEY`: Private SSH Key.
-* `VPS_PORT`: SSH Port (`22`).
-* `VPS_DEPLOY_PATH`: Destination path (e.g., `/var/www/leadgenai`).
+# Build and start all production containers
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+### 2. Automated CI/CD Deployment via GitHub Actions
+Add the following secrets in your GitHub repository (**Settings ➔ Secrets and variables ➔ Actions**):
+* `VPS_HOST`: Your VPS public IP address
+* `VPS_USER`: Server SSH username (e.g., `root`)
+* `VPS_SSH_KEY`: Private SSH key
+* `VPS_PORT`: SSH port (Default `22`)
+* `VPS_DEPLOY_PATH`: `/var/www/leadgenai`
+
+Every push to `main` will automatically build, test, and deploy the updated services with zero downtime!
 
 ---
 
 ## 🔐 Environment Variables Reference
 
-| Variable | Description | Default / Example |
-| :--- | :--- | :--- |
-| `ENVIRONMENT` | Environment mode (`development` or `production`) | `development` |
-| `LOG_LEVEL` | Logging verbosity | `INFO` |
-| `SECRET_KEY` | Secret key used to sign JWT tokens | `32+_chars_random_secret` |
-| `DATABASE_URL` | Async PostgreSQL Connection URL | `postgresql+asyncpg://leadgen:pw@127.0.0.1:5432/leadgen` |
-| `REDIS_URL` | Redis Cache & Queue Connection URL | `redis://127.0.0.1:6379/0` |
-| `OPENCLAW_GATEWAY_URL` | OpenClaw Web Crawler Endpoint | `https://your-openclaw.example.com` |
-| `OPENCLAW_GATEWAY_TOKEN` | Token for OpenClaw WebSocket authentication | `secure_token` |
-| `WORKER_CONCURRENCY` | Concurrent research threads | `2` |
-| `RESEARCH_TIMEOUT_SECONDS` | Max timeout per website crawl | `120` |
-| `SMTP_HOST` | Outbound email SMTP host | `smtp.gmail.com` |
-| `SMTP_PORT` | SMTP port | `587` |
-| `SMTP_USER` | SMTP login email | `user@domain.com` |
-| `SMTP_PASSWORD` | SMTP password / App password | `app_password` |
-| `NEXT_PUBLIC_API_URL` | API base URL for client requests | `http://127.0.0.1:8000/api/v1` |
-| `META_ACCESS_TOKEN` | Meta Graph Marketing API System Token | `EAAG...` |
-| `GOOGLE_API_KEY` | Google Gemini / Imagen 3 / Veo API Key | `AIzaSy...` |
+| Variable | Description | Example / Default Value | Required? |
+| :--- | :--- | :--- | :--- |
+| `ENVIRONMENT` | Deployment environment mode | `development` / `production` | **Yes** |
+| `LOG_LEVEL` | Logging verbosity | `INFO` / `DEBUG` | **Yes** |
+| `SECRET_KEY` | JWT secret signature key | `super_secure_random_string_32_chars` | **Yes** |
+| `DATABASE_URL` | Async PostgreSQL Connection URL | `postgresql+asyncpg://user:pw@127.0.0.1:5432/leadgen` | **Yes** |
+| `REDIS_URL` | Redis Connection URL | `redis://127.0.0.1:6379/0` | **Yes** |
+| `OPENCLAW_GATEWAY_URL` | OpenClaw Web Crawler Gateway URL | `https://your-openclaw-gateway.example.com` | **Yes** |
+| `OPENCLAW_GATEWAY_TOKEN` | OpenClaw Authentication Secret Token | `your_openclaw_gateway_token_here` | **Yes** |
+| `OPENCLAW_WEBHOOK_TOKEN` | Webhook verification token | `your_openclaw_webhook_token_here` | **Yes** |
+| `WORKER_CONCURRENCY` | Concurrent research worker threads | `2` | **Yes** |
+| `RESEARCH_TIMEOUT_SECONDS` | Max timeout per lead crawl (seconds) | `120` | **Yes** |
+| `SMTP_HOST` | Outbound SMTP Server Host | `smtp.gmail.com` | Optional (Dry-run if empty) |
+| `SMTP_PORT` | Outbound SMTP Server Port | `587` | Optional |
+| `SMTP_USER` | SMTP Username / Email | `your_email@gmail.com` | Optional |
+| `SMTP_PASSWORD` | SMTP App Password | `your_gmail_app_password_here` | Optional |
+| `SMTP_FROM_EMAIL` | Sender Email Address | `your_email@gmail.com` | Optional |
+| `SMTP_FROM_NAME` | Sender Display Name | `LeadGen Sales Team` | Optional |
+| `NEXT_PUBLIC_API_URL` | API Endpoint for Next.js Frontend | `http://127.0.0.1:8000/api/v1` | **Yes** |
+| `META_ACCESS_TOKEN` | Facebook Ads Graph API Token | `EAAG...` | Optional |
+| `GOOGLE_API_KEY` | Google Gemini / Imagen 3 API Key | `AIzaSy...` | Optional |
 
 ---
 
 ## 📜 License
-
-**Proprietary / All Rights Reserved.**
-
-Copyright © 2026 Jamil Khan Emon. All rights reserved.
-
-Unauthorized copying, reverse engineering, distribution, or commercial use of this software and source code, via any medium, is strictly prohibited without explicit written permission.
+Distributed under the **MIT License**. See `LICENSE` for more information.
