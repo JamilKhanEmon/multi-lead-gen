@@ -1,11 +1,7 @@
-"""
-Research Run & Task Execution Pydantic Schemas
-"""
 import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
-
 
 class ResearchRunCreate(BaseModel):
     industry: str = Field(..., example="Any Commercial Business")
@@ -13,12 +9,11 @@ class ResearchRunCreate(BaseModel):
     city: Optional[str] = Field(default="", example="New York")
     sub_city: Optional[str] = Field(default="", example="Manhattan")
     location: Optional[str] = Field(default="")
-    depth: str = Field(default="DEEP", example="DEEP")  # QUICK, STANDARD, DEEP
+    depth: str = Field(default="DEEP", example="DEEP")
     business_type_override: Optional[str] = None
     target_services: List[str] = Field(default_factory=list)
     auto_mail_enabled: bool = Field(default=True)
     use_company_kb: bool = Field(default=True)
-
 
 class ResearchJobResponse(BaseModel):
     id: uuid.UUID
@@ -33,7 +28,6 @@ class ResearchJobResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class ResearchRunResponse(BaseModel):
     id: uuid.UUID

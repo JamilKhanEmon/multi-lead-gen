@@ -8,7 +8,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leadgen_secret_pw}
       POSTGRES_DB: ${POSTGRES_DB:-leadgen}
     ports:
-      # Explicit loopback binding for security
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -27,7 +26,6 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      # Explicit loopback binding for security
       - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data

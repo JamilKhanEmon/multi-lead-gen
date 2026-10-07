@@ -1,6 +1,3 @@
-"""
-Qualified Lead Pipeline & Dossier Endpoints
-"""
 import uuid
 import urllib.parse
 import csv
@@ -37,13 +34,12 @@ from app.schemas.lead import (
 
 router = APIRouter(prefix="/leads", tags=["Leads"])
 
-
 @router.get("", response_model=List[LeadResponse])
 async def list_leads(
     skip: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=10000),
-    tier: Optional[str] = None,  # Strong Potential, Review Needed, Rejected
-    fit_tier: Optional[str] = None,  # HOT, WARM, COLD, DROPPED
+    tier: Optional[str] = None,
+    fit_tier: Optional[str] = None,
     run_id: Optional[uuid.UUID] = None,
     is_qualified: Optional[bool] = None,
     min_score: Optional[float] = Query(None, ge=0.0, le=100.0),
@@ -52,7 +48,6 @@ async def list_leads(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Filter and list potential leads."""
     if current_user.role != "super_admin":
         perms = current_user.permissions_json or {}
         if perms.get("can_view_leads") is False:
@@ -87,7 +82,6 @@ async def list_leads(
     res = await db.execute(stmt)
     leads = res.scalars().all()
 
-    # Auto-clean legacy generic platform records & dummy/test records from DB
     try:
         cleanup_stmt = select(Lead).join(Business).where(
             (Business.canonical_name.ilike("%facebook.com%")) |
@@ -119,7 +113,6 @@ async def list_leads(
         biz_name_l = (biz.canonical_name or "").lower().strip()
         biz_dom_l = (biz.domain or "").lower().strip()
 
-        # Reject generic social platform entities (e.g. facebook.com)
         if any(bad in biz_name_l for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "twitter.com"]) or biz_name_l in ["facebook", "instagram", "google", "meta"]:
             continue
 
@@ -143,7 +136,6 @@ async def list_leads(
             biz.email = resolved_email
 
         has_contact = bool(biz.phone or resolved_email)
-        # If lead has neither phone nor email, it cannot be qualified for outreach
         if l.is_qualified and not has_contact:
             l.is_qualified = False
             if l.tier != "Rejected":
@@ -218,7 +210,6 @@ async def list_leads(
 
     return lead_items
 
-
 @router.get("/export/csv")
 async def export_leads_csv(
     tier: Optional[str] = None,
@@ -228,7 +219,6 @@ async def export_leads_csv(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Export filtered leads to a CSV spreadsheet with all fields, AI suggestions, parameters, and evidence from A to Z."""
     if current_user.role != "super_admin":
         perms = current_user.permissions_json or {}
         if perms.get("can_export_leads") is False:
@@ -261,7 +251,6 @@ async def export_leads_csv(
     leads = res.scalars().all()
 
     output = io.StringIO()
-    # Write UTF-8 BOM so Microsoft Excel & Google Sheets correctly render special characters
     output.write("\ufeff")
     writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
 
@@ -377,14 +366,12 @@ async def export_leads_csv(
 
         website_url = f"https://{clean_dom}" if clean_dom else ""
 
-        # Tech stack & crawler audits
         cms_platform = meta.get("cms_platform") or ("WordPress" if meta.get("is_wordpress") else ("Custom Web App" if clean_dom else "No Website"))
         has_pixel = "YES" if meta.get("has_meta_pixel") else "NO"
         has_analytics = "YES" if meta.get("has_google_analytics") else "NO"
         has_mobile = "YES" if meta.get("has_viewport") else ("YES" if clean_dom else "NO")
         has_ssl = "YES" if meta.get("has_ssl") else ("YES" if clean_dom else "NO")
 
-        # Score Pillar Breakdown
         sc = l.scores[0] if (l.scores and len(l.scores) > 0) else None
         eq_score = f"{sc.evidence_quality:.1f}" if sc else ""
         pr_score = f"{sc.problem_relevance:.1f}" if sc else ""
@@ -393,7 +380,6 @@ async def export_leads_csv(
         bi_score = f"{sc.business_impact:.1f}" if sc else ""
         sf_score = f"{sc.service_fit:.1f}" if sc else ""
 
-        # AI Service Matches
         suggested_services = []
         services_why = []
         if l.service_matches:
@@ -407,13 +393,11 @@ async def export_leads_csv(
         suggested_services_str = ", ".join(suggested_services)
         services_why_str = " | ".join(services_why)
 
-        # AI Explanation JSON & Outreach Pitch
         exp = l.explanation_json or {}
         ai_pitch = exp.get("recommended_pitch") or exp.get("pitch") or ""
         ai_strengths = ", ".join(exp.get("strengths", [])) if isinstance(exp.get("strengths"), list) else str(exp.get("strengths") or "")
         ai_weaknesses = ", ".join(exp.get("weaknesses", [])) if isinstance(exp.get("weaknesses"), list) else str(exp.get("weaknesses") or "")
 
-        # Dynamic Email Outreach
         email_subj = f"Quick inquiry regarding {biz.canonical_name if biz else 'your office'} in {address or 'your area'}"
         email_body = (
             f"Hello {biz.contact_person or 'Team'},\n\n"
@@ -424,7 +408,6 @@ async def export_leads_csv(
             f"Best regards,\nGrowth Team"
         )
 
-        # Evidence & 135 Parameters A to Z breakdown
         passed_params = []
         failed_params = []
         all_evidence_details = []
@@ -445,7 +428,6 @@ async def export_leads_csv(
 
         total_eval = len(biz.evidence) if (biz and biz.evidence) else 0
 
-        # Compile exhaustive, numbered A-to-Z list of all issues & weaknesses in ONE detailed column
         problems_list = []
         if l.primary_gap_summary:
             problems_list.append(f"[Core Primary Issue]: {l.primary_gap_summary}")
@@ -462,13 +444,11 @@ async def export_leads_csv(
             if not meta.get("has_viewport"):
                 problems_list.append("[Mobile UX Failure]: Missing mobile-responsive viewport; page layout breaks on mobile smartphones.")
 
-        # Business contact gaps
         if not biz.email and email_status == "NOT_FOUND":
             problems_list.append("[Contact Gap]: No direct public email address detected on website or listings.")
         if not biz.phone:
             problems_list.append("[Contact Gap]: No telephone or direct call number listed.")
 
-        # AI Weaknesses from reasoning engine
         if isinstance(exp.get("weaknesses"), list):
             for w in exp.get("weaknesses"):
                 if w and str(w).strip():
@@ -476,7 +456,6 @@ async def export_leads_csv(
         elif exp.get("weaknesses"):
             problems_list.append(f"[AI Audit Weakness]: {str(exp.get('weaknesses')).strip()}")
 
-        # Failed/Weak Parameters from live evidence (135 parameters)
         if biz and biz.evidence:
             for ev in biz.evidence:
                 p_status = ev.status or "UNKNOWN"
@@ -557,7 +536,6 @@ async def export_leads_csv(
         },
     )
 
-
 @router.get("/export/json")
 async def export_leads_json(
     tier: Optional[str] = None,
@@ -567,7 +545,6 @@ async def export_leads_json(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Export filtered leads to a downloadable JSON file with complete information from A to Z."""
     if current_user.role != "super_admin":
         perms = current_user.permissions_json or {}
         if perms.get("can_export_leads") is False:
@@ -647,7 +624,6 @@ async def export_leads_json(
             else (biz.business_type if biz else "Commercial Entity")
         )
 
-        # Full score breakdown
         sc = l.scores[0] if (l.scores and len(l.scores) > 0) else None
         score_breakdown = {
             "evidence_quality": sc.evidence_quality if sc else None,
@@ -659,7 +635,6 @@ async def export_leads_json(
             "final_score": l.final_score,
         }
 
-        # Full service matches
         service_matches_list = []
         if l.service_matches:
             for sm in l.service_matches:
@@ -670,7 +645,6 @@ async def export_leads_json(
                     "why_selected": sm.why_selected,
                 })
 
-        # Full evidence & parameters evaluated
         evidence_items_list = []
         if biz and biz.evidence:
             for ev in biz.evidence:
@@ -685,7 +659,6 @@ async def export_leads_json(
                     "screenshot_path": ev.screenshot_path,
                 })
 
-        # Compile exhaustive, numbered A-to-Z list of all issues & weaknesses
         problems_list = []
         if l.primary_gap_summary:
             problems_list.append(f"[Core Primary Issue]: {l.primary_gap_summary}")
@@ -702,13 +675,11 @@ async def export_leads_json(
             if not meta.get("has_viewport"):
                 problems_list.append("[Mobile UX Failure]: Missing mobile-responsive viewport; page layout breaks on mobile smartphones.")
 
-        # Business contact gaps
         if not biz.email and email_status == "NOT_FOUND":
             problems_list.append("[Contact Gap]: No direct public email address detected on website or listings.")
         if not biz.phone:
             problems_list.append("[Contact Gap]: No telephone or direct call number listed.")
 
-        # AI Weaknesses from reasoning engine
         exp_json = l.explanation_json or {}
         if isinstance(exp_json.get("weaknesses"), list):
             for w in exp_json.get("weaknesses"):
@@ -717,7 +688,6 @@ async def export_leads_json(
         elif exp_json.get("weaknesses"):
             problems_list.append(f"[AI Audit Weakness]: {str(exp_json.get('weaknesses')).strip()}")
 
-        # Failed/Weak Parameters from live evidence (135 parameters)
         if biz and biz.evidence:
             for ev in biz.evidence:
                 p_status = ev.status or "UNKNOWN"
@@ -840,14 +810,12 @@ async def export_leads_json(
         },
     )
 
-
 @router.get("/{lead_id}", response_model=LeadDetailResponse)
 async def get_lead_detail(
     lead_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Retrieve complete lead dossier with evidence, scores, research jobs, and feedback."""
     stmt = (
         select(Lead)
         .options(
@@ -868,7 +836,6 @@ async def get_lead_detail(
     if not lead:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
 
-    # Fetch associated research jobs for raw scraping details
     stmt_jobs = (
         select(ResearchJob)
         .where(
@@ -880,7 +847,6 @@ async def get_lead_detail(
     res_jobs = await db.execute(stmt_jobs)
     research_jobs = res_jobs.scalars().all()
 
-    # Fetch associated email outreach logs (sent emails & incoming client replies)
     from app.models.autopilot import EmailOutreachLog
     stmt_logs = (
         select(EmailOutreachLog)
@@ -925,7 +891,6 @@ async def get_lead_detail(
                 )
             )
 
-    # Fetch complete catalog of all 135 parameters for A-to-Z profile matrix
     from app.models.parameter import Parameter
     params_stmt = select(Parameter).order_by(Parameter.id.asc())
     all_catalog_params = (await db.execute(params_stmt)).scalars().all()
@@ -1022,7 +987,6 @@ async def get_lead_detail(
     if lead.business and not lead.business.email and resolved_email:
         lead.business.email = resolved_email
 
-    # Demand-Side Fit Gate Intelligence: Ensure why_they_need_us & discovery_call_script exist
     fit_t = getattr(lead, "fit_tier", None)
     why_us = getattr(lead, "why_they_need_us", None)
     what_need = getattr(lead, "what_they_need", None)
@@ -1116,7 +1080,6 @@ async def get_lead_detail(
         created_at=lead.created_at,
     )
 
-
 @router.post("/{lead_id}/feedback", response_model=LeadFeedbackResponse)
 async def submit_lead_feedback(
     lead_id: uuid.UUID,
@@ -1124,7 +1087,6 @@ async def submit_lead_feedback(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Submit reviewer feedback (approve, reject, flag incorrect weakness/service)."""
     stmt = select(Lead).where(Lead.id == lead_id)
     res = await db.execute(stmt)
     lead = res.scalar_one_or_none()
@@ -1155,16 +1117,12 @@ async def submit_lead_feedback(
     await db.refresh(feedback)
     return feedback
 
-
 @router.delete("/{lead_id}")
 async def delete_single_lead(
     lead_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a specific lead from the pipeline."""
-    # Human team members (sales, QA, admin, super_admin) can delete leads manually
-    # unless super_admin explicitly set can_delete_leads = False in permissions
     if current_user.role not in ["super_admin", "admin"]:
         perms = current_user.permissions_json or {}
         if perms.get("can_delete_leads") is False:
@@ -1182,14 +1140,12 @@ async def delete_single_lead(
     await db.commit()
     return {"status": "SUCCESS", "message": f"Lead {lead_id} deleted"}
 
-
 @router.delete("")
 async def clear_all_leads(
     tier: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Clear all leads or leads matching a specific tier and clean up research runs, businesses, and history."""
     if current_user.role != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1209,7 +1165,6 @@ async def clear_all_leads(
         await db.commit()
         return {"status": "SUCCESS", "deleted_count": result.rowcount}
 
-    # Complete purge of operational demo/test data
     await db.execute(delete(EmailOutreachLog))
     await db.execute(delete(LeadFeedback))
     await db.execute(delete(LeadScore))
@@ -1232,7 +1187,6 @@ async def clear_all_leads(
     await db.commit()
     return {"status": "SUCCESS", "message": "All demo/test data, leads, research runs, campaigns, and history purged successfully."}
 
-
 @router.patch("/{lead_id}", response_model=LeadDetailResponse)
 async def update_lead_details(
     lead_id: uuid.UUID,
@@ -1240,7 +1194,6 @@ async def update_lead_details(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Manually update lead & business details (email, phone, contact person, address, gap summary, approval)."""
     stmt = select(Lead).options(selectinload(Lead.business)).where(Lead.id == lead_id)
     res = await db.execute(stmt)
     lead = res.scalar_one_or_none()
@@ -1293,14 +1246,12 @@ async def update_lead_details(
     await db.commit()
     return await get_lead_detail(lead_id=lead.id, db=db, current_user=current_user)
 
-
 @router.post("/{lead_id}/evaluate-fit", response_model=LeadDetailResponse)
 async def evaluate_lead_fit_gate(
     lead_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Re-runs the demand-side Fit Gate on a lead to detect buying signals, assign fit tier, and generate sales pitch."""
     stmt = (
         select(Lead)
         .options(
@@ -1348,17 +1299,12 @@ async def evaluate_lead_fit_gate(
     await db.commit()
     return await get_lead_detail(lead_id=lead.id, db=db, current_user=current_user)
 
-
 @router.post("/dispatch-staggered")
 async def dispatch_staggered_outreach(
     data: StaggeredDispatchCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Human-Paced Staggered Cold Email Dispatcher.
-    Dispatches selected (or all ready/hold) leads with anti-spam randomized delays between sends.
-    """
     import os
     import random
     import asyncio
@@ -1386,7 +1332,6 @@ async def dispatch_staggered_outreach(
             "message": "No valid leads found to dispatch."
         }
 
-    # Fetch active sender personas and custom global email template from database
     from app.models.email_template import PersonaSignature, EmailTemplate
     p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
     p_res = await db.execute(p_stmt)
@@ -1455,7 +1400,6 @@ async def dispatch_staggered_outreach(
 
         await db.commit()
 
-        # Human-paced anti-spam delay between emails if not the last item
         if idx < len(leads_to_send) - 1:
             delay = random.uniform(data.min_delay_sec, data.max_delay_sec)
             await asyncio.sleep(delay)

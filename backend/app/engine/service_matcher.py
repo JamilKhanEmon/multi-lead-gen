@@ -1,13 +1,7 @@
-"""
-Hybrid Service Matcher: Combines deterministic parameter rules (40%)
-with Ollama contextual reasoning (60%).
-"""
 from typing import Dict, List, Any, Optional
 from app.core.logging import logger
 
-# Deterministic mappings linking detected parameter issues to agency services
 PARAMETER_SERVICE_RULES: Dict[int, List[Dict[str, Any]]] = {
-    # Website issues (34, 36, 37, 38, 42, 50, 51)
     34: [
         {"service_slug": "website-development", "rule_score": 1.0, "reason": "No accessible website found; brand requires new web presence."},
     ],
@@ -58,11 +52,9 @@ PARAMETER_SERVICE_RULES: Dict[int, List[Dict[str, Any]]] = {
     ],
 }
 
-
 class ServiceMatcher:
-    """Computes hybrid service fit combining deterministic rules and LLM evaluation."""
 
-    MATCH_THRESHOLD = 0.65  # Minimum hybrid fit required for lead recommendation
+    MATCH_THRESHOLD = 0.65
 
     @classmethod
     def match_services(
@@ -70,12 +62,6 @@ class ServiceMatcher:
         detected_parameter_ids: List[int],
         llm_service_suggestions: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
-        """
-        Calculates hybrid score:
-        Fit = (0.40 * RuleScore) + (0.60 * LLMScore)
-        Returns services with Fit >= 0.65.
-        """
-        # Map LLM suggestions by service slug
         llm_map: Dict[str, Dict[str, Any]] = {}
         if llm_service_suggestions:
             for s in llm_service_suggestions:
@@ -84,7 +70,6 @@ class ServiceMatcher:
 
         matched_services: Dict[str, Dict[str, Any]] = {}
 
-        # 1. Evaluate deterministic rule contributions
         for pid in detected_parameter_ids:
             rules = PARAMETER_SERVICE_RULES.get(pid, [])
             for r in rules:
@@ -101,11 +86,9 @@ class ServiceMatcher:
                         "rationales": [rationale],
                     }
                 else:
-                    # Update rule score to max observed
                     matched_services[slug]["rule_score"] = max(matched_services[slug]["rule_score"], rule_score)
                     matched_services[slug]["rationales"].append(rationale)
 
-        # 2. Combine with LLM reasoning (60% weight)
         for slug, item in list(matched_services.items()):
             llm_item = llm_map.get(slug)
             llm_score = llm_item.get("confidence", 0.5) if llm_item else 0.5
@@ -113,11 +96,9 @@ class ServiceMatcher:
             hybrid = round((0.40 * item["rule_score"]) + (0.60 * llm_score), 2)
             item["hybrid_score"] = hybrid
 
-        # 3. Include any high-confidence LLM services not explicitly in rule table
         for slug, llm_item in llm_map.items():
             if slug not in matched_services and slug:
                 llm_score = llm_item.get("confidence", 0.0)
-                # Without rule backing, rule_score is 0.0
                 hybrid = round(0.60 * llm_score, 2)
                 matched_services[slug] = {
                     "service_slug": slug,
@@ -127,7 +108,6 @@ class ServiceMatcher:
                     "rationales": [llm_item.get("reason", "Suggested by AI semantic reasoning.")],
                 }
 
-        # 4. Filter by threshold (>= 0.65) and sort by hybrid fit
         results = [
             s for s in matched_services.values() if s["hybrid_score"] >= cls.MATCH_THRESHOLD
         ]

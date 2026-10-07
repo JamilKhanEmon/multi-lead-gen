@@ -1,6 +1,3 @@
-"""
-Authentication & User Management Endpoints
-"""
 import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -20,9 +17,7 @@ from app.schemas.auth import (
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-
 async def ensure_default_accounts(db: AsyncSession):
-    """Auto-seeds initial Super Admin account from .env configuration."""
     import os
     from app.core.logging import logger
 
@@ -70,10 +65,8 @@ async def ensure_default_accounts(db: AsyncSession):
         await db.rollback()
         logger.error(f"Error ensuring default superadmin: {e}")
 
-
 @router.post("/login", response_model=Token)
 async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """Authenticate user with email/password and issue signed JWT token."""
     from app.core.logging import logger
 
     await ensure_default_accounts(db)
@@ -112,23 +105,18 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
     access_token = create_access_token(subject=str(user.id), role=user.role)
     return Token(access_token=access_token, token_type="bearer", role=user.role)
 
-
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_profile(current_user: User = Depends(get_current_user)):
-    """Returns profile of currently authenticated user."""
     return current_user
-
 
 @router.get("/users", response_model=List[UserResponse])
 async def list_users(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """List team members (Admin / Super Admin only)."""
     stmt = select(User).order_by(User.created_at.desc())
     res = await db.execute(stmt)
     return res.scalars().all()
-
 
 @router.post("/users", response_model=UserResponse)
 async def create_user(
@@ -136,10 +124,6 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Create a new user account.
-    - Super Admins can create Admins and Members.
-    - Admins can ONLY create Members (and assign dashboard permissions).
-    """
     clean_email = user_in.email.lower().strip()
     stmt = select(User).where(User.email == clean_email)
     res = await db.execute(stmt)
@@ -151,7 +135,6 @@ async def create_user(
 
     target_role = user_in.role.lower().strip()
 
-    # Security rule: Only Super Admins can create Super Admins or Admins!
     if target_role == "super_admin" and admin.role != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -170,7 +153,6 @@ async def create_user(
             detail=f"Invalid role. Allowed roles: {', '.join(valid_roles)}",
         )
 
-    # Set default dashboard permissions based on role
     default_perms = {
         "can_view_dashboard": True,
         "can_view_leads": True,
@@ -220,7 +202,6 @@ async def create_user(
     await db.refresh(new_user)
     return new_user
 
-
 @router.put("/users/{user_id}", response_model=UserResponse)
 async def update_user(
     user_id: uuid.UUID,
@@ -228,32 +209,24 @@ async def update_user(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Update user account and permissions.
-    - Super Admins can update any user or role.
-    - Admins CANNOT modify Super Admins or elevate users to Admin/Super Admin.
-    - Admins can assign dashboard permissions to Members.
-    """
     stmt = select(User).where(User.id == user_id)
     res = await db.execute(stmt)
     target = res.scalar_one_or_none()
     if not target:
         raise HTTPException(status_code=404, detail="User account not found")
 
-    # Protection Rule 1: Admins cannot touch Super Admins
     if target.role == "super_admin" and admin.role != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Security Violation: Admins are strictly prohibited from modifying Super Administrator accounts.",
         )
 
-    # Protection Rule 2: Admins cannot modify other Admins
     if target.role == "admin" and admin.role != "super_admin" and target.id != admin.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Forbidden: Only Super Administrators can modify Admin accounts.",
         )
 
-    # Protection Rule 3: Admins cannot promote anyone to Admin or Super Admin
     if user_in.role:
         new_role = user_in.role.lower().strip()
         if new_role in ["super_admin", "admin"] and admin.role != "super_admin":
@@ -283,7 +256,6 @@ async def update_user(
     await db.refresh(target)
     return target
 
-
 @router.patch("/users/{user_id}/permissions", response_model=UserResponse)
 async def update_member_permissions(
     user_id: uuid.UUID,
@@ -291,7 +263,6 @@ async def update_member_permissions(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Update dashboard and pipeline permissions for an assigned member."""
     stmt = select(User).where(User.id == user_id)
     res = await db.execute(stmt)
     target = res.scalar_one_or_none()
@@ -312,18 +283,12 @@ async def update_member_permissions(
     await db.refresh(target)
     return target
 
-
 @router.delete("/users/{user_id}")
 async def delete_user(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ):
-    """Delete a user account.
-    - Super Admins can delete any user except themselves.
-    - Admins CANNOT delete Super Admins or other Admins.
-    - Admins can only delete Member accounts.
-    """
     stmt = select(User).where(User.id == user_id)
     res = await db.execute(stmt)
     target = res.scalar_one_or_none()
@@ -333,14 +298,12 @@ async def delete_user(
     if target.id == admin.id:
         raise HTTPException(status_code=400, detail="You cannot delete your own account.")
 
-    # CRITICAL SECURITY RULE: Admins CANNOT remove Super Admins!
     if target.role == "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Security Violation: Admins are strictly prohibited from removing or deleting Super Administrators.",
         )
 
-    # Admins cannot delete other Admins
     if target.role == "admin" and admin.role != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

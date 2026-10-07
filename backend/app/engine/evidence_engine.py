@@ -1,26 +1,12 @@
-"""
-Evidence Engine: Evaluates evidence quality, repetition, source independence,
-recency decay curves, conflict detection, and Evidence Levels (0 to 4).
-"""
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from urllib.parse import urlparse
 from app.core.logging import logger
 
-
 class EvidenceEngine:
-    """Evaluates supporting evidence integrity and calculates Evidence Levels."""
 
     @staticmethod
     def calculate_recency_score(published_at: Optional[datetime], collected_at: datetime) -> int:
-        """
-        Calculates recency weight (0 to 100) based on days elapsed:
-        0–30 days = 100
-        31–90 days = 70
-        91–180 days = 40
-        181–365 days = 10
-        > 365 days = 0
-        """
         ref_date = published_at or collected_at
         now = datetime.now(timezone.utc)
         if ref_date.tzinfo is None:
@@ -41,7 +27,6 @@ class EvidenceEngine:
 
     @staticmethod
     def extract_domain(url: str) -> str:
-        """Extracts canonical network location domain from URL."""
         try:
             parsed = urlparse(url)
             domain = parsed.netloc.lower()
@@ -56,16 +41,6 @@ class EvidenceEngine:
         cls,
         evidence_items: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        """
-        Evaluates a cluster of evidence items for a single parameter.
-        Returns:
-            evidence_level: int (0 to 4)
-            independent_sources_count: int
-            conflict: bool
-            average_confidence: float
-            max_recency: int
-            status: str
-        """
         if not evidence_items:
             return {
                 "evidence_level": 0,
@@ -76,7 +51,6 @@ class EvidenceEngine:
                 "status": "UNKNOWN",
             }
 
-        # Track independent domains
         domains = set()
         confidences = []
         recencies = []
@@ -95,7 +69,6 @@ class EvidenceEngine:
         avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
         max_recency = max(recencies) if recencies else 0
 
-        # Check for real conflicts: when the SAME parameter has contradictory evidence (PASS vs WEAK/STRONG)
         by_param = {}
         for item in evidence_items:
             pid = item.get("parameter_id", 0)
@@ -107,12 +80,6 @@ class EvidenceEngine:
                 conflict = True
                 break
 
-        # Calculate Evidence Level:
-        # LEVEL 0: No evidence
-        # LEVEL 1: One weak signal
-        # LEVEL 2: Two related observable signals
-        # LEVEL 3: Three or more independent/repeated signals
-        # LEVEL 4: Multiple strong recent independent sources
         weak_or_strong_items = [item for item in evidence_items if item.get("status") in ("WEAK", "STRONG")]
         if not weak_or_strong_items:
             level = 0
@@ -128,7 +95,7 @@ class EvidenceEngine:
 
         primary_status = "STRONG" if any(s == "STRONG" for s in statuses) else "WEAK"
         if conflict:
-            avg_confidence *= 0.7  # Penalize confidence if sources disagree
+            avg_confidence *= 0.7
 
         return {
             "evidence_level": level,

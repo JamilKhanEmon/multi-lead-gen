@@ -1,12 +1,7 @@
-"""
-SQLAlchemy Model for B2B Meta Ads Campaigns & Retargeting Funnels.
-Supports 2-step video funnel, OpenClaw competitor intelligence, and live metrics tracking.
-"""
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Text, Float, Integer, Boolean, DateTime, JSON
 from app.models.base import Base
-
 
 class MetaCampaign(Base):
     __tablename__ = "meta_campaigns"
@@ -19,30 +14,23 @@ class MetaCampaign(Base):
     pain_point = Column(Text, nullable=True)
     core_offer = Column(Text, nullable=True)
 
-    # Targeting Configuration (Job titles, behaviors, interests, exclusions)
     targeting_config = Column(JSON, nullable=False, default=dict)
 
-    # OpenClaw Competitor & Market Intelligence Insights
     competitor_insights = Column(JSON, nullable=True, default=dict)
 
-    # Post 1 (Cold Hook Video Ad) Creative
     post1_creative = Column(JSON, nullable=False, default=dict)
 
-    # Post 2 (Retargeting Offer Ad with WhatsApp CTA) Creative
     post2_creative = Column(JSON, nullable=False, default=dict)
 
-    # Budget & Funnel Strategy
     budget_daily_bdt = Column(Float, nullable=False, default=500.0)
     retargeting_enabled = Column(Boolean, nullable=False, default=True)
     retargeting_threshold_pct = Column(Integer, nullable=False, default=50)
 
-    # Meta Graph API IDs & State
     meta_campaign_id = Column(String(100), nullable=True)
     meta_adset_cold_id = Column(String(100), nullable=True)
     meta_adset_retarget_id = Column(String(100), nullable=True)
-    status = Column(String(50), nullable=False, default="DRAFT")  # DRAFT, RESEARCHING, READY, ACTIVE, PAUSED, COMPLETED
+    status = Column(String(50), nullable=False, default="DRAFT")
 
-    # Live Metrics & Reporting
     metrics = Column(JSON, nullable=False, default=lambda: {
         "spend_bdt": 0.0,
         "impressions": 0,

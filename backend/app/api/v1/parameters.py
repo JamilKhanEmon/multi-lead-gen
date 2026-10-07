@@ -1,6 +1,3 @@
-"""
-135 Parameter Catalog Endpoints
-"""
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +9,6 @@ from app.schemas.parameter import ParameterResponse
 
 router = APIRouter(prefix="/parameters", tags=["Parameters"])
 
-
 @router.get("", response_model=List[ParameterResponse])
 async def list_parameters(
     category: Optional[str] = None,
@@ -20,7 +16,6 @@ async def list_parameters(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Retrieve full catalog of 135 parameters."""
     stmt = select(Parameter)
     if category:
         stmt = stmt.where(Parameter.category == category)

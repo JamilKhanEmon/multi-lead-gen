@@ -55,14 +55,12 @@ export default function LeadDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
 
-  // Global email template & personalized outreach state
   const [emailTemplate, setEmailTemplate] = useState<EmailTemplate | null>(null);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [customDraftSubject, setCustomDraftSubject] = useState("");
   const [customDraftBody, setCustomDraftBody] = useState("");
 
-  // OpenClaw parameter inspection state
   const [evidenceSearch, setEvidenceSearch] = useState("");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("ALL");
   const [expandedJobs, setExpandedJobs] = useState<Record<string, boolean>>({});
@@ -71,7 +69,6 @@ export default function LeadDetailPage() {
   const [showJsonModal, setShowJsonModal] = useState(false);
   const [copiedFullJson, setCopiedFullJson] = useState(false);
 
-  // Demand-Side Fit Gate & Sales Intelligence State
   const [copiedEvidence, setCopiedEvidence] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
   const [isEvaluatingFit, setIsEvaluatingFit] = useState(false);
@@ -101,7 +98,6 @@ export default function LeadDetailPage() {
     setTimeout(() => setCopiedScript(false), 2000);
   };
 
-  // Manual Lead Edit Modal State
   const [showEditModal, setShowEditModal] = useState(false);
   const [editEmail, setEditEmail] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -217,7 +213,6 @@ export default function LeadDetailPage() {
     }
   };
 
-  // Computed dynamic email outreach draft from Admin template + verified lead data
   const renderedOutreach = emailTemplate && lead
     ? renderEmailTemplate(emailTemplate, lead)
     : {
@@ -306,7 +301,7 @@ export default function LeadDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Back button & Action Toolbar */}
+
       <div className="flex items-center justify-between flex-wrap gap-2">
         <Link href="/leads" className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition">
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Lead Pipeline
@@ -339,7 +334,6 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
-      {/* Header Dossier Card */}
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex items-start justify-between">
           <div>
@@ -371,7 +365,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Company Contact & Decision Maker Intelligence */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs">
           <div className="space-y-1">
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
@@ -478,7 +471,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Explainability Summary Box */}
         <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800/80 text-xs text-slate-300 space-y-2">
           <div className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4 text-sky-400" /> Explainability & Evidence Rationale
@@ -486,7 +478,6 @@ export default function LeadDetailPage() {
           <p className="leading-relaxed text-slate-300">{explanation.summary || lead.primary_gap_summary}</p>
         </div>
 
-        {/* Reviewer Feedback Action Toolbar */}
         <div className="pt-2 flex items-center justify-between border-t border-slate-800/60">
           <span className="text-xs text-slate-400">Human-In-The-Loop Review:</span>
           <div className="flex items-center gap-2">
@@ -509,7 +500,6 @@ export default function LeadDetailPage() {
         )}
       </div>
 
-      {/* v2 Demand-Side Fit Gate & Sales Intelligence Dossier */}
       <div className="glass-panel p-6 rounded-2xl border border-amber-500/30 bg-gradient-to-b from-slate-900/95 via-slate-950 to-slate-900/90 space-y-5 shadow-xl shadow-amber-500/5">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
@@ -530,7 +520,7 @@ export default function LeadDetailPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Fit Tier Badge */}
+
             <div className={`px-3 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1.5 ${
               lead.fit_tier === "HOT"
                 ? "bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-sm shadow-rose-500/20"
@@ -557,9 +547,8 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* 2-Column Grid: Live Evidence & Matched Solution */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Why They Need Us (Live Evidence) */}
+
           <div className="p-4 rounded-xl bg-gradient-to-br from-amber-950/30 to-slate-900/80 border border-amber-500/30 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -582,7 +571,6 @@ export default function LeadDetailPage() {
             </div>
           </div>
 
-          {/* What They Need & Matched Service */}
           <div className="p-4 rounded-xl bg-gradient-to-br from-sky-950/30 to-slate-900/80 border border-sky-500/30 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-sky-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -609,7 +597,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Discovery-First Sales Call Script */}
         <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -631,7 +618,6 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
-      {/* Client Outreach & Inbound Reply Audit History */}
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
@@ -698,7 +684,6 @@ export default function LeadDetailPage() {
                     Subject: {log.subject}
                   </div>
 
-                  {/* Inbound Reply Content Box */}
                   {isReply ? (
                     <div className="p-3.5 rounded-xl bg-slate-950/90 border border-emerald-500/30 space-y-2 text-xs">
                       <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -727,7 +712,6 @@ export default function LeadDetailPage() {
         )}
       </div>
 
-      {/* Interactive Map & Manual Outreach Discovery Hub */}
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
@@ -767,7 +751,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Embedded Interactive Google Map */}
         <div className="rounded-xl overflow-hidden border border-slate-800 bg-slate-950 relative shadow-inner">
           <iframe
             title={`${lead.business_name} Google Map Location`}
@@ -794,7 +777,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Missing Website Outreach Guidance if Lead has No Domain */}
         {!lead.domain && (
           <div className="p-4 rounded-xl bg-gradient-to-r from-amber-950/30 via-slate-900/60 to-rose-950/30 border border-amber-500/30 space-y-3">
             <div className="space-y-1">
@@ -803,7 +785,7 @@ export default function LeadDetailPage() {
                 Top Web Agency Opportunity: No Official Website Found
               </div>
               <p className="text-[11px] text-slate-300 leading-relaxed">
-                This business is physically established and visible on Google Maps, but has no official web portal. 
+                This business is physically established and visible on Google Maps, but has no official web portal.
                 They are the <strong>highest conversion candidates for website design, digital menus, online booking, and local SEO services</strong>.
               </p>
             </div>
@@ -862,7 +844,6 @@ export default function LeadDetailPage() {
               )}
             </div>
 
-            {/* Quick Pitch Copy Template */}
             <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -906,7 +887,6 @@ export default function LeadDetailPage() {
         )}
       </div>
 
-      {/* Real-World Digital Footprint & Marketing Intelligence */}
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
@@ -919,7 +899,7 @@ export default function LeadDetailPage() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-          {/* CMS Platform */}
+
           <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
               <Code2 className="w-3.5 h-3.5 text-sky-400" /> CMS & Web Stack
@@ -930,7 +910,6 @@ export default function LeadDetailPage() {
             <p className="text-[10px] text-slate-500">Framework / Tech platform</p>
           </div>
 
-          {/* Meta Pixel Retargeting */}
           <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
               <Eye className="w-3.5 h-3.5 text-rose-400" /> Meta Retargeting Pixel
@@ -949,7 +928,6 @@ export default function LeadDetailPage() {
             <p className="text-[10px] text-slate-500">Facebook/Instagram tracking</p>
           </div>
 
-          {/* Google Analytics */}
           <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
               <Cpu className="w-3.5 h-3.5 text-amber-400" /> Analytics & GTM
@@ -968,7 +946,6 @@ export default function LeadDetailPage() {
             <p className="text-[10px] text-slate-500">Visitor event analytics</p>
           </div>
 
-          {/* Crawler Mode */}
           <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-purple-400" /> Audit Engine
@@ -980,7 +957,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* 1-Click Meta Ad Library Verification Banner */}
         <div className="p-3.5 rounded-xl bg-gradient-to-r from-sky-950/40 to-blue-950/40 border border-sky-800/40 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400">
@@ -1002,7 +978,6 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
-      {/* 6-Factor Breakdown Grid */}
       {scores && (
         <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
           <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
@@ -1029,7 +1004,6 @@ export default function LeadDetailPage() {
         </div>
       )}
 
-      {/* Verified Evidence & Parameter Findings Collected by OpenClaw */}
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
@@ -1045,9 +1019,9 @@ export default function LeadDetailPage() {
                 : "Observable deficiencies, missing digital infrastructure, and service opportunities identified by OpenClaw."}
             </p>
           </div>
-          
+
           <div className="flex items-center gap-2 flex-wrap">
-            {/* View Mode Toggle */}
+
             <div className="inline-flex rounded-lg bg-slate-900 border border-slate-800 p-0.5 text-xs">
               <button
                 onClick={() => {
@@ -1086,7 +1060,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Search & Filter Toolbar */}
         <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
           <div className="relative flex-1 w-full">
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1118,7 +1091,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Evidence & Parameter List */}
         {filteredEvidence.length === 0 ? (
           <div className="p-8 text-center text-xs text-slate-400 rounded-xl bg-slate-900/40 border border-slate-800/80 space-y-1">
             <div className="font-semibold text-slate-300">No parameters matching filter</div>
@@ -1209,7 +1181,6 @@ export default function LeadDetailPage() {
         )}
       </div>
 
-      {/* Raw OpenClaw Research Jobs & JSON Output Inspection */}
       {lead.research_jobs && lead.research_jobs.length > 0 && (
         <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
           <div className="flex items-center justify-between">
@@ -1303,7 +1274,6 @@ export default function LeadDetailPage() {
         </div>
       )}
 
-      {/* Recommended Agency Solution & Client Outreach Pitch */}
       <div className="glass-panel p-6 rounded-2xl border border-sky-500/30 bg-sky-950/10 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
@@ -1338,7 +1308,6 @@ export default function LeadDetailPage() {
             </div>
           </div>
 
-          {/* Subject Line Bar */}
           <div className="p-2.5 bg-slate-900/90 border border-slate-800 rounded-lg flex items-center gap-2 text-xs">
             <span className="text-slate-500 font-mono text-[11px] shrink-0">Subject:</span>
             {isEditingDraft ? (
@@ -1353,7 +1322,6 @@ export default function LeadDetailPage() {
             )}
           </div>
 
-          {/* Email Body & Signature */}
           {isEditingDraft ? (
             <textarea
               rows={8}
@@ -1367,7 +1335,6 @@ export default function LeadDetailPage() {
             </div>
           )}
 
-          {/* Outreach Actions Bar */}
           <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-t border-slate-800/80">
             <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -1405,7 +1372,6 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
-      {/* Full 135-Parameter A-Z JSON Modal Overlay */}
       {showJsonModal && (
         <div
           role="dialog"
@@ -1417,7 +1383,7 @@ export default function LeadDetailPage() {
             className="glass-panel bg-slate-950/95 border border-slate-700/80 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
+
             <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400">
@@ -1456,14 +1422,12 @@ export default function LeadDetailPage() {
               </div>
             </div>
 
-            {/* Modal JSON Body */}
             <div className="p-4 sm:p-5 overflow-auto flex-1 bg-slate-950 font-mono text-[11px] sm:text-xs leading-relaxed">
               <pre className="text-emerald-400 select-all whitespace-pre-wrap word-break bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
                 {JSON.stringify(lead, null, 2)}
               </pre>
             </div>
 
-            {/* Modal Footer */}
             <div className="p-3 sm:p-4 border-t border-slate-800/80 bg-slate-900/40 flex items-center justify-between text-xs text-slate-400">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -1481,7 +1445,7 @@ export default function LeadDetailPage() {
           </div>
         </div>
       )}
-      {/* Modal Overlay: Edit Lead & Business Contact Information */}
+
       {showEditModal && (
         <div
           role="dialog"
@@ -1648,4 +1612,3 @@ export default function LeadDetailPage() {
     </div>
   );
 }
-

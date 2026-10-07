@@ -1,6 +1,3 @@
-"""
-Autopilot Campaign & Autonomous Cold Email Outreach Models
-"""
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
@@ -9,15 +6,13 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin, UUIDMixin
 
-
 class AutopilotCampaign(Base, UUIDMixin, TimestampMixin):
-    """Continuous Autopilot Discovery and Cold Email Campaign."""
     __tablename__ = "autopilot_campaigns"
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    keywords: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)  # e.g. ["Software Agency", "Dentist"]
+    keywords: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     country: Mapped[str] = mapped_column(String(100), default="Bangladesh", nullable=False, index=True)
-    sub_cities: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)  # e.g. ["Uttara", "Gazipur", "Mirpur"]
+    sub_cities: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     
     daily_lead_limit: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
     daily_email_limit: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
@@ -27,7 +22,7 @@ class AutopilotCampaign(Base, UUIDMixin, TimestampMixin):
     use_company_kb: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     
-    status: Mapped[str] = mapped_column(String(50), default="IDLE", nullable=False, index=True)  # IDLE, RUNNING, PAUSED, COMPLETED
+    status: Mapped[str] = mapped_column(String(50), default="IDLE", nullable=False, index=True)
     current_city_index: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_run_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     
@@ -40,25 +35,23 @@ class AutopilotCampaign(Base, UUIDMixin, TimestampMixin):
 
     outreach_logs: Mapped[List["EmailOutreachLog"]] = relationship("EmailOutreachLog", back_populates="campaign", cascade="all, delete-orphan")
 
-
 class EmailOutreachLog(Base, UUIDMixin, TimestampMixin):
-    """Audit & tracking log for every email step dispatched to a lead."""
     __tablename__ = "email_outreach_logs"
 
     lead_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True)
     campaign_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("autopilot_campaigns.id", ondelete="SET NULL"), nullable=True, index=True)
     
-    step: Mapped[int] = mapped_column(Integer, default=1, nullable=False)  # 1=Initial Pitch, 2=Reminder (Day 4), 3=Breakup (Day 8)
+    step: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     recipient_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     subject: Mapped[str] = mapped_column(String(500), nullable=False)
     body_snippet: Mapped[str] = mapped_column(Text, nullable=False)
     
-    status: Mapped[str] = mapped_column(String(50), default="QUEUED", nullable=False, index=True)  # QUEUED, SENT, FAILED, REPLIED_HOT, REPLIED_NEUTRAL
+    status: Mapped[str] = mapped_column(String(50), default="QUEUED", nullable=False, index=True)
     scheduled_for: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     
     reply_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    reply_sentiment: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # POSITIVE, NEUTRAL, NEGATIVE
+    reply_sentiment: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     campaign: Mapped[Optional["AutopilotCampaign"]] = relationship("AutopilotCampaign", back_populates="outreach_logs")

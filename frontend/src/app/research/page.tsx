@@ -46,7 +46,6 @@ export default function ResearchInitiatorPage() {
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Live Research Progress Tracking
   const [activeRun, setActiveRun] = useState<ResearchRun | null>(null);
   const [progressPct, setProgressPct] = useState(15);
 
@@ -72,7 +71,6 @@ export default function ResearchInitiatorPage() {
     }
   };
 
-  // Poll active run every 2 seconds
   useEffect(() => {
     if (!activeRun || activeRun.status === "COMPLETED" || activeRun.status === "FAILED") return;
     const runId = activeRun.id;
@@ -125,7 +123,7 @@ export default function ResearchInitiatorPage() {
         location: computedLocation,
         industry: industry.trim(),
         depth,
-        company_limit: 0, // Auto-exhaustion loop (no artificial limit)
+        company_limit: 0,
         business_type_override: cleanOverride,
         auto_mail_enabled: autoMailEnabled,
         use_company_kb: useCompanyKb,
@@ -143,9 +141,6 @@ export default function ResearchInitiatorPage() {
     ? activeRun.qualified_count + activeRun.rejected_count + activeRun.failed_count
     : 0;
 
-  // ==============================================================================
-  // LIVE PROGRESS VIEW (Shown when a research run is active or completed)
-  // ==============================================================================
   if (activeRun) {
     const isCompleted = activeRun.status === "COMPLETED";
     const isCancelled = activeRun.status === "CANCELLED";
@@ -187,7 +182,6 @@ export default function ResearchInitiatorPage() {
           </span>
         </div>
 
-        {/* Live Percentage Card */}
         <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-6 relative overflow-hidden shadow-2xl">
           <div className="flex items-end justify-between">
             <div>
@@ -214,7 +208,6 @@ export default function ResearchInitiatorPage() {
             </div>
           </div>
 
-          {/* Glowing Animated Progress Bar */}
           <div className="w-full bg-slate-950/80 rounded-full h-3.5 p-0.5 border border-slate-800 overflow-hidden shadow-inner">
             <div
               className={`h-full rounded-full transition-all duration-700 ease-out ${
@@ -226,7 +219,6 @@ export default function ResearchInitiatorPage() {
             />
           </div>
 
-          {/* 4 Real-time Metrics Counters */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
             <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 text-center">
               <span className="text-[10px] uppercase font-mono text-slate-400 block">Discovered</span>
@@ -246,7 +238,6 @@ export default function ResearchInitiatorPage() {
             </div>
           </div>
 
-          {/* Interactive Pipeline Execution Stages */}
           <div className="pt-4 border-t border-slate-800/80 space-y-3">
             <div className="text-xs font-semibold text-slate-300">Live Execution Stages:</div>
             <div className="space-y-2 text-xs">
@@ -308,7 +299,6 @@ export default function ResearchInitiatorPage() {
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row items-center gap-3">
             <button
               onClick={() => router.push(`/leads?run_id=${activeRun.id}`)}
@@ -347,7 +337,7 @@ export default function ResearchInitiatorPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-5 sm:space-y-6">
-      {/* Page Header */}
+
       <div>
         <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
           <Compass className="w-5 h-5 sm:w-6 sm:h-6 text-sky-400" />
@@ -373,7 +363,7 @@ export default function ResearchInitiatorPage() {
       )}
 
       <form onSubmit={handleSubmit} className="glass-panel p-4 sm:p-6 rounded-2xl border border-slate-800 space-y-4 sm:space-y-5">
-        {/* 1. Country Field (Required) */}
+
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -414,7 +404,6 @@ export default function ResearchInitiatorPage() {
           </div>
         </div>
 
-        {/* 2. City Field (Required) */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -455,7 +444,6 @@ export default function ResearchInitiatorPage() {
           </div>
         </div>
 
-        {/* 3. Sub-City / Area Field (Optional) */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -498,7 +486,6 @@ export default function ResearchInitiatorPage() {
           </p>
         </div>
 
-        {/* 4. Business Type / Industry Field (Required) */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -539,7 +526,6 @@ export default function ResearchInitiatorPage() {
           </div>
         </div>
 
-        {/* Research Depth Selector */}
         <div>
           <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5 mb-2">
             <Layers className="w-3.5 h-3.5 text-purple-400" />
@@ -556,7 +542,6 @@ export default function ResearchInitiatorPage() {
           </select>
         </div>
 
-        {/* Auto Cold Mail Dispatch Toggle */}
         <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
@@ -585,7 +570,6 @@ export default function ResearchInitiatorPage() {
           </p>
         </div>
 
-        {/* Company Knowledge Base Mode Toggle */}
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
@@ -614,7 +598,6 @@ export default function ResearchInitiatorPage() {
           </p>
         </div>
 
-        {/* Autonomous Exhaustion Loop Badge */}
         <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
           <div className="text-xs text-emerald-200 leading-relaxed">
@@ -623,7 +606,6 @@ export default function ResearchInitiatorPage() {
           </div>
         </div>
 
-        {/* Submit Button */}
         <button
           type="submit"
           disabled={submitting || !canRunResearch}

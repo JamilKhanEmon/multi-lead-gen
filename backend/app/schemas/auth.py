@@ -1,35 +1,27 @@
-"""
-Authentication & User Pydantic Schemas
-"""
 import uuid
 from datetime import datetime
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
-
 
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     role: str
 
-
 class TokenData(BaseModel):
     user_id: Optional[str] = None
     role: Optional[str] = None
-
 
 class LoginRequest(BaseModel):
     email: str
     password: str
 
-
 class UserCreate(BaseModel):
     email: str
     password: str
     full_name: str
-    role: str = "member"  # super_admin, admin, member
+    role: str = "member"
     permissions_json: Optional[Dict[str, Any]] = None
-
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -38,10 +30,8 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     permissions_json: Optional[Dict[str, Any]] = None
 
-
 class UserPermissionsUpdate(BaseModel):
     permissions_json: Dict[str, Any]
-
 
 class UserResponse(BaseModel):
     id: uuid.UUID

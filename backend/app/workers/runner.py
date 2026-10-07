@@ -1,7 +1,3 @@
-"""
-Worker Pipeline Runner: Consumes jobs from Redis 'leadgen:tasks', handles backoff retries,
-dead-letter queue routing, and coordinates autonomous research execution.
-"""
 import asyncio
 import json
 import random
@@ -15,12 +11,9 @@ from app.services.openclaw_client import OpenClawClient
 from app.services.ollama_client import OllamaClient
 from app.workers.tasks import handle_discover_businesses, handle_research_and_qualify
 
-# Exponential backoff schedule (seconds): 2, 4, 8, 16, 32
 BACKOFF_STEPS = [2, 4, 8, 16, 32]
 
-
 class WorkerRunner:
-    """Async worker processing tasks from Redis queue."""
 
     def __init__(self):
         self.running = True
@@ -34,7 +27,6 @@ class WorkerRunner:
     async def run(self):
         logger.info(f"Starting LeadGen Worker (Queue: leadgen:tasks, Concurrency target: {settings.WORKER_CONCURRENCY})")
 
-        # Verify parameters are present in DB before processing jobs
         try:
             from app.db.session import AsyncSessionLocal
             from sqlalchemy import select, func
@@ -56,7 +48,6 @@ class WorkerRunner:
 
         while self.running:
             try:
-                # Pop task with 2-second timeout to check self.running regularly
                 res = await r.brpop("leadgen:tasks", timeout=2)
                 if not res:
                     continue
@@ -83,7 +74,6 @@ class WorkerRunner:
                 except Exception as task_err:
                     logger.error(f"Error executing job [{job_id}]: {task_err}")
                     if attempt < max_attempts:
-                        # Schedule retry with exponential backoff + jitter (+/-10%)
                         base_delay = BACKOFF_STEPS[min(attempt - 1, len(BACKOFF_STEPS) - 1)]
                         jitter = random.uniform(0.9, 1.1)
                         delay = round(base_delay * jitter, 2)
@@ -92,7 +82,6 @@ class WorkerRunner:
                         await asyncio.sleep(delay)
                         await r.lpush("leadgen:tasks", json.dumps(task_data))
                     else:
-                        # Move to dead-letter queue
                         logger.error(f"Job [{job_id}] exceeded max attempts ({max_attempts}). Moving to 'leadgen:failed'.")
                         task_data["failed_reason"] = str(task_err)
                         await r.lpush("leadgen:failed", json.dumps(task_data))
@@ -106,7 +95,6 @@ class WorkerRunner:
         await r.aclose()
         logger.info("Worker runner exited cleanly.")
 
-
 async def main():
     runner = WorkerRunner()
 
@@ -118,7 +106,6 @@ async def main():
             pass
 
     await runner.run()
-
 
 if __name__ == "__main__":
     asyncio.run(main())

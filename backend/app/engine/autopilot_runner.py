@@ -1,8 +1,3 @@
-"""
-Autonomous Campaign Runner & Real-time De-duplication Engine
-Executes discovery across all campaign sub-cities in 1-click, enforces strict uniqueness,
-extracts real live businesses, and feeds the cold outreach pipeline.
-"""
 import uuid
 import re
 import urllib.parse
@@ -22,9 +17,7 @@ from app.services.openclaw_client import LiveResearchEngine
 from app.engine.deduplication import DeduplicationEngine
 from app.engine.fit_gate import FitGateEngine
 
-
 class AutopilotRunner:
-    """Manages continuous background discovery, deduplication, and outreach."""
 
     @classmethod
     async def is_duplicate_business(
@@ -35,10 +28,6 @@ class AutopilotRunner:
         phone: Optional[str] = None,
         city: Optional[str] = None
     ) -> bool:
-        """
-        Zero-duplicate check against entire database.
-        Checks domain uniqueness, phone uniqueness, and exact name + city combination.
-        """
         conditions = []
 
         if domain and domain.strip():
@@ -73,12 +62,6 @@ class AutopilotRunner:
         campaign: AutopilotCampaign,
         batch_size: int = 15
     ) -> Dict[str, Any]:
-        """
-        Executes a 1-click comprehensive discovery cycle for an active Autopilot Campaign.
-        Automatically processes ALL defined sub-cities in one go without requiring
-        the user to click repeatedly for each sub-location.
-        Uses real OpenClaw / OSM discovery with zero mock / fake data.
-        """
         sub_cities = campaign.sub_cities or ([campaign.country] if campaign.country else [""])
         if not sub_cities:
             sub_cities = [campaign.country] if campaign.country else [""]
@@ -94,7 +77,6 @@ class AutopilotRunner:
         campaign.last_run_at = datetime.now(timezone.utc)
         await db.commit()
 
-        # Fetch active sender personas and custom global email template configured by user
         p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
         p_res = await db.execute(p_stmt)
         active_personas = [
@@ -111,7 +93,6 @@ class AutopilotRunner:
         total_dispatched_count = 0
 
         try:
-            # Iterate through ALL sub-cities in 1-click
             for target_city in sub_cities:
                 target_city_clean = target_city.strip()
                 if not target_city_clean:
@@ -119,7 +100,6 @@ class AutopilotRunner:
 
                 logger.info(f"[AUTOPILOT] Querying real businesses for '{target_keyword}' in sub-city: '{target_city_clean}'")
 
-                # 1. Real Live Discovery via LiveResearchEngine
                 try:
                     discovery_res = await LiveResearchEngine.discover_businesses(
                         industry=target_keyword,
@@ -136,7 +116,6 @@ class AutopilotRunner:
                 use_kb = getattr(campaign, "use_company_kb", True)
                 kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
 
-                # Process discovered genuine businesses
                 for cand in discovered_candidates:
                     c_name = (cand.get("canonical_name") or "").strip()
                     c_dom = (cand.get("domain") or "").strip().lower()
@@ -146,7 +125,6 @@ class AutopilotRunner:
                     if not c_name or len(c_name) < 2:
                         continue
 
-                    # Filter out generic platforms and directory aggregators
                     c_name_l = c_name.lower()
                     EXCLUDED_SITES = [
                         "facebook.com", "instagram.com", "youtube.com", "google.com", "linkedin.com",
@@ -158,14 +136,12 @@ class AutopilotRunner:
                     if DeduplicationEngine.is_generic_platform(c_dom):
                         c_dom = ""
 
-                    # If title is generic (e.g. "companies", "bangladesh", "index"), derive real corporate brand from domain
                     generic_names = ["companies", "company", "bangladesh", "dhaka", "index", "report", "firm", "firms", "service", "services"]
                     if (c_name_l in generic_names or len(c_name) < 4) and c_dom:
                         clean_brand = c_dom.split(".")[0].replace("-", " ").replace("_", " ")
                         clean_brand = re.sub(r'bd$', '', clean_brand, flags=re.IGNORECASE).strip()
                         c_name = f"{clean_brand.title()} Real Estate" if "real" not in clean_brand.lower() else clean_brand.title()
 
-                    # Deduplication check
                     is_dup = await cls.is_duplicate_business(
                         db=db,
                         canonical_name=c_name,
@@ -177,10 +153,8 @@ class AutopilotRunner:
                         total_skipped_duplicates += 1
                         continue
 
-                    # Resolve corporate email if not scraped from direct listing
                     resolved_email = c_email
 
-                    # Deep Intelligence Engine: OpenClaw Multi-Page Website Audit & Weakness Detection
                     audit_res = {}
                     detected_weaknesses = []
 
@@ -199,7 +173,6 @@ class AutopilotRunner:
                         except Exception as e:
                             logger.warning(f"[AUTOPILOT DEEP AUDIT FAIL] Audit error for {c_dom}: {e}")
 
-                    # If missing domain or email, perform deep secondary contact/domain hunt
                     if not c_dom or not resolved_email:
                         try:
                             deep_hunt = await LiveResearchEngine.enrich_contact_from_web(c_name, f"{target_city_clean}, {campaign.country}")
@@ -221,7 +194,6 @@ class AutopilotRunner:
                     if not resolved_email and c_dom and not DeduplicationEngine.is_generic_platform(c_dom):
                         resolved_email = f"info@{c_dom}"
 
-                    # 100% Weakness & Gap Detection from Audited Website Data
                     if c_dom and audit_res:
                         if audit_res.get("mobile_overflow") or audit_res.get("mobile_responsive") is False:
                             detected_weaknesses.append("Mobile layout break & horizontal scrolling issue")
@@ -246,7 +218,6 @@ class AutopilotRunner:
                         if audit_res.get("has_meta_pixel") is False:
                             detected_weaknesses.append("Missing Meta retargeting pixel")
 
-                    # Determine primary solvable gap dynamically
                     if detected_weaknesses:
                         primary_gap = " • ".join(detected_weaknesses[:3])
                     elif not c_dom:
@@ -254,7 +225,6 @@ class AutopilotRunner:
                     else:
                         primary_gap = "Solvable local search ranking weakness & mobile conversion gap"
 
-                    # Create Business & Location
                     b_type = cand.get("business_type") or "commercial"
                     biz = Business(
                         canonical_name=c_name,
@@ -286,7 +256,6 @@ class AutopilotRunner:
                     )
                     db.add(loc)
 
-                    # "mail thaklai mail jaba thats all" - Any lead with an email enters outreach
                     has_email = bool(resolved_email)
                     if has_email:
                         outreach_status = "READY_FOR_OUTREACH"
@@ -297,7 +266,6 @@ class AutopilotRunner:
                         email_status = "NOT_FOUND"
                         verify_note = "No public email address found"
 
-                    # Compute dynamic score based on audit quality and weakness count
                     calc_score = 70.0
                     if has_email:
                         calc_score += 10.0
@@ -307,7 +275,6 @@ class AutopilotRunner:
                         calc_score += 10.0
                     final_lead_score = min(98.0, calc_score)
 
-                    # Evaluate Demand-Side Fit Gate (Evidence-First Standards)
                     gate_eval = FitGateEngine.evaluate_candidate(
                         business_name=c_name,
                         domain=c_dom,
@@ -328,7 +295,6 @@ class AutopilotRunner:
                     matched_service = gate_eval["matched_service"]
                     discovery_call_script = gate_eval["discovery_call_script"]
 
-                    # If healthy modern site with 0 gaps, Dada directive: DROP to prevent spam
                     is_dropped = (fit_tier == "DROPPED")
                     if is_dropped:
                         outreach_status = "FILTERED_HEALTHY"
@@ -395,7 +361,6 @@ class AutopilotRunner:
 
                     all_added_leads.append(lead)
 
-                    # Autonomous Campaign Mode Logic:
                     if campaign.auto_mail_enabled and has_email and resolved_email:
                         is_office_hrs, hrs_note = OutreachEngine.is_within_target_business_hours(
                             lat=cand.get("latitude"),
@@ -449,7 +414,6 @@ class AutopilotRunner:
                         lead.outreach_status = "COLLECTED"
                         lead.verification_notes = "Data Collector Mode: Lead and audit preserved without automated outreach."
 
-                    # Progressive DB commit per lead so dashboard updates live
                     campaign.total_leads_found += 1
                     campaign.total_emails_sent += total_dispatched_count
                     await db.commit()

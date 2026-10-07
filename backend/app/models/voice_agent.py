@@ -1,8 +1,3 @@
-"""
-Voice Agent, Knowledge Base, and Outbound Call Queue Models.
-Supports ElevenLabs-style prompt editing, PostgreSQL-backed interactive sheet view,
-and automated meeting link booking.
-"""
 import uuid
 from typing import Optional, List
 from datetime import datetime
@@ -11,9 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin, UUIDMixin
 
-
 class VoiceKnowledgeBase(Base, UUIDMixin, TimestampMixin):
-    """ElevenLabs-style Prompt and Knowledge Base profile for the Voice Agent."""
     __tablename__ = "voice_knowledge_bases"
 
     name: Mapped[str] = mapped_column(String(255), default="Primary B2B Sales Agent", nullable=False)
@@ -23,7 +16,6 @@ class VoiceKnowledgeBase(Base, UUIDMixin, TimestampMixin):
     service_description: Mapped[str] = mapped_column(Text, default="Automated visual quality control and ERP sync eliminating operational defects.", nullable=False)
     core_offer: Mapped[str] = mapped_column(String(255), default="Free 14-Day On-Site Trial with Zero Setup Cost", nullable=False)
     
-    # ElevenLabs-style First Message & System Prompt with {{variables}}
     first_message: Mapped[str] = mapped_column(
         Text, 
         default="Hello {{client_name}}, this is {{agent_persona_name}} from {{my_company}}. I'm reaching out regarding {{company_name}}'s recent operational audit.", 
@@ -40,7 +32,7 @@ When a time is agreed, confirm the slot and state that the meeting link is being
         nullable=False
     )
     
-    meeting_platform: Mapped[str] = mapped_column(String(50), default="Google Meet", nullable=False) # Google Meet, Zoom
+    meeting_platform: Mapped[str] = mapped_column(String(50), default="Google Meet", nullable=False)
     office_hours_start: Mapped[str] = mapped_column(String(10), default="10:00", nullable=False)
     office_hours_end: Mapped[str] = mapped_column(String(10), default="18:00", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
@@ -68,9 +60,7 @@ When a time is agreed, confirm the slot and state that the meeting link is being
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
-
 class VoiceCallQueueItem(Base, UUIDMixin, TimestampMixin):
-    """PostgreSQL-backed Interactive Sheet View Lead for dialing."""
     __tablename__ = "voice_call_queue"
 
     lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("leads.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -80,7 +70,6 @@ class VoiceCallQueueItem(Base, UUIDMixin, TimestampMixin):
     phone: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     exact_problem: Mapped[str] = mapped_column(Text, default="Operational bottlenecks and defect losses", nullable=False)
     
-    # Status: READY, IN_PROGRESS, MEETING_BOOKED, CALL_DONE, FAILED
     status: Mapped[str] = mapped_column(String(50), default="READY", nullable=False, index=True)
     selected_for_call: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     
@@ -110,9 +99,7 @@ class VoiceCallQueueItem(Base, UUIDMixin, TimestampMixin):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
-
 class VoiceCallLog(Base, UUIDMixin, TimestampMixin):
-    """Detailed record of each conversation, audio transcript, and meeting outcome."""
     __tablename__ = "voice_call_logs"
 
     queue_item_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("voice_call_queue.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -122,7 +109,6 @@ class VoiceCallLog(Base, UUIDMixin, TimestampMixin):
     contact_person: Mapped[str] = mapped_column(String(255), nullable=False)
     call_duration_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     
-    # Structure: [{"speaker": "agent"|"lead", "text": "...", "timestamp_ms": 1200}]
     transcript_json: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     sentiment: Mapped[str] = mapped_column(String(50), default="INTERESTED", nullable=False)
     meeting_booked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

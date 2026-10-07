@@ -1,14 +1,8 @@
-"""
-Outreach Dispatcher CLI Script.
-Dispatches cold outreach emails for all leads with status 'READY_FOR_OUTREACH'.
-Uses live SMTP if configured in .env, or Dry-Run simulation if not configured.
-"""
 import sys
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Add backend directory to sys.path and load .env file
 backend_dir = Path(__file__).resolve().parent.parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
@@ -27,9 +21,7 @@ from app.models.autopilot import EmailOutreachLog
 from app.engine.outreach_engine import OutreachEngine
 from app.core.logging import logger
 
-
 async def dispatch_pending_outreach(force_live: bool = False):
-    """Fetches ready leads and dispatches outreach emails."""
     async with AsyncSessionLocal() as session:
         smtp_host = os.getenv("SMTP_HOST")
         smtp_user = os.getenv("SMTP_USER")
@@ -52,7 +44,6 @@ async def dispatch_pending_outreach(force_live: bool = False):
 
         print(f"[+] Found {len(ready_leads)} leads ready for outreach.")
 
-        # Fetch active sender personas and custom global template from database for round-robin rotation
         from app.models.email_template import PersonaSignature, EmailTemplate
         p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
         p_res = await session.execute(p_stmt)
@@ -74,7 +65,6 @@ async def dispatch_pending_outreach(force_live: bool = False):
                 continue
             recipient_email = biz.email.strip()
 
-            # Render email with dynamic auto-rotating persona signature and global template
             subject, body = OutreachEngine.render_email(
                 step=1,
                 lead_data={
@@ -91,7 +81,6 @@ async def dispatch_pending_outreach(force_live: bool = False):
 
             print(f" -> Dispatching to {biz.canonical_name} ({recipient_email})...")
 
-            # Dispatch email
             dry_run = not (is_smtp_ready or force_live)
             success, note = await OutreachEngine.dispatch_smtp_email(
                 recipient_email=recipient_email,
@@ -123,7 +112,6 @@ async def dispatch_pending_outreach(force_live: bool = False):
 
         await session.commit()
         print(f"\n[+] Dispatch complete. Successfully sent: {dispatched_count}, Failed: {failed_count}.")
-
 
 if __name__ == "__main__":
     force = "--live" in sys.argv

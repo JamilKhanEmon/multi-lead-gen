@@ -1,6 +1,3 @@
-"""
-Autopilot & Cold Email Outreach API Endpoints
-"""
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
@@ -22,8 +19,6 @@ from app.engine.autopilot_runner import AutopilotRunner
 
 router = APIRouter(prefix="/autopilot", tags=["Autopilot & Outreach"])
 
-
-# --- Pydantic Schemas ---
 class CampaignCreate(BaseModel):
     name: str = Field(..., example="Dhaka IT & Software Outreach")
     keywords: List[str] = Field(default_factory=lambda: ["Software Agency", "Web Development"])
@@ -35,7 +30,6 @@ class CampaignCreate(BaseModel):
     auto_mail_enabled: bool = Field(default=True)
     use_global_template: bool = Field(default=True)
     use_company_kb: bool = Field(default=True)
-
 
 class CampaignUpdate(BaseModel):
     name: Optional[str] = None
@@ -50,22 +44,15 @@ class CampaignUpdate(BaseModel):
     use_company_kb: Optional[bool] = None
     is_active: Optional[bool] = None
 
-
 class VerifyEmailRequest(BaseModel):
     new_email: Optional[str] = None
     approve_for_outreach: bool = True
     notes: Optional[str] = None
 
-
 class ReplySimulatorRequest(BaseModel):
     reply_text: str = Field(..., example="Yes, please send me details about your pricing.")
 
-
 def check_autopilot_permission(user: User, required_perm: str = "can_access_autopilot"):
-    """
-    Enforces Super Admin privilege by default.
-    Only allows non-super_admin users if Super Admin specifically granted the specific permission.
-    """
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -78,14 +65,12 @@ def check_autopilot_permission(user: User, required_perm: str = "can_access_auto
     if perms.get("all") is True:
         return
     
-    # 1. Base access check
     if perms.get("can_access_autopilot") is not True:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permission Denied: Autonomous Cold Email & Autopilot Outreach is strictly controlled by Super Admin. Contact Super Admin to request access."
         )
 
-    # 2. Granular sub-permission check (e.g. search input/campaign creation)
     if required_perm != "can_access_autopilot" and perms.get(required_perm) is not True:
         perm_labels = {
             "can_create_autopilot_campaigns": "configure search inputs, keywords, and new campaigns",
@@ -98,21 +83,16 @@ def check_autopilot_permission(user: User, required_perm: str = "can_access_auto
             detail=f"Permission Denied: You do not have permission to {label}. This action is controlled by Super Admin."
         )
 
-
-# --- Endpoints ---
-
 @router.get("/campaigns")
 async def list_campaigns(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """List all Autopilot campaigns ordered by creation date."""
     check_autopilot_permission(current_user, "can_access_autopilot")
     stmt = select(AutopilotCampaign).order_by(desc(AutopilotCampaign.created_at))
     res = await db.execute(stmt)
     campaigns = res.scalars().all()
     return campaigns
-
 
 @router.post("/campaigns", status_code=status.HTTP_201_CREATED)
 async def create_campaign(
@@ -120,7 +100,6 @@ async def create_campaign(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Create a new Autopilot discovery and cold outreach campaign."""
     check_autopilot_permission(current_user, "can_create_autopilot_campaigns")
     campaign = AutopilotCampaign(
         name=data.name,
@@ -142,7 +121,6 @@ async def create_campaign(
     await db.refresh(campaign)
     return campaign
 
-
 @router.patch("/campaigns/{campaign_id}")
 async def update_campaign(
     campaign_id: uuid.UUID,
@@ -150,7 +128,6 @@ async def update_campaign(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Update campaign parameters or pause/activate."""
     check_autopilot_permission(current_user, "can_create_autopilot_campaigns")
     stmt = select(AutopilotCampaign).where(AutopilotCampaign.id == campaign_id)
     res = await db.execute(stmt)
@@ -165,7 +142,6 @@ async def update_campaign(
     await db.refresh(campaign)
     return campaign
 
-
 async def _bg_run_campaign(campaign_id: uuid.UUID):
     from app.db.session import AsyncSessionLocal
     async with AsyncSessionLocal() as session:
@@ -178,14 +154,12 @@ async def _bg_run_campaign(campaign_id: uuid.UUID):
             except Exception as e:
                 pass
 
-
 @router.post("/campaigns/{campaign_id}/run-now")
 async def trigger_campaign_run(
     campaign_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Trigger an immediate batch discovery and verification run for this campaign in background."""
     check_autopilot_permission(current_user, "can_run_autopilot_cycle")
     stmt = select(AutopilotCampaign).where(AutopilotCampaign.id == campaign_id)
     res = await db.execute(stmt)
@@ -196,7 +170,6 @@ async def trigger_campaign_run(
     campaign.status = "RUNNING"
     await db.commit()
 
-    # Launch in decoupled background task so navigating away or closing browser NEVER cancels it
     import asyncio
     asyncio.create_task(_bg_run_campaign(campaign_id))
 
@@ -207,13 +180,11 @@ async def trigger_campaign_run(
         "message": f"Autonomous discovery for '{campaign.name}' launched in background."
     }
 
-
 @router.post("/dispatch-queue")
 async def dispatch_outreach_queue(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Dispatches cold email outreach sequence for all leads in READY_FOR_OUTREACH queue."""
     check_autopilot_permission(current_user, "can_run_autopilot_cycle")
     stmt = (
         select(Lead)
@@ -277,14 +248,12 @@ async def dispatch_outreach_queue(
         "message": f"Successfully sent {dispatched} outreach emails to {recipient}"
     }
 
-
 @router.delete("/campaigns/{campaign_id}")
 async def delete_campaign(
     campaign_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Delete an Autopilot campaign."""
     check_autopilot_permission(current_user, "can_create_autopilot_campaigns")
     stmt = select(AutopilotCampaign).where(AutopilotCampaign.id == campaign_id)
     res = await db.execute(stmt)
@@ -296,29 +265,21 @@ async def delete_campaign(
     await db.commit()
     return {"message": "Campaign deleted successfully"}
 
-
 @router.get("/analytics")
 async def get_executive_analytics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Super Admin Executive KPI Analytics:
-    Total Leads, Emails Sent, Replies, Hot Deals, Today's metrics, and Stage breakdowns.
-    """
     check_autopilot_permission(current_user)
     now = datetime.now(timezone.utc)
     today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
 
-    # 1. Total Leads
     total_leads_res = await db.execute(select(func.count(Lead.id)))
     total_leads = total_leads_res.scalar() or 0
 
-    # 2. Leads today
     today_leads_res = await db.execute(select(func.count(Lead.id)).where(Lead.created_at >= today_start))
     today_leads = today_leads_res.scalar() or 0
 
-    # 3. Ready for Mail count
     ready_mail_res = await db.execute(
         select(func.count(Lead.id)).where(
             or_(
@@ -329,7 +290,6 @@ async def get_executive_analytics(
     )
     ready_for_mail = ready_mail_res.scalar() or 0
 
-    # 4. Needs Review count
     needs_review_res = await db.execute(
         select(func.count(Lead.id)).where(
             or_(
@@ -340,19 +300,16 @@ async def get_executive_analytics(
     )
     needs_review = needs_review_res.scalar() or 0
 
-    # 5. Total Sent
     total_sent_res = await db.execute(
         select(func.count(Lead.id)).where(Lead.outreach_status.in_(["SENT", "FOLLOWUP_SENT", "REPLIED_HOT"]))
     )
     total_sent = total_sent_res.scalar() or 0
 
-    # 6. Emails sent today
     sent_today_res = await db.execute(
         select(func.count(EmailOutreachLog.id)).where(EmailOutreachLog.sent_at >= today_start)
     )
     sent_today = sent_today_res.scalar() or 0
 
-    # 7. Hot Deals
     hot_deals_res = await db.execute(
         select(func.count(Lead.id)).where(
             or_(Lead.deal_status == "HOT_LEAD", Lead.outreach_status == "REPLIED_HOT")
@@ -360,13 +317,11 @@ async def get_executive_analytics(
     )
     hot_deals = hot_deals_res.scalar() or 0
 
-    # 8. Total Replies
     replies_res = await db.execute(
         select(func.count(EmailOutreachLog.id)).where(EmailOutreachLog.reply_content.is_not(None))
     )
     total_replies = replies_res.scalar() or 0
 
-    # Calculate Response Rate
     response_rate = round((total_replies / total_sent * 100), 1) if total_sent > 0 else 0.0
 
     return {
@@ -382,13 +337,11 @@ async def get_executive_analytics(
         "anti_spam_delay_seconds": "120-240s (Simulated Human Jitter)"
     }
 
-
 @router.get("/activity")
 async def get_live_activity_stream(
     db: AsyncSession = Depends(get_db),
     limit: int = 20
 ):
-    """Live activity ticker of recent outreach logs and discovery events."""
     stmt = (
         select(EmailOutreachLog)
         .options(selectinload(EmailOutreachLog.lead).selectinload(Lead.business))
@@ -414,7 +367,6 @@ async def get_live_activity_stream(
 
     return feed
 
-
 @router.post("/leads/{lead_id}/verify-email")
 async def human_verify_lead_email(
     lead_id: uuid.UUID,
@@ -422,11 +374,6 @@ async def human_verify_lead_email(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Human Review Action:
-    Reviewer enters correct email or approves current email.
-    Moves lead from 'NEEDS_REVIEW' to 'READY_FOR_OUTREACH'.
-    """
     check_autopilot_permission(current_user, "can_verify_autopilot_leads")
     stmt = select(Lead).options(selectinload(Lead.business)).where(Lead.id == lead_id)
     res = await db.execute(stmt)
@@ -436,7 +383,6 @@ async def human_verify_lead_email(
 
     if data.new_email and data.new_email.strip():
         lead.business.email = data.new_email.strip()
-        # Re-verify
         v_status, v_note = await EmailVerifier.verify(data.new_email.strip())
         lead.email_status = v_status
         lead.verification_notes = f"Updated by reviewer: {v_note}"
@@ -457,14 +403,12 @@ async def human_verify_lead_email(
     await db.commit()
     return {"message": "Lead verified and moved to Outreach Queue", "email_status": lead.email_status}
 
-
 @router.post("/leads/{lead_id}/mark-hot")
 async def mark_lead_as_hot_deal(
     lead_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Move lead to Hot Deals CRM board for manual sales closing."""
     check_autopilot_permission(current_user, "can_access_autopilot")
     stmt = select(Lead).where(Lead.id == lead_id)
     res = await db.execute(stmt)
@@ -477,7 +421,6 @@ async def mark_lead_as_hot_deal(
     await db.commit()
     return {"message": "Lead flagged as Hot Deal"}
 
-
 @router.post("/leads/{lead_id}/simulate-reply")
 async def simulate_incoming_reply(
     lead_id: uuid.UUID,
@@ -485,10 +428,6 @@ async def simulate_incoming_reply(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Simulates receiving an inbound reply email.
-    Analyzes sentiment: if positive, flags lead as HOT_DEAL and stops outreach!
-    """
     check_autopilot_permission(current_user, "can_access_autopilot")
     stmt = select(Lead).options(selectinload(Lead.business)).where(Lead.id == lead_id)
     res = await db.execute(stmt)
@@ -507,7 +446,6 @@ async def simulate_incoming_reply(
     else:
         lead.outreach_status = "REPLIED_NEUTRAL"
 
-    # Log reply
     log = EmailOutreachLog(
         lead_id=lead.id,
         step=lead.followup_step or 1,

@@ -1,6 +1,3 @@
-"""
-API v1 Router Assembly
-"""
 from fastapi import APIRouter
 from .auth import router as auth_router
 from .research import router as research_router

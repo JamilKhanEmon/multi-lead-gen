@@ -1,20 +1,11 @@
-"""
-Discovery Optimizer: Dynamic AI-Driven Query Expansion & Discovery Filter.
-Translates user fuzzy inputs into high-precision commercial queries,
-positive keyword filters, and negative keyword blacklists using LLM (qwen2.5:7b).
-100% generic, multi-business, and worldwide: No hardcoded vertical or geographic rules.
-"""
 import re
 import urllib.parse
 from typing import Dict, Any, List, Tuple, Optional
 from app.core.logging import logger
 from app.services.ollama_client import OllamaClient, OllamaClientError
 
-
 class DiscoveryOptimizer:
-    """Optimizes discovery queries and filters candidate businesses dynamically."""
 
-    # Universal non-commercial baseline negative keywords (e.g. public utilities, worship, schools)
     UNIVERSAL_NEGATIVE_KEYWORDS = [
         "housing society", "residential society", "hostel", "dormitory",
         "pharmacy", "drug store",
@@ -32,18 +23,10 @@ class DiscoveryOptimizer:
         city: str = "",
         sub_city: str = "",
     ) -> Dict[str, Any]:
-        """
-        Uses LLM (qwen2.5:7b) to dynamically translate user input into:
-        - High-precision search queries (for browser & web search)
-        - Clean OSM search targets
-        - Positive keywords indicating real operating businesses
-        - Negative keywords to discard noisy/unrelated results dynamically for ANY industry worldwide.
-        """
         loc_parts = [p for p in [sub_city, city, country] if p]
         full_loc = ", ".join(loc_parts) if loc_parts else location.strip()
         ind_clean = industry.strip()
 
-        # Step 1: Try LLM Query Expansion
         try:
             ollama = OllamaClient(timeout=8.0)
             system_prompt = (
@@ -69,7 +52,6 @@ class DiscoveryOptimizer:
                 and len(result["search_queries"]) > 0
             ):
                 logger.info(f"DiscoveryOptimizer: Successfully generated dynamic LLM search plan for '{ind_clean}' in '{full_loc}'.")
-                # Merge universal negative keywords for safety (excluding the target industry itself)
                 base_negs = [w for w in cls.UNIVERSAL_NEGATIVE_KEYWORDS if w not in ind_clean.lower()]
                 neg = list(dict.fromkeys(result.get("negative_keywords", []) + base_negs))
                 result["negative_keywords"] = neg
@@ -80,7 +62,6 @@ class DiscoveryOptimizer:
         except Exception as e:
             logger.debug(f"DiscoveryOptimizer: LLM optimization fallback: {e}")
 
-        # Step 2: Intelligent Dynamic Fallback (No hardcoded verticals)
         return cls.build_fallback_plan(industry=ind_clean, location=full_loc, country=country, city=city, sub_city=sub_city)
 
     @classmethod
@@ -92,7 +73,6 @@ class DiscoveryOptimizer:
         city: str = "",
         sub_city: str = "",
     ) -> Dict[str, Any]:
-        """Constructs an intelligent, deterministic plan for any industry dynamically."""
         ind_lower = industry.lower().strip()
         loc_parts = [p for p in [sub_city, city, country] if p]
         loc_str = ", ".join(loc_parts) if loc_parts else (location.strip() or f"{city} {country}".strip() or "local")
@@ -127,30 +107,21 @@ class DiscoveryOptimizer:
 
     @classmethod
     def validate_candidate(cls, candidate: Dict[str, Any], plan: Dict[str, Any]) -> Tuple[bool, str]:
-        """
-        Pure dynamic AI-driven candidate validation.
-        No hardcoded industry or regional rules.
-        Rejection is driven entirely by the search plan negative keywords,
-        snippet semantics, and geographic locality matching.
-        """
         name = (candidate.get("canonical_name") or candidate.get("name") or "").strip()
         domain = (candidate.get("domain") or candidate.get("website") or "").lower()
         snippet = (candidate.get("snippet") or candidate.get("display_name") or "").lower()
         cand_address = (candidate.get("address") or "").lower()
         name_lower = name.lower()
 
-        # 1. Reject empty or abnormally short strings (e.g. single/double letter noise)
         if len(name) < 3:
             return False, "Business name is too short"
 
-        # 2. Reject generic social media & tech platform homepages (e.g. facebook.com, instagram.com)
         GENERIC_PLATFORMS = {"facebook", "facebook.com", "instagram", "google", "meta", "twitter", "linkedin", "youtube", "tiktok", "whatsapp"}
         if name_lower in GENERIC_PLATFORMS:
             return False, f"Candidate is a generic platform entity ({name}), not an actual business."
         if any(bad in name_lower for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "google.com/maps", "twitter.com"]):
             return False, f"Candidate name is a social media / platform URL: '{name}'"
 
-        # 3. Locality Match: reject only if candidate explicitly belongs to a different distant region
         req_sub_city = (plan.get("sub_city") or "").lower().strip()
         req_city = (plan.get("city") or "").lower().strip()
         if cand_address and req_city and len(req_city) >= 3:
@@ -158,13 +129,10 @@ class DiscoveryOptimizer:
             if req_city not in cand_full_loc and req_sub_city not in cand_full_loc:
                 return False, f"Candidate location does not match target city '{req_city}'"
 
-        # 4. Disqualify if candidate name is merely the generic industry category name itself
         target_ind = (plan.get("industry") or "").lower().strip()
         if target_ind and name_lower == target_ind:
             return False, f"Candidate name is identical to the target industry category: '{name}'"
 
-        # 5. Semantic Negative Keyword Filter:
-        # Checked against name, domain, and snippet description
         negatives = plan.get("negative_keywords", [])
         for neg in negatives:
             neg_l = neg.lower().strip()
@@ -192,11 +160,6 @@ class DiscoveryOptimizer:
         positive_keywords: Optional[List[str]] = None,
         ollama_client: Optional[Any] = None,
     ) -> Tuple[bool, str]:
-        """
-        100% Dynamic & Universal Industry Relevance Gate (Zero Hardcoded Dictionaries):
-        Prevents irrelevant businesses from qualifying for ANY industry worldwide.
-        Uses exact phrase matching, dynamic AI positive keywords, and real-time LLM semantic evaluation.
-        """
         ind_clean = (target_industry or "commercial").lower().strip()
         ind_phrase = ind_clean.replace("_", " ").strip()
         page_title_l = (page_title or "").lower()
@@ -206,27 +169,23 @@ class DiscoveryOptimizer:
         heading_l = (heading or "").lower()
         full_text = f"{business_name_l} {domain_l} {page_title_l} {meta_desc_l} {heading_l}"
 
-        # 1. Negative Filters Check (AI-generated negative keywords)
         if negative_keywords:
             for neg in negative_keywords:
                 neg_l = neg.lower().strip()
                 if len(neg_l) >= 4 and neg_l in full_text:
                     return False, f"Matched AI negative filter: '{neg}'"
 
-        # 2. Exact Full Phrase or Domain Match (Zero Ambiguity)
         if ind_phrase and len(ind_phrase) >= 4 and ind_phrase in full_text:
             return True, f"Full industry phrase verified: '{ind_phrase}'"
         if ind_clean.replace(" ", "") in domain_l or ind_phrase.replace(" ", "") in domain_l:
             return True, f"Official domain matches industry: '{domain_l}'"
 
-        # 3. Dynamically Generated Positive Keywords Match (From AI search plan)
         if positive_keywords:
             for pos in positive_keywords:
                 pos_l = pos.lower().strip()
                 if len(pos_l) >= 4 and pos_l in full_text:
                     return True, f"Dynamic AI industry keyword matched: '{pos}'"
 
-        # 4. Universal Real-Time LLM Semantic Verification (Understands ANY business niche on Earth)
         if ollama_client and (page_title or meta_description or business_name):
             try:
                 system_prompt = (
@@ -252,7 +211,6 @@ class DiscoveryOptimizer:
             except Exception as e:
                 logger.debug(f"Dynamic AI semantic verification notice: {e}")
 
-        # 5. Semantic Industry Synonym Mapping (Ensures valid entities like Realtors, Clinics, Contractors never get false negative rejections)
         INDUSTRY_SYNONYMS = {
             "real estate": ["realtor", "realty", "property", "properties", "apartment", "apartments", "housing", "developer", "builders", "flat", "land", "estate", "brokerage", "leasing"],
             "real_estate": ["realtor", "realty", "property", "properties", "apartment", "apartments", "housing", "developer", "builders", "flat", "land", "estate", "brokerage", "leasing"],
@@ -264,14 +222,12 @@ class DiscoveryOptimizer:
             "technology": ["software", "tech", "it solutions", "agency", "developer", "digital", "saas", "cloud", "consulting"]
         }
         
-        # Check synonyms if applicable
         for ind_key, syns in INDUSTRY_SYNONYMS.items():
             if ind_key in ind_clean or ind_clean in ind_key:
                 for syn in syns:
                     if len(syn) >= 4 and syn in full_text:
                         return True, f"Industry synonym verified: '{syn}'"
 
-        # 6. Non-ambiguous root token check (for single-word queries like 'plumber', 'electrician')
         AMBIGUOUS_TOKENS = {
             "care", "digital", "smart", "home", "prime", "star", "one", 
             "new", "best", "top", "general", "global", "express", "direct", "city", "center",
@@ -285,7 +241,6 @@ class DiscoveryOptimizer:
             if tok in full_text or (len(stem) >= 4 and stem in full_text):
                 return True, f"Root industry stem matched: '{tok}'"
 
-        # If business has accessible website and valid contact, default to Review Needed rather than total rejection
         if domain and (page_title or meta_description):
             return True, "General commercial relevance"
 
@@ -293,7 +248,6 @@ class DiscoveryOptimizer:
 
     @classmethod
     def classify_entity(cls, name: str, domain: Optional[str] = None, business_type: str = "general") -> str:
-        """Classifies and formats the business entity title cleanly for any industry."""
         btype_l = (business_type or "general").lower()
         clean_type = btype_l.replace("_", " ").replace("-", " ").title()
 

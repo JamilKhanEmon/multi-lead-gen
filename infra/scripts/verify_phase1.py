@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""
-Phase 1 Infrastructure Verification Script
-Tests connectivity and health for:
-- PostgreSQL 16 (127.0.0.1:5432)
-- Redis 7 (127.0.0.1:6379)
-- Ollama Runtime (127.0.0.1:11434)
-- OpenClaw Gateway WebSocket (127.0.0.1:18789)
-"""
 import asyncio
 import json
 import os
@@ -15,7 +7,6 @@ import sys
 import uuid
 from typing import Dict, Tuple
 
-# ANSI Colors
 GREEN = "\033[92m"
 RED = "\033[91m"
 YELLOW = "\033[93m"
@@ -23,18 +14,14 @@ CYAN = "\033[96m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
-
 def check_tcp_port(host: str, port: int, timeout: float = 2.0) -> bool:
-    """Quick check if a TCP port is open."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
 
-
 async def check_postgres() -> Tuple[bool, str]:
-    """Verify PostgreSQL connectivity and extensions."""
     host = os.getenv("POSTGRES_HOST", "127.0.0.1")
     port = int(os.getenv("POSTGRES_PORT", "5432"))
     user = os.getenv("POSTGRES_USER", "leadgen")
@@ -57,7 +44,6 @@ async def check_postgres() -> Tuple[bool, str]:
         await conn.close()
         return True, f"Connected (SELECT 1={val}). Extensions active: {', '.join(ext_names) or 'None'}"
     except ImportError:
-        # Fallback using psycopg2 or basic socket
         try:
             import psycopg2
             conn = psycopg2.connect(host=host, port=port, user=user, password=password, dbname=dbname)
@@ -72,9 +58,7 @@ async def check_postgres() -> Tuple[bool, str]:
     except Exception as e:
         return False, f"Postgres connection error: {str(e)}"
 
-
 async def check_redis() -> Tuple[bool, str]:
-    """Verify Redis connection via PING."""
     host = os.getenv("REDIS_HOST", "127.0.0.1")
     port = int(os.getenv("REDIS_PORT", "6379"))
 
@@ -92,9 +76,7 @@ async def check_redis() -> Tuple[bool, str]:
     except Exception as e:
         return False, f"Redis error: {str(e)}"
 
-
 async def check_ollama() -> Tuple[bool, str]:
-    """Verify Ollama native daemon and list installed models."""
     import urllib.request
     import urllib.error
 
@@ -118,9 +100,7 @@ async def check_ollama() -> Tuple[bool, str]:
     except Exception as e:
         return False, f"Ollama HTTP check failed: {str(e)}"
 
-
 async def check_openclaw_gateway() -> Tuple[bool, str]:
-    """Verify OpenClaw Gateway WebSocket handshake."""
     host = "127.0.0.1"
     port = 18789
 
@@ -133,11 +113,9 @@ async def check_openclaw_gateway() -> Tuple[bool, str]:
         import websockets
         ws_url = f"ws://{host}:{port}"
         async with websockets.connect(ws_url, close_timeout=3.0) as ws:
-            # 1. Receive challenge
             raw_challenge = await asyncio.wait_for(ws.recv(), timeout=3.0)
             challenge_data = json.loads(raw_challenge)
 
-            # 2. Send connect request with Protocol 4 negotiation
             req_id = str(uuid.uuid4())
             connect_req = {
                 "type": "req",
@@ -159,7 +137,6 @@ async def check_openclaw_gateway() -> Tuple[bool, str]:
             }
             await ws.send(json.dumps(connect_req))
 
-            # 3. Await response
             raw_resp = await asyncio.wait_for(ws.recv(), timeout=3.0)
             resp_data = json.loads(raw_resp)
 
@@ -170,7 +147,6 @@ async def check_openclaw_gateway() -> Tuple[bool, str]:
         return True, "Port 18789 open (websockets package not in current env to test full handshake)"
     except Exception as e:
         return False, f"Gateway handshake failed: {str(e)}"
-
 
 async def main():
     print(f"\n{BOLD}{CYAN}================================================================{RESET}")
@@ -206,7 +182,6 @@ async def main():
         print(f"{GREEN}{BOLD}All Phase 1 services verified and ready for Phase 2!{RESET}\n")
     else:
         print(f"{YELLOW}{BOLD}Some services require attention (see above notes).{RESET}\n")
-
 
 if __name__ == "__main__":
     asyncio.run(main())

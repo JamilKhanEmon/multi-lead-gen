@@ -1,10 +1,6 @@
-"""
-Seed Data Script for 135 Parameters, Initial Business Types, and 31 Agency Services.
-"""
 import sys
 from pathlib import Path
 
-# Auto-add backend directory to sys.path
 backend_dir = Path(__file__).resolve().parent.parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
@@ -15,9 +11,7 @@ from sqlalchemy import select
 from app.db.session import AsyncSessionLocal, engine
 from app.models import Base, Parameter, BusinessType, BusinessTypeParameter, Service, ServiceRule
 
-# 135 Parameters Specification
 PARAMETERS_SEED = [
-    # Category A: Google Maps / Business Profile (1-10)
     (1, "Business listing presence", "Cat A: Google Maps", "OBSERVABLE", 1.0, "Presence of verified or unverified business profile on Maps/directories."),
     (2, "Rating score", "Cat A: Google Maps", "OBSERVABLE", 0.9, "Average public review rating score."),
     (3, "Review count", "Cat A: Google Maps", "OBSERVABLE", 0.8, "Total volume of customer reviews."),
@@ -29,7 +23,6 @@ PARAMETERS_SEED = [
     (9, "Opening hours accuracy", "Cat A: Google Maps", "OBSERVABLE", 0.7, "Accuracy and updates of operating hours."),
     (10, "Website/phone availability", "Cat A: Google Maps", "OBSERVABLE", 1.0, "Presence of valid working contact phone or site link on profile."),
 
-    # Category B: Social Media (11-23)
     (11, "Facebook presence", "Cat B: Social Media", "OBSERVABLE", 0.8, "Active public Facebook page presence."),
     (12, "Instagram presence", "Cat B: Social Media", "OBSERVABLE", 0.8, "Active public Instagram profile presence."),
     (13, "LinkedIn presence", "Cat B: Social Media", "OBSERVABLE", 0.8, "Active public LinkedIn company page."),
@@ -44,7 +37,6 @@ PARAMETERS_SEED = [
     (22, "Page inactivity", "Cat B: Social Media", "OBSERVABLE", 0.9, "Prolonged period (>90 days) without social posts."),
     (23, "Missing contact/WhatsApp", "Cat B: Social Media", "OBSERVABLE", 1.0, "Absence of direct WhatsApp link or phone on social pages."),
 
-    # Category C: Marketing & Advertising (24-33)
     (24, "Active advertising", "Cat C: Marketing & Ads", "OBSERVABLE", 0.9, "Publicly active ads in Meta Ad Library or Google Ad Transparency."),
     (25, "Ad frequency", "Cat C: Marketing & Ads", "OBSERVABLE", 0.7, "Volume and duration of running advertising campaigns."),
     (26, "Ad creative quality", "Cat C: Marketing & Ads", "OBSERVABLE", 0.8, "Visual design and copywriting quality of active ads."),
@@ -56,7 +48,6 @@ PARAMETERS_SEED = [
     (32, "Marketing consistency", "Cat C: Marketing & Ads", "INFERABLE", 0.8, "Alignment between ad promises and website/social branding."),
     (33, "Conversion signals", "Cat C: Marketing & Ads", "INFERABLE", 1.0, "Presence of conversion tracking signals or lead capture flow."),
 
-    # Category D: Website (34-51)
     (34, "Website availability", "Cat D: Website", "OBSERVABLE", 1.2, "HTTP 200 response and availability of corporate website."),
     (35, "Domain quality", "Cat D: Website", "OBSERVABLE", 0.8, "Ownership of custom domain vs free subdomain."),
     (36, "Design/UI quality", "Cat D: Website", "OBSERVABLE", 1.0, "Modern visual aesthetics, visual balance, and clean typography."),
@@ -76,7 +67,6 @@ PARAMETERS_SEED = [
     (50, "Broken links", "Cat D: Website", "OBSERVABLE", 0.8, "Presence of HTTP 404 dead links on public site."),
     (51, "Outdated content", "Cat D: Website", "OBSERVABLE", 0.9, "Outdated copyright years, old blog posts, or obsolete announcements."),
 
-    # Category E: CX & Reputation (52-60)
     (52, "Repeated complaints", "Cat E: CX & Reputation", "OBSERVABLE", 1.2, "Multiple independent public reviews citing the exact same issue."),
     (53, "Negative reviews", "Cat E: CX & Reputation", "OBSERVABLE", 1.0, "Volume of 1-star or 2-star reviews across platforms."),
     (54, "Response-time complaints", "Cat E: CX & Reputation", "OBSERVABLE", 1.1, "Customer complaints regarding unreturned calls or slow responses."),
@@ -87,7 +77,6 @@ PARAMETERS_SEED = [
     (59, "Unanswered reviews/comments", "Cat E: CX & Reputation", "OBSERVABLE", 1.0, "High volume of negative public reviews left without response."),
     (60, "Customer satisfaction signals", "Cat E: CX & Reputation", "INFERABLE", 0.9, "Overall sentiment trend across public channels."),
 
-    # Category F: Technology Gap (61-73)
     (61, "Mobile app", "Cat F: Technology Gap", "INFERABLE", 0.7, "Presence of native iOS/Android mobile application."),
     (62, "Customer portal", "Cat F: Technology Gap", "INFERABLE", 0.9, "Self-service web portal for client account management."),
     (63, "CRM", "Cat F: Technology Gap", "INTERNAL", 1.0, "Internal customer relationship management system usage."),
@@ -102,7 +91,6 @@ PARAMETERS_SEED = [
     (72, "Data management systems", "Cat F: Technology Gap", "INTERNAL", 0.8, "Structured data storage and reporting systems."),
     (73, "Technology modernization need", "Cat F: Technology Gap", "INFERABLE", 1.1, "Overall evidence suggesting reliance on legacy manual methods."),
 
-    # Category G: AI Opportunity (74-80)
     (74, "AI chatbot", "Cat G: AI Opportunity", "OBSERVABLE", 0.8, "Presence of conversational AI assistant on website."),
     (75, "AI customer support", "Cat G: AI Opportunity", "INFERABLE", 0.8, "Automated AI ticket resolution or support system."),
     (76, "AI sales assistant", "Cat G: AI Opportunity", "INFERABLE", 0.8, "AI-driven lead qualification or product recommendation agent."),
@@ -111,7 +99,6 @@ PARAMETERS_SEED = [
     (79, "OCR", "Cat G: AI Opportunity", "INFERABLE", 0.6, "Optical character recognition for invoices or paper records."),
     (80, "Recommendation system", "Cat G: AI Opportunity", "INFERABLE", 0.7, "Personalized product/service recommendation engine."),
 
-    # Category H: Automation Opportunity (81-90)
     (81, "Manual lead collection", "Cat H: Automation Opportunity", "INFERABLE", 1.0, "Evidence of manual unautomated lead capture (e.g. raw email link)."),
     (82, "Manual lead follow-up", "Cat H: Automation Opportunity", "INFERABLE", 1.1, "Absence of automated instant email/SMS confirmation after inquiry."),
     (83, "Manual booking", "Cat H: Automation Opportunity", "INFERABLE", 1.1, "Booking requests processed via manual phone call or delayed email."),
@@ -123,7 +110,6 @@ PARAMETERS_SEED = [
     (89, "Manual notifications", "Cat H: Automation Opportunity", "INFERABLE", 0.8, "Manual dispatch of appointment reminders."),
     (90, "Manual social-media management", "Cat H: Automation Opportunity", "INFERABLE", 0.7, "Absence of scheduling or automated cross-posting."),
 
-    # Category I: Business Activity & Growth Signals (91-101)
     (91, "New projects", "Cat I: Growth Signals", "OBSERVABLE", 0.8, "Public announcements or portfolio updates regarding new projects."),
     (92, "New products", "Cat I: Growth Signals", "OBSERVABLE", 0.8, "Recent introduction of new products."),
     (93, "New services", "Cat I: Growth Signals", "OBSERVABLE", 0.8, "Expansion into new service lines."),
@@ -136,7 +122,6 @@ PARAMETERS_SEED = [
     (100, "Business inactivity", "Cat I: Growth Signals", "OBSERVABLE", 1.0, "Absence of public updates or announcements for >12 months."),
     (101, "Project updates", "Cat I: Growth Signals", "OBSERVABLE", 0.8, "Regular progress updates on ongoing client projects."),
 
-    # Category J: IT & Cybersecurity (102-108)
     (102, "HTTPS/SSL", "Cat J: IT & Cybersecurity", "OBSERVABLE", 1.1, "Valid SSL certificate and HTTPS enforcement."),
     (103, "Security warnings", "Cat J: IT & Cybersecurity", "OBSERVABLE", 1.2, "Browser security warnings or mixed content errors."),
     (104, "Professional business email", "Cat J: IT & Cybersecurity", "OBSERVABLE", 0.9, "Use of domain-branded email vs free Gmail/Yahoo addresses."),
@@ -145,7 +130,6 @@ PARAMETERS_SEED = [
     (107, "Visible outdated technology", "Cat J: IT & Cybersecurity", "OBSERVABLE", 0.9, "Public exposure of end-of-life CMS versions or server headers."),
     (108, "Public privacy/security information", "Cat J: IT & Cybersecurity", "OBSERVABLE", 0.7, "Presence of public Privacy Policy and Terms pages."),
 
-    # Category K: Domain & Hosting (109-116)
     (109, "Own domain", "Cat K: Domain & Hosting", "OBSERVABLE", 0.9, "Ownership of standalone primary brand domain."),
     (110, "Domain-brand match", "Cat K: Domain & Hosting", "OBSERVABLE", 0.8, "Exact match between registered domain name and corporate brand."),
     (111, "SSL certificate", "Cat K: Domain & Hosting", "OBSERVABLE", 1.0, "Presence and validity of SSL encryption certificate."),
@@ -155,7 +139,6 @@ PARAMETERS_SEED = [
     (115, "Subdomain/free-domain usage", "Cat K: Domain & Hosting", "OBSERVABLE", 0.9, "Reliance on free wix/wordpress/blogspot subdomains."),
     (116, "Hosting availability signals", "Cat K: Domain & Hosting", "OBSERVABLE", 0.8, "Hosting provider performance and location signals."),
 
-    # Category L: Visual Analysis (117-125)
     (117, "Website UI/UX", "Cat L: Visual Analysis", "OBSERVABLE", 1.0, "Multimodal evaluation of website layout and visual design aesthetics."),
     (118, "Social-media creatives", "Cat L: Visual Analysis", "OBSERVABLE", 0.8, "Visual quality of graphics and images posted on social media."),
     (119, "Advertisement creatives", "Cat L: Visual Analysis", "OBSERVABLE", 0.9, "Visual appeal and design standards of active advertisement banners."),
@@ -166,7 +149,6 @@ PARAMETERS_SEED = [
     (124, "Store/showroom appearance", "Cat L: Visual Analysis", "OBSERVABLE", 0.8, "Visual appearance of physical retail storefront or showroom."),
     (125, "Construction/project-site visuals", "Cat L: Visual Analysis", "OBSERVABLE", 0.9, "High-quality site photos demonstrating active construction work."),
 
-    # Category M: Lead Intent Signals (126-135)
     (126, "Company actively hiring", "Cat M: Lead Intent", "OBSERVABLE", 1.1, "Active job openings indicating team expansion."),
     (127, "Company launching something", "Cat M: Lead Intent", "OBSERVABLE", 1.0, "Public announcements of upcoming product/service launches."),
     (128, "Company expanding", "Cat M: Lead Intent", "OBSERVABLE", 1.0, "Public signals of geographic or operational expansion."),
@@ -224,9 +206,7 @@ SERVICES_SEED = [
     ("Public-facing IT/Security improvement", "security-improvement", "Infrastructure", "Passive SSL, domain security, and professional email setup."),
 ]
 
-
 async def seed_database():
-    """Seeds parameters, business types, and services into PostgreSQL."""
     print("[*] Ensuring database tables are created...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -270,7 +250,6 @@ async def seed_database():
 
         await session.commit()
         print("[+] Seed completed successfully.")
-
 
 if __name__ == "__main__":
     asyncio.run(seed_database())

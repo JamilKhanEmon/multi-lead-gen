@@ -1,6 +1,3 @@
-"""
-FastAPI Dependencies for Authentication & Authorization
-"""
 import uuid
 from typing import AsyncGenerator, Optional
 from fastapi import Depends, HTTPException, Security, status
@@ -14,12 +11,10 @@ from app.models.audit import User
 
 security = HTTPBearer(auto_error=False)
 
-
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Validates JWT access token and returns authenticated user."""
     if not credentials:
         if settings.ENVIRONMENT == "development":
             stmt = select(User).where(User.email == "dev@leadgen.local")
@@ -79,12 +74,10 @@ async def get_current_user(
 
     return user
 
-
 async def get_current_user_optional(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
     db: AsyncSession = Depends(get_db),
 ) -> Optional[User]:
-    """Returns authenticated user if token present and valid, otherwise None (or dev user in dev mode)."""
     if not credentials:
         if settings.ENVIRONMENT == "development":
             stmt = select(User).where(User.email == "dev@leadgen.local")
@@ -118,12 +111,9 @@ async def get_current_user_optional(
     except Exception:
         return None
 
-
-
 async def require_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Enforces admin or super_admin role requirement."""
     if current_user.role not in ["admin", "super_admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -131,11 +121,9 @@ async def require_admin(
         )
     return current_user
 
-
 async def require_super_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Enforces super_admin role requirement."""
     if current_user.role != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

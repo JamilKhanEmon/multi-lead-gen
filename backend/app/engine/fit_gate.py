@@ -1,8 +1,3 @@
-"""
-Fit Gate & Sales Intelligence Engine (v2 Demand-Side Pipeline)
-Evaluates live digital buying signals, enforces strict fit-gating,
-and produces evidence-based sales pitches and 30-second discovery call scripts.
-"""
 import os
 import re
 import unicodedata
@@ -10,7 +5,6 @@ from typing import Dict, Any, Optional, Tuple, List
 from urllib.parse import urlparse
 from app.core.logging import logger
 
-# Multi-Tenant B2B Digital & Software Service Catalog
 SERVICE_CATALOG = {
     "web_dev": {
         "name": "Web Design & Development (Site in 7 Days)",
@@ -39,17 +33,10 @@ SERVICE_CATALOG = {
     }
 }
 
-
 class FitGateEngine:
-    """
-    Demand-Side Qualification & Sales Pitch Engine.
-    Filters out healthy businesses with no pain points (prevents spamming).
-    Supports both Branded Company KB Mode and Generic AI Pitch Mode.
-    """
 
     @staticmethod
     async def fetch_active_kb_dict(session) -> Optional[Dict[str, Any]]:
-        """Safely fetch the active Company KB from database."""
         try:
             from app.models.company_kb import CompanyKB
             from sqlalchemy.future import select
@@ -72,7 +59,6 @@ class FitGateEngine:
 
     @staticmethod
     def normalize_name_nfkc(name: str) -> str:
-        """NFKC normalization (converts unicode math-italic glyphs like 𝙎𝙦𝙪𝙖𝙧𝙚 to ASCII), lowercase, strip punctuation."""
         if not name:
             return ""
         norm = unicodedata.normalize("NFKC", name)
@@ -94,10 +80,6 @@ class FitGateEngine:
         company_kb: Optional[Dict[str, Any]] = None,
         use_company_kb: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Runs candidate through Demand-Side Fit Gate.
-        Supports both Branded Company KB mode and Generic AI Consultative mode.
-        """
         audit_res = audit_res or {}
         detected_weaknesses = detected_weaknesses or []
         metadata_json = metadata_json or {}
@@ -111,7 +93,6 @@ class FitGateEngine:
         has_phone = bool(phone and len(re.sub(r"\D", "", phone)) >= 7)
         has_email = bool(email and "@" in email)
 
-        # Audit checks
         mobile_responsive = audit_res.get("mobile_responsive")
         has_contact_form = audit_res.get("has_contact_form")
         has_online_booking = audit_res.get("has_online_booking")
@@ -123,7 +104,6 @@ class FitGateEngine:
         evidence_signals: List[str] = []
         evidence_tags: List[str] = []
 
-        # 1. Detect Website & Digital Presence Gaps
         if not has_clean_domain:
             evidence_signals.append("Zero official website — relies exclusively on third-party map listing or social pages without an independent domain.")
             evidence_tags.append("NO_WEBSITE")
@@ -144,14 +124,11 @@ class FitGateEngine:
                 evidence_signals.append("No conversion tracking detected (Missing Google Analytics & Meta Pixel) — marketing budget is unmeasured.")
                 evidence_tags.append("NO_ANALYTICS")
 
-        # Weakness strings passed from scraper/audit
         for w in detected_weaknesses:
             w_str = str(w)
             if w_str not in evidence_signals:
                 evidence_signals.append(w_str)
 
-        # 2. Hard Gate Evaluation (Dada Directive)
-        # If company has a healthy modern website, mobile responsive, working form, analytics, and 0 detected weaknesses:
         is_healthy_modern_site = (
             has_clean_domain
             and mobile_responsive is not False
@@ -171,7 +148,6 @@ class FitGateEngine:
                 "evidence_tags": ["HEALTHY_SITE_DROPPED"]
             }
 
-        # 3. Match Specific Service & Formulate Evidence
         if not has_clean_domain:
             matched_svc_key = "web_dev"
             why_they_need_us = (
@@ -220,7 +196,6 @@ class FitGateEngine:
             disc_question = "Are you currently tracking where your best customer inquiries are originating from each week?"
             disc_hook = f"I noticed your online presence has a clear growth opportunity regarding local search conversion tracking."
 
-        # Resolve catalog (incorporating dynamic Company KB services if active)
         catalog = SERVICE_CATALOG
         if use_company_kb and company_kb and company_kb.get("services_json"):
             kb_services = company_kb.get("services_json")
@@ -239,15 +214,13 @@ class FitGateEngine:
         svc_info = catalog.get(matched_svc_key, catalog.get("web_dev", SERVICE_CATALOG["web_dev"]))
         matched_service = svc_info["name"]
 
-        # 4. Compute Demand-Side Fit Score (0 to 12 scale)
-        # Email (+3), Website (+2), Clear Gap (+3), Phone (+1), Dhaka (+1), No Website (+1), Evidence depth (+1)
         score = 0.0
         if has_email:
             score += 3.0
         if has_clean_domain:
             score += 2.0
         else:
-            score += 1.0  # Web dev pitch bonus
+            score += 1.0
         if len(evidence_signals) > 0:
             score += 3.0
         if has_phone:
@@ -259,7 +232,6 @@ class FitGateEngine:
 
         score = min(12.0, score)
 
-        # 5. Fit Tier
         if score >= 8.0 and (has_email or has_phone):
             fit_tier = "HOT"
         elif score >= 5.0:
@@ -267,13 +239,11 @@ class FitGateEngine:
         else:
             fit_tier = "COLD"
 
-        # 6. Discovery-First Sales Call Script (for sales executives / calling reps)
         if use_company_kb and company_kb and company_kb.get("company_name"):
             agency_name = company_kb.get("company_name").strip()
             wedge_offer = svc_info.get("wedge", "specialized audit report")
             pitch_line = f"At {agency_name}, we specialize in solving this with our {wedge_offer}. Would you be open to a 5-minute preview of the custom audit report we prepared for {company_clean}?"
         else:
-            # Generic AI Consultation Mode (Zero Company Hardcoding)
             pitch_line = f"We specialize in solving this with modern digital automation and conversion optimization. Would you be open to a 5-minute preview of the custom audit report prepared for {company_clean}?"
 
         call_script = (

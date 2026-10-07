@@ -1,10 +1,6 @@
-"""
-Autonomous B2B Lead-Generation Platform — Application Configuration
-"""
 from typing import List, Optional
 from pydantic import Field, PostgresDsn, RedisDsn, HttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -13,7 +9,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Application Information
     PROJECT_NAME: str = "LeadGen Autonomous Intelligence Platform"
     VERSION: str = "0.1.0"
     ENVIRONMENT: str = Field(default="development", description="development, staging, production")
@@ -23,9 +18,8 @@ class Settings(BaseSettings):
         default="dev_jwt_secret_key_change_me_super_secure_9832749823749823",
         description="JWT signature secret key",
     )
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 
-    # Database Settings (PostgreSQL 16)
     POSTGRES_USER: str = "leadgen"
     POSTGRES_PASSWORD: str = "leadgen_secret_pw"
     POSTGRES_DB: str = "leadgen"
@@ -43,7 +37,6 @@ class Settings(BaseSettings):
             f"@{values.get('POSTGRES_HOST')}:{values.get('POSTGRES_PORT')}/{values.get('POSTGRES_DB')}"
         )
 
-    # Queue Settings (Redis 7)
     REDIS_HOST: str = "127.0.0.1"
     REDIS_PORT: int = 6379
     REDIS_URL: Optional[str] = None
@@ -55,7 +48,6 @@ class Settings(BaseSettings):
         values = info.data
         return f"redis://{values.get('REDIS_HOST')}:{values.get('REDIS_PORT')}/0"
 
-    # OpenClaw Gateway (Loopback WebSocket Protocol 4)
     OPENCLAW_GATEWAY_URL: str = Field(
         default="ws://127.0.0.1:18789",
         description="Loopback OpenClaw Gateway endpoint (no /ws)",
@@ -69,7 +61,6 @@ class Settings(BaseSettings):
         description="Dedicated token for validating inbound cron/automation webhooks",
     )
 
-    # Ollama Local Multimodal Intelligence
     OLLAMA_BASE_URL: str = Field(
         default="http://127.0.0.1:11434",
         description="Native macOS Ollama instance",
@@ -79,20 +70,16 @@ class Settings(BaseSettings):
         description="High-speed B2B reasoning model (Qwen 2.5 7B, precise JSON and cold outreach copy)",
     )
 
-    # Workers & Resource Controls (Optimized for 16GB RAM)
     WORKER_CONCURRENCY: int = Field(default=2, ge=1, le=4)
     RESEARCH_TIMEOUT_SECONDS: int = Field(default=120, ge=30, le=600)
     MAX_RETRY_ATTEMPTS: int = Field(default=5, ge=1, le=10)
 
-    # Meta Marketing API (Optional: For Live Ad Deployment)
     META_ACCESS_TOKEN: Optional[str] = Field(default=None, description="System User Access Token with ads_management")
     META_AD_ACCOUNT_ID: Optional[str] = Field(default=None, description="Meta Ad Account ID e.g. act_123456789")
     META_PAGE_ID: Optional[str] = Field(default=None, description="Facebook Business Page ID")
 
-    # Google Pro / Gemini / Imagen 3 / Veo API
     GOOGLE_API_KEY: Optional[str] = Field(default=None, description="Google Gemini/Imagen/Veo API key")
 
-    # Email Outreach (SMTP Configuration)
     SMTP_HOST: Optional[str] = Field(default=None, description="SMTP Server Host (e.g., smtp.gmail.com)")
     SMTP_PORT: int = Field(default=587, description="SMTP Port (587 for TLS, 465 for SSL)")
     SMTP_USER: Optional[str] = Field(default=None, description="SMTP Authentication Username/Email")
@@ -100,12 +87,10 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: Optional[str] = Field(default=None, description="Sender Email Address")
     SMTP_FROM_NAME: str = Field(default="LeadGen Sales Team", description="Sender Name displayed in email clients")
 
-    # CORS configuration
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
-
 
 settings = Settings()
 

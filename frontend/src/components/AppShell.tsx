@@ -29,7 +29,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
     const isAuthRoute = pathname === "/login" || pathname === "/admin";
 
-    // Strict Protection: If not logged in and not on login/admin page -> redirect to /login immediately
     if (!user && !isAuthRoute) {
       router.replace("/login");
       return;
@@ -48,7 +47,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const isHubPage = pathname === "/" || pathname === "/admin" || pathname === "/login";
 
-  // Identify active module if on a sub-route
   const getSubRouteModule = () => {
     if (pathname.startsWith("/autopilot")) {
       return {
@@ -87,7 +85,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const activeModule = getSubRouteModule();
 
-  // If on login/admin page and not logged in, render clean full-screen login without header/sidebar
   if (!currentUser && (pathname === "/login" || pathname === "/admin")) {
     return (
       <div className="min-h-screen w-full bg-background text-slate-100 flex items-center justify-center p-4">
@@ -96,7 +93,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // If not logged in and on any other page, block and show access restricted lock screen
   if (!currentUser) {
     return (
       <div className="min-h-screen w-full bg-background text-slate-100 flex flex-col items-center justify-center p-6 text-center space-y-4">
@@ -119,7 +115,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Check permission for current route
   const checkRoutePermission = (): { allowed: boolean; reason?: string } => {
     if (!currentUser) return { allowed: true };
     if (currentUser.role === "super_admin") return { allowed: true };
@@ -160,10 +155,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen w-full bg-background text-slate-100 flex flex-col">
-      {/* Sleek Top Navigation Bar (Zero Clutter, No Sidebar Links) */}
+
       <header className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80 px-4 sm:px-6 py-3 shrink-0">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-          {/* Left Brand & Hub Return */}
+
           <div className="flex items-center gap-4">
             <Link href="/admin?tab=modules" className="flex items-center gap-2.5 group">
               <div className="w-8 h-8 rounded-xl bg-sky-500 flex items-center justify-center font-bold text-slate-950 text-base shadow-lg shadow-sky-500/20 group-hover:scale-105 transition">
@@ -182,7 +177,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </Link>
 
-            {/* If on a sub-route, show prominent 'Back to 3 Modules' button */}
             {!isHubPage && (
               <div className="flex items-center gap-2 ml-2 pl-4 border-l border-slate-800">
                 <Link
@@ -205,16 +199,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </div>
 
-          {/* Right Header Controls: Hostinger Gateway status + Admin info + Sign Out */}
           <div className="flex items-center gap-3">
-            {/* Hostinger Gateway Status Pill */}
+
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs font-mono">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-slate-400 text-[11px]">Hostinger OpenClaw</span>
               <span className="text-emerald-400 font-semibold text-[11px]">Active</span>
             </div>
 
-            {/* User Profile Badge with Dynamic Role & Coloring */}
             <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800">
               <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold border ${
                 currentUser.role === "super_admin"
@@ -245,7 +237,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            {/* Sign Out Button */}
             <button
               onClick={() => {
                 logoutUser();
@@ -262,7 +253,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* Main Full-Width Content View */}
       <main className="flex-1 w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
         {!routePerm.allowed ? (
           <div className="py-20 flex flex-col items-center justify-center text-center space-y-4 max-w-md mx-auto">

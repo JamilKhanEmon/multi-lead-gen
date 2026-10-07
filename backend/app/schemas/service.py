@@ -1,9 +1,5 @@
-"""
-Service Catalog Pydantic Schemas
-"""
 import uuid
 from pydantic import BaseModel
-
 
 class ServiceResponse(BaseModel):
     id: uuid.UUID
@@ -15,7 +11,6 @@ class ServiceResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class ServiceMatchResponse(BaseModel):
     id: uuid.UUID

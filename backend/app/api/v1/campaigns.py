@@ -1,6 +1,3 @@
-"""
-FastAPI Endpoints for B2B Meta Ads Campaigns & 2-Step Video Retargeting Funnel.
-"""
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,16 +18,11 @@ from app.core.logging import logger
 
 router = APIRouter(prefix="/campaigns", tags=["B2B Meta Ads Campaigns"])
 
-
 @router.post("/research", response_model=Dict[str, Any])
 async def conduct_market_and_competitor_research(
     request: CampaignResearchRequest,
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Executes LLM query expansion and OpenClaw competitor research.
-    Returns recommended B2B targeting and live competitor ad angles.
-    """
     try:
         results = await MetaIntelligenceEngine.analyze_market_and_competitors(
             service_name=request.service_name,
@@ -44,17 +36,11 @@ async def conduct_market_and_competitor_research(
         logger.error(f"Campaign research failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/generate-creatives", response_model=Dict[str, Any])
 async def generate_funnel_creatives(
     request: CampaignCreativeGenerateRequest,
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Generates 2-Step Video Funnel Creatives:
-    - Post 1: 3-second hooks, cold video script, primary copy, headline.
-    - Post 2: Retargeting copy, offer details, WhatsApp CTA button, pre-filled message.
-    """
     try:
         creatives = await MetaIntelligenceEngine.generate_funnel_creatives(
             service_name=request.service_name,
@@ -69,15 +55,11 @@ async def generate_funnel_creatives(
         logger.error(f"Creative generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/generate-storyboard")
 async def generate_video_storyboard(
     payload: Dict[str, Any],
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Generates a 4-scene Hollywood-grade commercial storyboard with character/hardware anchor consistency.
-    """
     from app.services.video_engine import VideoMediaEngine
     try:
         scenes = await VideoMediaEngine.generate_storyboard(
@@ -91,15 +73,11 @@ async def generate_video_storyboard(
         logger.error(f"Storyboard generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/render-scene")
 async def render_individual_scene(
     payload: Dict[str, Any],
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Renders or regenerates an individual video scene with reference image locking.
-    """
     from app.services.video_engine import VideoMediaEngine
     try:
         result = await VideoMediaEngine.render_single_scene(
@@ -112,15 +90,11 @@ async def render_individual_scene(
         logger.error(f"Scene render failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/stitch-video")
 async def stitch_scenes_into_video(
     payload: Dict[str, Any],
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Stitches multiple scene clips into a single high-impact 20s B2B Meta commercial.
-    """
     from app.services.video_engine import VideoMediaEngine
     try:
         result = await VideoMediaEngine.stitch_scenes(
@@ -132,15 +106,11 @@ async def stitch_scenes_into_video(
         logger.error(f"Video stitching failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/generate-poster")
 async def generate_b2b_poster(
     payload: Dict[str, Any],
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Generates a high-converting promotional poster image using Google Imagen 3.
-    """
     from app.services.video_engine import VideoMediaEngine
     try:
         result = await VideoMediaEngine.generate_b2b_poster(
@@ -155,15 +125,12 @@ async def generate_b2b_poster(
         logger.error(f"Poster generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
 @router.post("", response_model=CampaignResponse)
 async def create_campaign(
     payload: CampaignCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Creates a new B2B Meta campaign draft."""
     try:
         campaign = MetaCampaign(
             name=payload.name,
@@ -190,19 +157,16 @@ async def create_campaign(
         logger.error(f"Failed to create campaign: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.get("", response_model=List[CampaignResponse])
 async def list_campaigns(
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Lists all saved B2B Meta campaigns."""
     stmt = select(MetaCampaign).order_by(MetaCampaign.created_at.desc()).limit(limit)
     res = await db.execute(stmt)
     campaigns = res.scalars().all()
     return [c.to_dict() for c in campaigns]
-
 
 @router.get("/{campaign_id}", response_model=CampaignResponse)
 async def get_campaign(
@@ -210,7 +174,6 @@ async def get_campaign(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Retrieves a single campaign by ID."""
     stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
     res = await db.execute(stmt)
     campaign = res.scalar_one_or_none()
@@ -218,14 +181,12 @@ async def get_campaign(
         raise HTTPException(status_code=404, detail="Campaign not found")
     return campaign.to_dict()
 
-
 @router.post("/{campaign_id}/publish")
 async def publish_campaign(
     campaign_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Publishes campaign to Meta Ads using 2-step retargeting funnel."""
     stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
     res = await db.execute(stmt)
     campaign = res.scalar_one_or_none()
@@ -256,14 +217,12 @@ async def publish_campaign(
         "meta_result": publish_result,
     }
 
-
 @router.post("/{campaign_id}/toggle-status")
 async def toggle_campaign_status(
     campaign_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Toggles campaign status between ACTIVE and PAUSED and syncs to Meta."""
     stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
     res = await db.execute(stmt)
     campaign = res.scalar_one_or_none()
@@ -281,14 +240,12 @@ async def toggle_campaign_status(
     await db.refresh(campaign)
     return {"id": campaign.id, "status": campaign.status}
 
-
 @router.get("/{campaign_id}/metrics")
 async def get_live_metrics(
     campaign_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Returns real-time live performance metrics for the campaign."""
     stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
     res = await db.execute(stmt)
     campaign = res.scalar_one_or_none()
@@ -300,14 +257,12 @@ async def get_live_metrics(
     await db.commit()
     return metrics
 
-
 @router.delete("/{campaign_id}")
 async def delete_campaign(
     campaign_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Deletes a campaign and stops/removes it from Meta."""
     stmt = select(MetaCampaign).where(MetaCampaign.id == campaign_id)
     res = await db.execute(stmt)
     campaign = res.scalar_one_or_none()

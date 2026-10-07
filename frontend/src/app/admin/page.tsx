@@ -90,10 +90,8 @@ export default function AdminPortalPage() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Active top navigation tab (defaults to Operations Modules)
   const [activeTab, setActiveTab] = useState<"users" | "modules" | "company_kb" | "template" | "inboxes">("modules");
 
-  // Company Knowledge Base & Service Catalog states
   const [companyKb, setCompanyKb] = useState<CompanyKB | null>(null);
   const [kbLoading, setKbLoading] = useState(false);
   const [kbSaving, setKbSaving] = useState(false);
@@ -205,7 +203,6 @@ export default function AdminPortalPage() {
   } | null>(null);
   const [inboxLoading, setInboxLoading] = useState(false);
 
-  // Inbox Modal & Action States
   const [showAddInboxModal, setShowAddInboxModal] = useState(false);
   const [inboxForm, setInboxForm] = useState({
     host: "",
@@ -220,7 +217,6 @@ export default function AdminPortalPage() {
   const [testingInboxId, setTestingInboxId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
 
-  // Persona Modal & Action States
   const [showAddPersonaModal, setShowAddPersonaModal] = useState(false);
   const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
   const [personaForm, setPersonaForm] = useState({
@@ -236,7 +232,6 @@ https://leadgen.local`,
   const [selectedPreviewSigIdx, setSelectedPreviewSigIdx] = useState<number>(0);
   const [copiedSigId, setCopiedSigId] = useState<string | null>(null);
 
-  // Purge Modal & Action States
   const [showPurgeModal, setShowPurgeModal] = useState(false);
   const [purgeTarget, setPurgeTarget] = useState<"rejected_leads" | "search_runs" | "all_leads" | "factory_reset">("rejected_leads");
   const [purgeSubmitting, setPurgeSubmitting] = useState(false);
@@ -266,20 +261,17 @@ https://leadgen.local`,
     }
   };
 
-  // Login form state
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
   const [loginSubmitting, setLoginSubmitting] = useState(false);
 
-  // User Management state
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [userActionError, setUserActionError] = useState<string | null>(null);
   const [userActionSuccess, setUserActionSuccess] = useState<string | null>(null);
 
-  // Add User modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createName, setCreateName] = useState("");
   const [createEmail, setCreateEmail] = useState("");
@@ -299,19 +291,16 @@ https://leadgen.local`,
   });
   const [createSubmitting, setCreateSubmitting] = useState(false);
 
-  // Edit Permissions modal state
   const [editingUser, setEditingUser] = useState<AuthUser | null>(null);
   const [editPermissions, setEditPermissions] = useState<DashboardPermissions>({});
   const [editSubmitting, setEditSubmitting] = useState(false);
 
-  // Email template & signature management state
   const [template, setTemplate] = useState<EmailTemplate | null>(null);
   const [tplLoading, setTplLoading] = useState(false);
   const [tplSaving, setTplSaving] = useState(false);
   const [tplSuccess, setTplSuccess] = useState<string | null>(null);
   const [tplError, setTplError] = useState<string | null>(null);
 
-  // Form inputs for template
   const [subject, setSubject] = useState("Quick inquiry regarding your office in {{location}}");
   const [body, setBody] = useState("");
   const [senderName, setSenderName] = useState("Jamil Khan");
@@ -325,7 +314,6 @@ https://leadgen.local`,
   const [previewSample, setPreviewSample] = useState<"tropical" | "cafe" | "nowebsite">("tropical");
   const [copiedPreview, setCopiedPreview] = useState(false);
 
-  // Load team users
   const loadUsersList = async () => {
     try {
       setUsersLoading(true);
@@ -338,7 +326,6 @@ https://leadgen.local`,
     }
   };
 
-  // Restore active tab from URL or sessionStorage
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -354,7 +341,6 @@ https://leadgen.local`,
     }
   }, []);
 
-  // Initialize auth
   useEffect(() => {
     async function initAuth() {
       const stored = getStoredUser();
@@ -391,7 +377,6 @@ https://leadgen.local`,
     return () => window.removeEventListener("auth_change", handleAuthChange);
   }, []);
 
-  // When logged in, fetch users list and template
   useEffect(() => {
     if (currentUser) {
       loadUsersList();
@@ -424,7 +409,6 @@ https://leadgen.local`,
     }
   }, [currentUser]);
 
-  // Handle Login
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
@@ -445,13 +429,11 @@ https://leadgen.local`,
     }
   };
 
-  // Handle Logout
   const handleLogout = () => {
     logoutUser();
     setCurrentUser(null);
   };
 
-  // Handle Create User Submit
   const handleCreateUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUserActionError(null);
@@ -492,7 +474,6 @@ https://leadgen.local`,
     }
   };
 
-  // Handle Edit Permissions
   const handleOpenEditPermissions = (u: AuthUser) => {
     setEditingUser(u);
     setEditPermissions(u.permissions_json || {
@@ -532,9 +513,8 @@ https://leadgen.local`,
     }
   };
 
-  // Handle Delete User
   const handleDeleteUser = async (u: AuthUser) => {
-    // Client-side guard: Admins cannot remove Super Admins
+
     if (u.role === "super_admin" && currentUser?.role !== "super_admin") {
       alert("Security Violation: Admins are strictly prohibited from removing Super Administrators.");
       return;
@@ -560,7 +540,6 @@ https://leadgen.local`,
     }
   };
 
-  // Handle Save Template
   const handleSaveTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
     setTplSaving(true);
@@ -590,7 +569,6 @@ https://leadgen.local`,
     }
   };
 
-  // SMTP Inboxes Handlers
   const handleOpenAddInbox = () => {
     setInboxForm({
       host: "",
@@ -662,7 +640,6 @@ https://leadgen.local`,
     }
   };
 
-  // Persona Note Signatures Handlers
   const handleOpenAddPersona = () => {
     setEditingPersonaId(null);
     const count = (inboxMonitorData?.persona_signatures?.length || 0) + 1;
@@ -736,8 +713,6 @@ https://leadgen.local`,
     }
   };
 
-
-  // Database Purge Handler
   const handlePurgeData = async () => {
     setPurgeSubmitting(true);
     setUserActionError(null);
@@ -758,7 +733,6 @@ https://leadgen.local`,
     }
   };
 
-  // Sample leads for template preview
   const sampleLeads = {
     tropical: {
       company_name: "Apex Global Dental Group",
@@ -809,7 +783,6 @@ https://leadgen.local`,
     currentPreviewLead
   );
 
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -821,14 +794,11 @@ https://leadgen.local`,
     );
   }
 
-  // ==============================================================================
-  // 1. ADMIN LOGIN SCREEN (If not logged in)
-  // ==============================================================================
   if (!currentUser) {
     return (
       <div className="min-h-[80vh] flex flex-col items-center justify-center p-4">
         <div className="w-full max-w-md">
-          {/* Brand & Security Header */}
+
           <div className="text-center mb-6">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-500/20 via-sky-500/10 to-indigo-500/20 border border-sky-500/30 text-sky-400 mb-3 shadow-lg shadow-sky-500/10">
               <ShieldCheck className="w-7 h-7" />
@@ -841,12 +811,11 @@ https://leadgen.local`,
             </p>
           </div>
 
-          {/* Login Card */}
           <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-48 h-48 bg-sky-500/5 rounded-full blur-3xl pointer-events-none" />
 
             <form onSubmit={handleLoginSubmit} className="space-y-4 relative z-10" autoComplete="off">
-              {/* Dummy hidden inputs to intercept aggressive browser autofill */}
+
               <input type="text" name="fake_username_autofill_blocker" style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
               <input type="password" name="fake_password_autofill_blocker" style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
 
@@ -857,7 +826,6 @@ https://leadgen.local`,
                 </div>
               )}
 
-              {/* Email Input */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">
                   Email Address
@@ -877,7 +845,6 @@ https://leadgen.local`,
                 </div>
               </div>
 
-              {/* Password Input */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">
                   Password
@@ -897,7 +864,6 @@ https://leadgen.local`,
                 </div>
               </div>
 
-              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={loginSubmitting}
@@ -917,7 +883,6 @@ https://leadgen.local`,
               </button>
             </form>
 
-            {/* Security Guarantee */}
             <div className="mt-4 flex items-center justify-center gap-1.5 text-[10px] text-slate-500 font-mono">
               <ShieldCheck className="w-3 h-3 text-emerald-400" />
               <span>Argon2id Encrypted & Signed RBAC Tokens</span>
@@ -928,7 +893,6 @@ https://leadgen.local`,
     );
   }
 
-  // Calculate user counts
   const totalUsers = users.length;
   const superAdminCount = users.filter((u) => u.role === "super_admin").length;
   const adminCount = users.filter((u) => u.role === "admin").length;
@@ -938,13 +902,9 @@ https://leadgen.local`,
   const isAdmin = currentUser.role === "admin";
   const isMember = !isSuperAdmin && !isAdmin;
 
-  // ==============================================================================
-  // 2. AUTHENTICATED ADMIN PORTAL
-  // ==============================================================================
   return (
     <div className="max-w-6xl mx-auto space-y-6">
 
-      {/* Top Tab Bar */}
       <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
         {!isMember && (
           <button
@@ -1023,7 +983,6 @@ https://leadgen.local`,
         )}
       </div>
 
-      {/* Global Action Messages */}
       {userActionSuccess && (
         <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs flex items-center justify-between animate-in fade-in">
           <div className="flex items-center gap-2">
@@ -1048,12 +1007,9 @@ https://leadgen.local`,
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TAB 1: TEAM & ACCESS CONTROL (RBAC)                                       */}
-      {/* ========================================================================= */}
       {activeTab === "users" && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Metrics KPIs & Add User Button */}
+
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
               <span className="text-[11px] font-medium text-slate-400">Total Team Users</span>
@@ -1082,7 +1038,6 @@ https://leadgen.local`,
             </div>
           </div>
 
-          {/* Action Toolbar */}
           <div className="flex items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -1104,7 +1059,6 @@ https://leadgen.local`,
             </button>
           </div>
 
-          {/* Users Table */}
           <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
             {usersLoading ? (
               <div className="p-12 text-center text-slate-400 text-xs">
@@ -1131,7 +1085,7 @@ https://leadgen.local`,
 
                       return (
                         <tr key={u.id} className="hover:bg-slate-800/40 transition">
-                          {/* Name & Email */}
+
                           <td className="py-4 px-4">
                             <div className="flex items-center gap-3">
                               <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${
@@ -1157,7 +1111,6 @@ https://leadgen.local`,
                             </div>
                           </td>
 
-                          {/* Role */}
                           <td className="py-4 px-4 whitespace-nowrap">
                             <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
                               isTargetSuper
@@ -1173,7 +1126,6 @@ https://leadgen.local`,
                             </span>
                           </td>
 
-                          {/* Dashboard Permissions */}
                           <td className="py-4 px-4 text-xs">
                             {isTargetSuper ? (
                               <span className="text-xs font-mono text-purple-300 font-semibold">
@@ -1220,7 +1172,6 @@ https://leadgen.local`,
                             )}
                           </td>
 
-                          {/* Status */}
                           <td className="py-4 px-4 whitespace-nowrap">
                             <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
                               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -1228,10 +1179,9 @@ https://leadgen.local`,
                             </span>
                           </td>
 
-                          {/* Actions */}
                           <td className="py-4 px-4 text-right whitespace-nowrap">
                             <div className="inline-flex items-center gap-2">
-                              {/* Edit Permissions Button */}
+
                               {canEditPerms ? (
                                 <button
                                   type="button"
@@ -1251,7 +1201,6 @@ https://leadgen.local`,
                                 </span>
                               )}
 
-                              {/* Delete Button */}
                               {canDelete ? (
                                 <button
                                   type="button"
@@ -1288,9 +1237,6 @@ https://leadgen.local`,
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* CREATE NEW USER MODAL                                                     */}
-      {/* ========================================================================= */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
@@ -1374,7 +1320,6 @@ https://leadgen.local`,
                 )}
               </div>
 
-              {/* Dashboard Permissions Checklist */}
               <div className="pt-2 border-t border-slate-800 space-y-2">
                 <span className="text-xs font-semibold text-slate-300 block">
                   Assign Dashboard Permissions:
@@ -1452,7 +1397,6 @@ https://leadgen.local`,
                     <span className="text-slate-300">Voice Agent</span>
                   </label>
 
-                  {/* Granular Autopilot Permissions in Create Modal */}
                   <div className="col-span-2 p-3 rounded-xl bg-amber-500/5 border border-amber-500/30 space-y-2.5">
                     <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                       <div className="flex items-center gap-1.5">
@@ -1541,9 +1485,6 @@ https://leadgen.local`,
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* EDIT PERMISSIONS MODAL                                                    */}
-      {/* ========================================================================= */}
       {editingUser && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
@@ -1640,7 +1581,6 @@ https://leadgen.local`,
                 />
               </label>
 
-              {/* Granular Autopilot Sub-Permissions in Edit Modal */}
               <div className="p-3 rounded-xl bg-slate-950 border border-amber-500/30 space-y-2.5">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                   <div className="flex items-center gap-2">
@@ -1742,15 +1682,12 @@ https://leadgen.local`,
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TAB 2: OPERATIONS MODULES (THE 3 CORE CARDS)                              */}
-      {/* ========================================================================= */}
       {activeTab === "modules" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-200">
-          {/* CARD 1: Lead Generation & Research */}
+
           <div className="rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 hover:border-sky-500/60 p-6 flex flex-col justify-between transition-all duration-300 shadow-xl hover:shadow-sky-500/10 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-sky-500/5 rounded-full blur-2xl pointer-events-none" />
-            
+
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="w-12 h-12 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-400 flex items-center justify-center shadow-md shadow-sky-500/10">
@@ -1850,7 +1787,6 @@ https://leadgen.local`,
             </div>
           </div>
 
-          {/* CARD 2: Meta Ads & Marketing Automation (LOCKED - COMING SOON) */}
           <div className="rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-800/80 p-6 flex flex-col justify-between transition-all duration-300 shadow-xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-pink-500/5 rounded-full blur-2xl pointer-events-none" />
 
@@ -1874,7 +1810,6 @@ https://leadgen.local`,
                 </p>
               </div>
 
-              {/* Exclusive Meta Ads Features List */}
               <div className="pt-3 border-t border-slate-800/80 space-y-2">
                 <div className="text-[11px] font-mono text-pink-400/90 font-semibold uppercase tracking-wider flex items-center justify-between">
                   <span>META ADS FEATURES:</span>
@@ -1911,7 +1846,6 @@ https://leadgen.local`,
             </div>
           </div>
 
-          {/* CARD 3: Autonomous Voice Outreach (LOCKED - COMING SOON) */}
           <div className="rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-800/80 p-6 flex flex-col justify-between transition-all duration-300 shadow-xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
 
@@ -1935,7 +1869,6 @@ https://leadgen.local`,
                 </p>
               </div>
 
-              {/* Exclusive Voice Features List */}
               <div className="pt-3 border-t border-slate-800/80 space-y-2">
                 <div className="text-[11px] font-mono text-emerald-400/90 font-semibold uppercase tracking-wider flex items-center justify-between">
                   <span>VOICE OUTREACH FEATURES:</span>
@@ -1974,14 +1907,10 @@ https://leadgen.local`,
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TAB: COMPANY KNOWLEDGE BASE & SERVICE CATALOG                             */}
-      {/* ========================================================================= */}
       {activeTab === "company_kb" && (
         <div className="rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 p-6 sm:p-7 shadow-xl space-y-6 relative overflow-hidden animate-in fade-in duration-200">
           <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
 
-          {/* Section Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-800">
             <div>
               <div className="flex items-center gap-2.5">
@@ -2026,7 +1955,6 @@ https://leadgen.local`,
             </div>
           </div>
 
-          {/* Feedback Banners */}
           {kbActionSuccess && (
             <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2.5 text-xs text-emerald-300 animate-in fade-in">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -2041,7 +1969,6 @@ https://leadgen.local`,
             </div>
           )}
 
-          {/* CARD 1: COMPANY IDENTITY & CREDENTIALS */}
           <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-200 uppercase tracking-wider">
@@ -2140,7 +2067,6 @@ https://leadgen.local`,
             </div>
           </div>
 
-          {/* CARD 2: SERVICES & SOLUTION OFFERINGS CATALOG */}
           <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
               <div>
@@ -2232,7 +2158,6 @@ https://leadgen.local`,
             </div>
           </div>
 
-          {/* CARD 3: LIVE DISCOVERY PITCH SANDBOX PREVIEW */}
           <div className="p-5 rounded-xl bg-purple-950/20 border border-purple-500/20 space-y-3">
             <div className="flex items-center gap-2 text-xs font-bold text-purple-300 uppercase tracking-wider">
               <Sparkles className="w-4 h-4 text-purple-400" />
@@ -2265,14 +2190,10 @@ https://leadgen.local`,
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TAB 3: GLOBAL EMAIL TEMPLATE & SIGNATURE MANAGEMENT                       */}
-      {/* ========================================================================= */}
       {activeTab === "template" && (
         <div className="rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 p-6 sm:p-7 shadow-xl space-y-6 relative overflow-hidden animate-in fade-in duration-200">
           <div className="absolute top-0 right-0 w-80 h-80 bg-sky-500/5 rounded-full blur-3xl pointer-events-none" />
 
-          {/* Section Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-slate-800">
             <div>
               <div className="flex items-center gap-2.5">
@@ -2307,9 +2228,8 @@ https://leadgen.local`,
             )}
           </div>
 
-          {/* Form & Live Preview Grid */}
           <form onSubmit={handleSaveTemplate} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Column: Template Form */}
+
             <div className="lg:col-span-7 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
@@ -2338,7 +2258,6 @@ https://leadgen.local`,
                 />
               </div>
 
-              {/* Dynamic Signature Cards Integration */}
               <div className="pt-2 border-t border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -2386,7 +2305,6 @@ https://leadgen.local`,
               </div>
             </div>
 
-            {/* Right Column: Live Rendered Preview */}
             <div className="lg:col-span-5 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
@@ -2419,7 +2337,6 @@ https://leadgen.local`,
                 </div>
               </div>
 
-
               <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 font-mono text-[11px] text-slate-300 whitespace-pre-wrap leading-relaxed shadow-inner max-h-[500px] overflow-y-auto">
                 <div className="text-amber-300/90 pb-2 mb-2 border-b border-slate-800/80 font-bold">
                   {renderedPreview.subject}
@@ -2431,12 +2348,9 @@ https://leadgen.local`,
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TAB 4: MULTI-SMTP 20X INBOXES & PERSONA SIGNATURES LIVE MONITOR           */}
-      {/* ========================================================================= */}
       {activeTab === "inboxes" && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          {/* Header Card */}
+
           <div className="rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 p-6 shadow-xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -2500,7 +2414,6 @@ https://leadgen.local`,
             </div>
           </div>
 
-          {/* Active Inboxes Table */}
           <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
@@ -2600,7 +2513,6 @@ https://leadgen.local`,
             </div>
           </div>
 
-          {/* Multi-Card Note Signatures Pool */}
           <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-6 shadow-xl space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -2642,7 +2554,7 @@ https://leadgen.local`,
                           : "bg-slate-950/40 border-slate-800/40 opacity-70"
                       }`}
                     >
-                      {/* Card Top */}
+
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-xs font-bold text-white truncate">
@@ -2659,7 +2571,6 @@ https://leadgen.local`,
                           </span>
                         </div>
 
-                        {/* Actions */}
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
@@ -2707,12 +2618,10 @@ https://leadgen.local`,
                         </div>
                       </div>
 
-                      {/* Note Content Box */}
                       <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800/80 font-mono text-[11px] text-slate-300 whitespace-pre-wrap leading-relaxed shadow-inner max-h-44 overflow-y-auto select-text">
                         {content || <span className="text-slate-600 italic">No signature note content</span>}
                       </div>
 
-                      {/* Card Footer */}
                       <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono pt-1 border-t border-slate-800/50">
                         <span>Card #{idx + 1}</span>
                         <span>{isActive ? "Included in rotation" : "Excluded"}</span>
@@ -2731,8 +2640,6 @@ https://leadgen.local`,
             )}
           </div>
 
-
-          {/* Super Admin Database Control & Storage Purge Panel */}
           {isSuperAdmin && (
             <div className="rounded-2xl bg-gradient-to-b from-rose-950/20 to-slate-950 border border-rose-500/20 p-6 shadow-xl space-y-4">
               <div className="flex items-center justify-between">
@@ -2820,9 +2727,6 @@ https://leadgen.local`,
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL 1: ADD SMTP INBOX                                                   */}
-      {/* ========================================================================= */}
       {showAddInboxModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
@@ -2910,7 +2814,6 @@ https://leadgen.local`,
                 </div>
               </div>
 
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
@@ -2979,9 +2882,6 @@ https://leadgen.local`,
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MODAL 2: ADD / EDIT SIGNATURE CARD (FREEFORM NOTE BOX)                   */}
-      {/* ========================================================================= */}
       {showAddPersonaModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
@@ -3085,10 +2985,6 @@ https://leadgen.local`,
         </div>
       )}
 
-
-      {/* ========================================================================= */}
-      {/* MODAL 3: SUPER ADMIN DATABASE PURGE CONFIRMATION                          */}
-      {/* ========================================================================= */}
       {showPurgeModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
@@ -3152,4 +3048,3 @@ https://leadgen.local`,
     </div>
   );
 }
-

@@ -67,11 +67,8 @@ export default function AutopilotPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Active Tab for Pipeline Stages
-  // "ready" | "sent" | "review" | "hot_deals"
   const [activeStage, setActiveStage] = useState<"ready" | "sent" | "review" | "hot_deals">("ready");
 
-  // Autopilot Campaign Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [cName, setCName] = useState("");
   const [cKeywords, setCKeywords] = useState("Software Agency, Web Development");
@@ -86,16 +83,13 @@ export default function AutopilotPage() {
   const [creatingCampaign, setCreatingCampaign] = useState(false);
   const [runningBatchId, setRunningBatchId] = useState<string | null>(null);
 
-  // Inline Review Edit
   const [reviewEmailInput, setReviewEmailInput] = useState<Record<string, string>>({});
   const [verifyingLeadId, setVerifyingLeadId] = useState<string | null>(null);
 
-  // Simulate Reply Modal
   const [replyLead, setReplyLead] = useState<Lead | null>(null);
   const [replyText, setReplyText] = useState("Yes, please send me details about your pricing and service offer.");
   const [simulatingReply, setSimulatingReply] = useState(false);
 
-  // Notification Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -128,9 +122,6 @@ export default function AutopilotPage() {
     setCurrentUser(user);
     loadData();
 
-    // Dynamically adjust polling interval:
-    // If any campaign is running, poll every 3 seconds so the user sees live progressive updates!
-    // Otherwise poll every 20 seconds.
     const isAnyRunning = campaigns.some((c) => c.status === "RUNNING") || runningBatchId !== null;
     const intervalMs = isAnyRunning ? 3000 : 20000;
 
@@ -138,7 +129,6 @@ export default function AutopilotPage() {
     return () => clearInterval(interval);
   }, [loadData, campaigns, runningBatchId]);
 
-  // Handle Sub-city tag addition
   const handleAddSubCity = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault();
@@ -154,7 +144,6 @@ export default function AutopilotPage() {
     setCSubCities(cSubCities.filter((c) => c !== tag));
   };
 
-  // Create Campaign
   const handleCreateCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hasPermission(currentUser, "can_create_autopilot_campaigns", false)) {
@@ -190,7 +179,6 @@ export default function AutopilotPage() {
     }
   };
 
-  // Run Campaign Cycle Now (1-Click Across ALL Sub-Locations)
   const handleRunNow = async (id: string, name: string) => {
     if (!hasPermission(currentUser, "can_run_autopilot_cycle", false)) {
       showToast("Permission Denied: Triggering search cycles is controlled by Super Admin.");
@@ -210,7 +198,6 @@ export default function AutopilotPage() {
     }
   };
 
-  // Toggle Campaign Active/Pause
   const handleToggleActive = async (id: string, currentActive: boolean) => {
     try {
       await toggleAutopilotCampaign(id, !currentActive);
@@ -221,7 +208,6 @@ export default function AutopilotPage() {
     }
   };
 
-  // Delete Campaign
   const handleDeleteCampaign = async (id: string) => {
     if (!confirm("Are you sure you want to delete this campaign?")) return;
     try {
@@ -233,7 +219,6 @@ export default function AutopilotPage() {
     }
   };
 
-  // Verify Lead Email (Human Review)
   const handleVerifyLead = async (leadId: string) => {
     if (!hasPermission(currentUser, "can_verify_autopilot_leads", false)) {
       showToast("Permission Denied: Quality review and lead approval is controlled by Super Admin.");
@@ -256,7 +241,6 @@ export default function AutopilotPage() {
     }
   };
 
-  // Simulate Incoming Reply
   const handleSimulateReplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!replyLead) return;
@@ -277,7 +261,6 @@ export default function AutopilotPage() {
     }
   };
 
-  // Filter Leads by Stage
   const isNeedsReview = (l: Lead) => {
     return (
       l.email_status === "NEEDS_REVIEW" ||
@@ -312,7 +295,7 @@ export default function AutopilotPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
-      {/* Toast Notification */}
+
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-sky-500/50 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-sm animate-in slide-in-from-bottom duration-200">
           <Sparkles className="w-4 h-4 text-sky-400 shrink-0" />
@@ -320,7 +303,6 @@ export default function AutopilotPage() {
         </div>
       )}
 
-      {/* Header & Anti-Spam Engine Status Bar */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
         <div>
           <div className="flex items-center gap-2.5">
@@ -341,7 +323,6 @@ export default function AutopilotPage() {
           </div>
         </div>
 
-        {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={() => {
@@ -375,7 +356,6 @@ export default function AutopilotPage() {
         </div>
       </div>
 
-      {/* Anti-Spam Protection Badges Ribbon */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs">
           <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -400,9 +380,8 @@ export default function AutopilotPage() {
         </div>
       </div>
 
-      {/* Top Executive KPI Cards (Super Admin Live Analytics) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Leads Discovered */}
+
         <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 shadow-xl relative overflow-hidden group">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Total Discovered</span>
@@ -416,7 +395,6 @@ export default function AutopilotPage() {
           </div>
         </div>
 
-        {/* Card 2: Ready for Outreach */}
         <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 shadow-xl relative overflow-hidden group">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Ready for Mail</span>
@@ -430,7 +408,6 @@ export default function AutopilotPage() {
           </div>
         </div>
 
-        {/* Card 3: Dispatched Emails */}
         <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 shadow-xl relative overflow-hidden group">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Emails Sent</span>
@@ -444,7 +421,6 @@ export default function AutopilotPage() {
           </div>
         </div>
 
-        {/* Card 4: Hot Deals & Positive Replies */}
         <div className="p-5 rounded-2xl bg-gradient-to-b from-rose-950/20 via-slate-900 to-slate-950 border border-rose-500/30 shadow-xl relative overflow-hidden group">
           <div className="flex items-center justify-between text-rose-300 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1">
@@ -464,7 +440,6 @@ export default function AutopilotPage() {
         </div>
       </div>
 
-      {/* Active Campaigns Management Section */}
       <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-5 shadow-xl space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -528,7 +503,6 @@ export default function AutopilotPage() {
                   </span>
                 </div>
 
-                {/* Target Sub-Locations */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
                     <span className="uppercase">Target Sub-Locations ({camp.sub_cities?.length || 0}):</span>
@@ -546,7 +520,6 @@ export default function AutopilotPage() {
                   </div>
                 </div>
 
-                {/* Stats Grid */}
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/60 text-xs">
                   <div>
                     <span className="text-[10px] text-slate-400 block">Found:</span>
@@ -558,7 +531,6 @@ export default function AutopilotPage() {
                   </div>
                 </div>
 
-                {/* Actions */}
                 <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
                   {hasPermission(currentUser, "can_run_autopilot_cycle", false) ? (
                     <button
@@ -613,7 +585,6 @@ export default function AutopilotPage() {
         )}
       </div>
 
-      {/* Master Leads CRM Pipeline & Dispatch Hub Showcase */}
       <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950/40 border border-slate-800 p-6 shadow-xl space-y-5">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
           <div>
@@ -634,9 +605,8 @@ export default function AutopilotPage() {
           </Link>
         </div>
 
-        {/* 3 Streamlined Pipeline Cards with Direct Links */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* Card 1: All Leads */}
+
           <Link
             href="/leads"
             className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-amber-500/40 hover:bg-amber-500/5 transition group space-y-2 block"
@@ -652,7 +622,6 @@ export default function AutopilotPage() {
             </div>
           </Link>
 
-          {/* Card 2: Autopilot Cold Mail */}
           <Link
             href="/leads?pipeline=autopilot"
             className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-sky-500/40 hover:bg-sky-500/5 transition group space-y-2 block"
@@ -668,7 +637,6 @@ export default function AutopilotPage() {
             </div>
           </Link>
 
-          {/* Card 3: Hot Deals */}
           <Link
             href="/leads?pipeline=hot_deals"
             className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-rose-500/40 hover:bg-rose-500/5 transition group space-y-2 block"
@@ -685,7 +653,6 @@ export default function AutopilotPage() {
           </Link>
         </div>
 
-        {/* Anti-Spam Safety & Rate Guard Status */}
         <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 text-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center shrink-0">
@@ -710,7 +677,6 @@ export default function AutopilotPage() {
         </div>
       </div>
 
-      {/* Live Activity Stream Feed Ticker */}
       <div className="rounded-2xl bg-slate-900/60 border border-slate-800/80 p-5 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -770,7 +736,6 @@ export default function AutopilotPage() {
         </div>
       </div>
 
-      {/* MODAL: CREATE AUTOPILOT CAMPAIGN */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-5 shadow-2xl relative">
@@ -795,7 +760,7 @@ export default function AutopilotPage() {
             </div>
 
             <form onSubmit={handleCreateCampaign} className="space-y-4">
-              {/* Field 1: Campaign Name */}
+
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">
                   Campaign Name
@@ -810,7 +775,6 @@ export default function AutopilotPage() {
                 />
               </div>
 
-              {/* Field 2: Business Keywords */}
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">
                   Target Business Keywords / Topics (comma-separated)
@@ -825,7 +789,6 @@ export default function AutopilotPage() {
                 />
               </div>
 
-              {/* Field 3: Country */}
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">
                   Target Country
@@ -840,7 +803,6 @@ export default function AutopilotPage() {
                 />
               </div>
 
-              {/* Field 4: Sub-cities Multi-Tag Input */}
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">
                   Sub-Cities & Areas (Type area and press Enter)
@@ -872,7 +834,6 @@ export default function AutopilotPage() {
                 </div>
               </div>
 
-              {/* Field 5: Daily Limit & Unlimited Toggle */}
               <div className="grid grid-cols-2 gap-4 items-center pt-2">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">
@@ -903,7 +864,6 @@ export default function AutopilotPage() {
                 </div>
               </div>
 
-              {/* Field 6: Auto-Mail Toggle */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <div>
                   <span className="text-xs font-semibold text-white block">Auto-Dispatch Emails</span>
@@ -919,7 +879,6 @@ export default function AutopilotPage() {
                 />
               </div>
 
-              {/* Field 7: Global Template vs AI Pitch Toggle */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <div>
                   <div className="flex items-center gap-2">
@@ -942,7 +901,6 @@ export default function AutopilotPage() {
                 />
               </div>
 
-              {/* Field 8: Company KB vs Generic AI Mode Toggle */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <div>
                   <div className="flex items-center gap-2">
@@ -986,7 +944,6 @@ export default function AutopilotPage() {
         </div>
       )}
 
-      {/* MODAL: SIMULATE CLIENT REPLY */}
       {replyLead && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-2xl">
@@ -1014,7 +971,6 @@ export default function AutopilotPage() {
                 />
               </div>
 
-              {/* Quick Presets */}
               <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"

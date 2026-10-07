@@ -1,8 +1,3 @@
-"""
-Company Knowledge Base & Service Catalog Model
-Enables multi-tenant, white-labeled, or custom agency knowledge base management.
-Allows toggling between branded company outreach and generic AI mode.
-"""
 import uuid
 from typing import Optional, List, Dict, Any
 from sqlalchemy import String, Text, Boolean
@@ -43,12 +38,7 @@ DEFAULT_SERVICES: List[Dict[str, Any]] = [
     },
 ]
 
-
 class CompanyKB(Base, UUIDMixin, TimestampMixin):
-    """
-    Company Knowledge Base & Custom Solutions Catalog.
-    Stored and configured via the Admin Portal.
-    """
     __tablename__ = "company_kb"
 
     company_name: Mapped[str] = mapped_column(String(255), default="Enterprise Solutions", nullable=False)

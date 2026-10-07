@@ -1,21 +1,16 @@
-"""
-Parameter & Business Type Mapping Models (135 Parameters Seedable)
-"""
 from typing import List, Optional
 from sqlalchemy import String, Text, Float, Integer, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin, UUIDMixin
 
-
 class Parameter(Base, TimestampMixin):
-    """135 Parameter catalog definition."""
     __tablename__ = "parameters"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)  # 1 through 135
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    category: Mapped[str] = mapped_column(String(100), nullable=False, index=True)  # Cat A through Cat M
-    detection_type: Mapped[str] = mapped_column(String(50), nullable=False)  # OBSERVABLE, INFERABLE, INTERNAL
+    category: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    detection_type: Mapped[str] = mapped_column(String(50), nullable=False)
     default_weight: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -27,9 +22,7 @@ class Parameter(Base, TimestampMixin):
         Index("idx_parameter_detection", "detection_type"),
     )
 
-
 class BusinessType(Base, UUIDMixin, TimestampMixin):
-    """Classified business categories (construction, real_estate, clinic, restaurant, etc.)."""
     __tablename__ = "business_types"
 
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
@@ -38,9 +31,7 @@ class BusinessType(Base, UUIDMixin, TimestampMixin):
 
     parameter_mappings: Mapped[List["BusinessTypeParameter"]] = relationship("BusinessTypeParameter", back_populates="business_type")
 
-
 class BusinessTypeParameter(Base, TimestampMixin):
-    """Maps which of the 135 parameters apply to a business type with custom weight and priority."""
     __tablename__ = "business_type_parameters"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

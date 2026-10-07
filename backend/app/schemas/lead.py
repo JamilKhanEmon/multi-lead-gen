@@ -1,11 +1,7 @@
-"""
-Lead, Score, and Feedback Pydantic Schemas
-"""
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-
 
 class LeadScoreResponse(BaseModel):
     evidence_quality: float
@@ -19,11 +15,9 @@ class LeadScoreResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class LeadFeedbackCreate(BaseModel):
-    action: str = Field(..., example="APPROVED")  # APPROVED, REJECTED, WRONG_WEAKNESS, WRONG_SERVICE, INSUFFICIENT_EVIDENCE
+    action: str = Field(..., example="APPROVED")
     notes: Optional[str] = None
-
 
 class LeadFeedbackResponse(BaseModel):
     id: uuid.UUID
@@ -33,7 +27,6 @@ class LeadFeedbackResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class LeadResponse(BaseModel):
     id: uuid.UUID
@@ -48,10 +41,10 @@ class LeadResponse(BaseModel):
     domain: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
-    email_status: Optional[str] = "UNVERIFIED"  # VALID, NEEDS_REVIEW, INVALID, UNVERIFIED
+    email_status: Optional[str] = "UNVERIFIED"
     verification_notes: Optional[str] = None
-    outreach_status: Optional[str] = "PENDING"  # PENDING, READY_FOR_OUTREACH, NEEDS_REVIEW, SENT, FOLLOWUP_SENT, REPLIED_HOT
-    deal_status: Optional[str] = "COLD"  # COLD, IN_PIPELINE, HOT_LEAD, CLOSED_WON, CLOSED_LOST
+    outreach_status: Optional[str] = "PENDING"
+    deal_status: Optional[str] = "COLD"
     followup_step: Optional[int] = 0
     last_contacted_at: Optional[datetime] = None
     contact_person: Optional[str] = None
@@ -71,7 +64,6 @@ class LeadResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class EvidenceItemResponse(BaseModel):
     parameter_id: int
     parameter_name: Optional[str] = None
@@ -88,7 +80,6 @@ class EvidenceItemResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class ResearchJobSummaryResponse(BaseModel):
     id: uuid.UUID
     task_type: str
@@ -100,7 +91,6 @@ class ResearchJobSummaryResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class LeadDetailResponse(LeadResponse):
     business_name: str
@@ -123,7 +113,6 @@ class LeadDetailResponse(LeadResponse):
     outreach_status: Optional[str] = None
     deal_status: Optional[str] = None
 
-
 class LeadUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -139,7 +128,6 @@ class LeadUpdate(BaseModel):
     matched_service: Optional[str] = None
     approve_for_outreach: Optional[bool] = None
     outreach_status: Optional[str] = None
-
 
 class StaggeredDispatchCreate(BaseModel):
     lead_ids: Optional[List[uuid.UUID]] = None
