@@ -1,0 +1,60 @@
+name: CI/CD Pipeline - Build, Test & Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.repository == 'NIBIZ-SOFT/leadgenai'
+    steps:
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          timeout: 120s
+          command_timeout: 30m
+          envs: ENV_FILE
+          script: |
+            set -e
+            DEPLOY_PATH="${{ secrets.VPS_DEPLOY_PATH || '/var/www/leadgenai' }}"
+            
+            echo "==> Deploying to $DEPLOY_PATH on VPS..."
+            
+            if [ ! -d "$DEPLOY_PATH" ]; then
+              echo "Directory does not exist. Cloning repository..."
+              git clone https://github.com/NIBIZ-SOFT/leadgenai.git "$DEPLOY_PATH"
+              cd "$DEPLOY_PATH"
+            else
+              cd "$DEPLOY_PATH"
+              echo "Fetching latest changes..."
+              git fetch --all
+              git reset --hard origin/main || git reset --hard origin/master
+            fi
+
+            if [ -n "$ENV_FILE" ]; then
+              echo "==> Updating .env from GitHub Secrets..."
+              printf '%s\n' "$ENV_FILE" > "$DEPLOY_PATH/.env"
+            fi
+
+            echo "==> Building and starting production containers..."
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+
+            docker image prune -f
+
+            echo "==> Deployment Successfully Completed!"

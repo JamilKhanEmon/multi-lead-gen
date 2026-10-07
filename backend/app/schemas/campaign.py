@@ -1,9 +1,5 @@
-"""
-Pydantic Schemas for Meta B2B Campaigns, Intelligence, and Funnel Configs.
-"""
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
-
 
 class MetaTargetingConfig(BaseModel):
     job_titles: List[str] = Field(default_factory=list)
@@ -13,7 +9,6 @@ class MetaTargetingConfig(BaseModel):
     age_min: int = 24
     age_max: int = 65
 
-
 class CompetitorAdInsight(BaseModel):
     brand_or_domain: str
     headline: str
@@ -22,13 +17,11 @@ class CompetitorAdInsight(BaseModel):
     days_running: int = 30
     engagement_signal: str = "High"
 
-
 class CompetitorMarketAnalysis(BaseModel):
     scraped_competitors: List[CompetitorAdInsight] = Field(default_factory=list)
     market_pain_points: List[str] = Field(default_factory=list)
     winning_angles: List[str] = Field(default_factory=list)
     recommended_positioning: str = ""
-
 
 class Post1Creative(BaseModel):
     hooks: List[str] = Field(default_factory=list)
@@ -38,7 +31,6 @@ class Post1Creative(BaseModel):
     headline: str = ""
     video_url: Optional[str] = None
 
-
 class Post2Creative(BaseModel):
     retargeting_copy: str = ""
     offer_headline: str = ""
@@ -47,14 +39,12 @@ class Post2Creative(BaseModel):
     whatsapp_number: str = ""
     prefill_message: str = ""
 
-
 class CampaignResearchRequest(BaseModel):
     service_name: str
     industry: str
     target_location: str
     pain_point: Optional[str] = None
     core_offer: Optional[str] = None
-
 
 class CampaignCreativeGenerateRequest(BaseModel):
     service_name: str
@@ -63,7 +53,6 @@ class CampaignCreativeGenerateRequest(BaseModel):
     pain_point: str
     core_offer: str
     competitor_insights: Optional[Dict[str, Any]] = None
-
 
 class CampaignCreate(BaseModel):
     name: str
@@ -79,7 +68,6 @@ class CampaignCreate(BaseModel):
     budget_daily_bdt: float = 500.0
     retargeting_enabled: bool = True
     retargeting_threshold_pct: int = 50
-
 
 class CampaignResponse(BaseModel):
     id: str

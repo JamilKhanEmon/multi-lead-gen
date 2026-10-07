@@ -1,10 +1,8 @@
-"""
-Admin Monitoring & System Health Endpoints
-"""
 import time
 import socket
-from typing import Dict
-from fastapi import APIRouter, Depends
+import uuid
+from typing import Dict, Optional, List
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text, func
 from sqlalchemy.future import select
@@ -13,7 +11,8 @@ from app.core.config import settings
 from app.models.lead import Lead
 from app.models.research import ResearchRun
 from app.models.audit import User
-from app.models.email_template import EmailTemplate
+from app.models.email_template import EmailTemplate, SMTPInbox, PersonaSignature
+from app.models.company_kb import CompanyKB, DEFAULT_SERVICES
 from app.schemas.admin import (
     SystemHealthResponse,
     SystemMetricsResponse,
@@ -21,12 +20,17 @@ from app.schemas.admin import (
     EmailTemplateResponse,
     EmailTemplateUpdate,
     EmailPreviewRequest,
+    PersonaSignatureCreate,
+    PersonaSignatureUpdate,
+    PersonaSignatureResponse,
+    CompanyKBResponse,
+    CompanyKBUpdate,
 )
 import redis.asyncio as aioredis
 import httpx
+import smtplib
 
 router = APIRouter(prefix="/admin", tags=["Admin & Health"])
-
 
 def check_port(host: str, port: int, timeout: float = 1.0) -> bool:
     try:
@@ -35,17 +39,14 @@ def check_port(host: str, port: int, timeout: float = 1.0) -> bool:
     except (socket.timeout, ConnectionRefusedError, OSError):
         return False
 
-
 @router.get("/health", response_model=SystemHealthResponse)
 async def get_system_health(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    """Deep health check across Postgres, Redis, Ollama, and OpenClaw Gateway."""
     components: Dict[str, ComponentHealth] = {}
     overall_healthy = True
 
-    # 1. PostgreSQL
     t0 = time.time()
     try:
         await db.execute(text("SELECT 1;"))
@@ -55,7 +56,6 @@ async def get_system_health(
         overall_healthy = False
         components["postgresql"] = ComponentHealth(status="down", details={"error": str(e)})
 
-    # 2. Redis
     t0 = time.time()
     try:
         r = aioredis.from_url(settings.REDIS_URL, socket_timeout=1.0)
@@ -67,7 +67,6 @@ async def get_system_health(
         overall_healthy = False
         components["redis"] = ComponentHealth(status="down", details={"error": str(e)})
 
-    # 3. Ollama
     t0 = time.time()
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
@@ -84,7 +83,6 @@ async def get_system_health(
     except Exception as e:
         components["ollama"] = ComponentHealth(status="down", details={"error": str(e)})
 
-    # 4. OpenClaw Gateway
     oc_open = check_port("127.0.0.1", 18789, timeout=1.0)
     if oc_open:
         components["openclaw"] = ComponentHealth(status="healthy", details={"endpoint": settings.OPENCLAW_GATEWAY_URL})
@@ -96,14 +94,11 @@ async def get_system_health(
         components=components,
     )
 
-
 @router.get("/metrics", response_model=SystemMetricsResponse)
 async def get_system_metrics(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    """Retrieve operational queue depth and pipeline metrics."""
-    # Redis queue depth
     queue_len = 0
     try:
         r = aioredis.from_url(settings.REDIS_URL, socket_timeout=1.0)
@@ -112,7 +107,6 @@ async def get_system_metrics(
     except Exception:
         pass
 
-    # DB Counts
     runs_res = await db.execute(select(func.count()).select_from(ResearchRun).where(ResearchRun.status == "RUNNING"))
     active_runs = runs_res.scalar_one() or 0
 
@@ -130,14 +124,12 @@ async def get_system_metrics(
         worker_concurrency=settings.WORKER_CONCURRENCY,
     )
 
-
 @router.post("/reset-database")
 async def reset_database(
     purge_businesses: bool = True,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    """Purges operational lead generation data from PostgreSQL while keeping system parameters and services."""
     await db.execute(text("DELETE FROM lead_feedback;"))
     await db.execute(text("DELETE FROM lead_scores;"))
     await db.execute(text("DELETE FROM service_matches;"))
@@ -153,11 +145,6 @@ async def reset_database(
     await db.commit()
     return {"status": "SUCCESS", "message": "Database reset successfully. System parameters and services preserved."}
 
-
-# ==============================================================================
-# GLOBAL OUTREACH EMAIL TEMPLATE & SIGNATURE MANAGEMENT
-# ==============================================================================
-
 DEFAULT_EMAIL_SUBJECT = "Quick inquiry regarding your office in {{location}}"
 DEFAULT_EMAIL_BODY = """Dear {{contact_person}},
 
@@ -168,7 +155,6 @@ Today, over 70% of potential clients search and evaluate businesses on mobile de
 We help leading businesses like {{company_name}} resolve these technical gaps within 48 hours to significantly increase direct client inquiries. Would you be open to a brief 3-minute discussion or a quick preview of the tailored recommendations we prepared for you?
 
 {{signature}}"""
-
 
 def serialize_template(tpl: EmailTemplate) -> EmailTemplateResponse:
     return EmailTemplateResponse(
@@ -190,12 +176,10 @@ def serialize_template(tpl: EmailTemplate) -> EmailTemplateResponse:
         updated_at=tpl.updated_at.isoformat() if tpl.updated_at else None,
     )
 
-
 @router.get("/email-template", response_model=EmailTemplateResponse)
 async def get_email_template(
     db: AsyncSession = Depends(get_db),
 ):
-    """Retrieve the active global email outreach template & signature for all users."""
     stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
     res = await db.execute(stmt)
     tpl = res.scalar_one_or_none()
@@ -221,14 +205,12 @@ async def get_email_template(
 
     return serialize_template(tpl)
 
-
 @router.put("/email-template", response_model=EmailTemplateResponse)
 async def update_email_template(
     update_data: EmailTemplateUpdate,
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
-    """Update global email outreach template & signature for all users across the platform."""
     stmt = select(EmailTemplate).where(EmailTemplate.name == "default")
     res = await db.execute(stmt)
     tpl = res.scalar_one_or_none()
@@ -275,13 +257,11 @@ async def update_email_template(
     await db.refresh(tpl)
     return serialize_template(tpl)
 
-
 @router.post("/email-template/preview")
 async def preview_email_template(
     preview_req: EmailPreviewRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Interpolates template tags with real or sample lead data for instant preview."""
     subject = preview_req.subject or DEFAULT_EMAIL_SUBJECT
     body = preview_req.body or DEFAULT_EMAIL_BODY
 
@@ -345,4 +325,486 @@ async def preview_email_template(
         "rendered_body": rendered_body,
         "signature_block": sig,
     }
+
+from pydantic import BaseModel, Field
+
+class SMTPInboxCreate(BaseModel):
+    host: str
+    port: int = 587
+    username: str
+    password: str
+    from_email: str
+    from_name: str = "Growth Team"
+    daily_limit: int = 30
+    is_active: bool = True
+
+class SMTPInboxUpdate(BaseModel):
+    host: Optional[str] = None
+    port: Optional[int] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    from_email: Optional[str] = None
+    from_name: Optional[str] = None
+    daily_limit: Optional[int] = None
+    is_active: Optional[bool] = None
+
+class PurgeRequest(BaseModel):
+    target: str = Field(..., description="rejected_leads | search_runs | all_leads | factory_reset")
+
+@router.get("/inbox-monitor")
+async def get_inbox_monitor_stats(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    from app.engine.outreach_engine import OutreachEngine
+    
+    db_inboxes_stmt = select(SMTPInbox).order_by(SMTPInbox.created_at)
+    res = await db.execute(db_inboxes_stmt)
+    db_inboxes = res.scalars().all()
+    
+    inbox_list = []
+    if db_inboxes:
+        for idx, ib in enumerate(db_inboxes):
+            sent_today = OutreachEngine.INBOX_STATS.get(str(ib.id), 0)
+            inbox_list.append({
+                "id": str(ib.id),
+                "index": idx + 1,
+                "host": ib.host,
+                "port": ib.port,
+                "user": ib.username,
+                "from_email": ib.from_email,
+                "from_name": ib.from_name,
+                "daily_limit": ib.daily_limit,
+                "sent_today": sent_today,
+                "remaining": max(0, ib.daily_limit - sent_today),
+                "is_active": ib.is_active,
+                "status": "HEALTHY" if sent_today < ib.daily_limit else "DAILY_CAP_REACHED"
+            })
+    else:
+        env_inboxes = OutreachEngine.get_active_smtp_inboxes()
+        for ib in env_inboxes:
+            ib_id = ib["id"]
+            sent_today = OutreachEngine.INBOX_STATS.get(str(ib_id), 0)
+            inbox_list.append({
+                "id": str(ib_id),
+                "index": ib_id,
+                "host": ib["host"],
+                "port": ib["port"],
+                "user": ib["user"],
+                "from_email": ib["from_email"],
+                "from_name": ib["from_name"],
+                "daily_limit": ib.get("daily_limit", 30),
+                "sent_today": sent_today,
+                "remaining": max(0, ib.get("daily_limit", 30) - sent_today),
+                "is_active": True,
+                "status": "HEALTHY" if sent_today < ib.get("daily_limit", 30) else "DAILY_CAP_REACHED"
+            })
+
+    db_personas_stmt = select(PersonaSignature).order_by(PersonaSignature.created_at.desc())
+    p_res = await db.execute(db_personas_stmt)
+    db_personas = p_res.scalars().all()
+    
+    persona_list = []
+    if db_personas:
+        for p in db_personas:
+            persona_list.append({
+                "id": str(p.id),
+                "title": p.title or "Signature Note",
+                "raw_content": p.raw_content if (p.raw_content and p.raw_content.strip()) else p.render_signature(),
+                "name": p.name or "",
+                "company": p.company or "",
+                "is_active": p.is_active,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            })
+
+    return {
+        "total_inboxes_configured": len(inbox_list),
+        "inboxes": inbox_list,
+        "persona_signatures": persona_list,
+    }
+
+@router.post("/smtp-inboxes")
+async def create_smtp_inbox(
+    data: SMTPInboxCreate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    inbox = SMTPInbox(
+        host=data.host,
+        port=data.port,
+        username=data.username,
+        password=data.password,
+        from_email=data.from_email,
+        from_name=data.from_name,
+        daily_limit=data.daily_limit,
+        is_active=data.is_active,
+    )
+    db.add(inbox)
+    await db.commit()
+    await db.refresh(inbox)
+    return {"status": "SUCCESS", "id": str(inbox.id), "message": "SMTP Inbox added successfully"}
+
+@router.put("/smtp-inboxes/{inbox_id}")
+async def update_smtp_inbox(
+    inbox_id: uuid.UUID,
+    data: SMTPInboxUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(SMTPInbox).where(SMTPInbox.id == inbox_id)
+    res = await db.execute(stmt)
+    inbox = res.scalar_one_or_none()
+    if not inbox:
+        raise HTTPException(status_code=404, detail="SMTP Inbox not found")
+
+    for key, val in data.model_dump(exclude_unset=True).items():
+        setattr(inbox, key, val)
+
+    await db.commit()
+    await db.refresh(inbox)
+    return {"status": "SUCCESS", "message": "SMTP Inbox updated"}
+
+@router.delete("/smtp-inboxes/{inbox_id}")
+async def delete_smtp_inbox(
+    inbox_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(SMTPInbox).where(SMTPInbox.id == inbox_id)
+    res = await db.execute(stmt)
+    inbox = res.scalar_one_or_none()
+    if not inbox:
+        raise HTTPException(status_code=404, detail="SMTP Inbox not found")
+
+    await db.delete(inbox)
+    await db.commit()
+    return {"status": "SUCCESS", "message": "SMTP Inbox removed"}
+
+@router.post("/smtp-inboxes/{inbox_id}/test")
+async def test_smtp_inbox(
+    inbox_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(SMTPInbox).where(SMTPInbox.id == inbox_id)
+    res = await db.execute(stmt)
+    inbox = res.scalar_one_or_none()
+    if not inbox:
+        raise HTTPException(status_code=404, detail="SMTP Inbox not found")
+
+    import asyncio
+    loop = asyncio.get_running_loop()
+
+    def _test():
+        try:
+            if inbox.port == 465:
+                server = smtplib.SMTP_SSL(inbox.host, inbox.port, timeout=10)
+            else:
+                server = smtplib.SMTP(inbox.host, inbox.port, timeout=10)
+                server.starttls()
+
+            if inbox.username and inbox.password:
+                server.login(inbox.username, inbox.password)
+            server.quit()
+            return True, "SMTP connection and authentication successful!"
+        except Exception as e:
+            return False, str(e)
+
+    ok, msg = await loop.run_in_executor(None, _test)
+    if not ok:
+        raise HTTPException(status_code=400, detail=f"SMTP Connection Failed: {msg}")
+    return {"status": "SUCCESS", "message": msg}
+
+@router.get("/persona-signatures")
+async def get_persona_signatures(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(PersonaSignature).order_by(PersonaSignature.created_at.desc())
+    res = await db.execute(stmt)
+    personas = res.scalars().all()
+    return [
+        {
+            "id": str(p.id),
+            "title": p.title or "Signature Note",
+            "raw_content": p.raw_content if (p.raw_content and p.raw_content.strip()) else p.render_signature(),
+            "name": p.name or "",
+            "company": p.company or "",
+            "is_active": p.is_active,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in personas
+    ]
+
+@router.post("/persona-signatures")
+async def create_persona_signature(
+    data: PersonaSignatureCreate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    persona = PersonaSignature(
+        title=data.title or "Signature Note",
+        raw_content=data.raw_content.strip(),
+        is_active=data.is_active,
+    )
+    db.add(persona)
+    await db.commit()
+    await db.refresh(persona)
+    return {
+        "status": "SUCCESS",
+        "id": str(persona.id),
+        "message": "Signature Card created successfully",
+        "card": {
+            "id": str(persona.id),
+            "title": persona.title,
+            "raw_content": persona.raw_content,
+            "is_active": persona.is_active,
+            "created_at": persona.created_at.isoformat() if persona.created_at else None,
+        }
+    }
+
+@router.put("/persona-signatures/{persona_id}")
+async def update_persona_signature(
+    persona_id: uuid.UUID,
+    data: PersonaSignatureUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(PersonaSignature).where(PersonaSignature.id == persona_id)
+    res = await db.execute(stmt)
+    persona = res.scalar_one_or_none()
+    if not persona:
+        raise HTTPException(status_code=404, detail="Signature Card not found")
+
+    if data.title is not None:
+        persona.title = data.title
+    if data.raw_content is not None:
+        persona.raw_content = data.raw_content.strip()
+    if data.is_active is not None:
+        persona.is_active = data.is_active
+
+    await db.commit()
+    await db.refresh(persona)
+    return {
+        "status": "SUCCESS",
+        "message": "Signature Card updated successfully",
+        "card": {
+            "id": str(persona.id),
+            "title": persona.title,
+            "raw_content": persona.raw_content,
+            "is_active": persona.is_active,
+        }
+    }
+
+@router.patch("/persona-signatures/{persona_id}/toggle")
+async def toggle_persona_signature(
+    persona_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(PersonaSignature).where(PersonaSignature.id == persona_id)
+    res = await db.execute(stmt)
+    persona = res.scalar_one_or_none()
+    if not persona:
+        raise HTTPException(status_code=404, detail="Signature Card not found")
+
+    persona.is_active = not persona.is_active
+    await db.commit()
+    await db.refresh(persona)
+    return {
+        "status": "SUCCESS",
+        "is_active": persona.is_active,
+        "message": f"Signature Card {'activated' if persona.is_active else 'deactivated'}"
+    }
+
+@router.delete("/persona-signatures/{persona_id}")
+async def delete_persona_signature(
+    persona_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(PersonaSignature).where(PersonaSignature.id == persona_id)
+    res = await db.execute(stmt)
+    persona = res.scalar_one_or_none()
+    if not persona:
+        raise HTTPException(status_code=404, detail="Signature Card not found")
+
+    await db.delete(persona)
+    await db.commit()
+    return {"status": "SUCCESS", "message": "Signature Card deleted successfully"}
+
+@router.get("/company-kb", response_model=CompanyKBResponse)
+async def get_company_kb(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(CompanyKB).order_by(CompanyKB.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    kb = res.scalar_one_or_none()
+
+    if not kb:
+        kb = CompanyKB(
+            company_name="Enterprise Solutions",
+            tagline_experience="10+ years of digital transformation & custom software engineering",
+            headquarters="Dhaka, Bangladesh",
+            contact_phone=None,
+            contact_email=None,
+            website_url=None,
+            services_json=DEFAULT_SERVICES,
+            is_active=True,
+        )
+        db.add(kb)
+        await db.commit()
+        await db.refresh(kb)
+
+    return CompanyKBResponse(
+        id=str(kb.id),
+        company_name=kb.company_name,
+        tagline_experience=kb.tagline_experience,
+        headquarters=kb.headquarters,
+        contact_phone=kb.contact_phone,
+        contact_email=kb.contact_email,
+        website_url=kb.website_url,
+        services_json=kb.services_json or DEFAULT_SERVICES,
+        is_active=kb.is_active,
+        created_at=kb.created_at.isoformat() if kb.created_at else None,
+        updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
+    )
+
+@router.put("/company-kb", response_model=CompanyKBResponse)
+async def update_company_kb(
+    payload: CompanyKBUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(CompanyKB).order_by(CompanyKB.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    kb = res.scalar_one_or_none()
+
+    if not kb:
+        kb = CompanyKB()
+        db.add(kb)
+
+    if payload.company_name is not None:
+        kb.company_name = payload.company_name.strip()
+    if payload.tagline_experience is not None:
+        kb.tagline_experience = payload.tagline_experience.strip()
+    if payload.headquarters is not None:
+        kb.headquarters = payload.headquarters.strip() or None
+    if payload.contact_phone is not None:
+        kb.contact_phone = payload.contact_phone.strip() or None
+    if payload.contact_email is not None:
+        kb.contact_email = payload.contact_email.strip() or None
+    if payload.website_url is not None:
+        kb.website_url = payload.website_url.strip() or None
+    if payload.services_json is not None:
+        kb.services_json = payload.services_json
+    if payload.is_active is not None:
+        kb.is_active = payload.is_active
+
+    await db.commit()
+    await db.refresh(kb)
+
+    return CompanyKBResponse(
+        id=str(kb.id),
+        company_name=kb.company_name,
+        tagline_experience=kb.tagline_experience,
+        headquarters=kb.headquarters,
+        contact_phone=kb.contact_phone,
+        contact_email=kb.contact_email,
+        website_url=kb.website_url,
+        services_json=kb.services_json or DEFAULT_SERVICES,
+        is_active=kb.is_active,
+        created_at=kb.created_at.isoformat() if kb.created_at else None,
+        updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
+    )
+
+@router.post("/company-kb/reset-defaults", response_model=CompanyKBResponse)
+async def reset_company_kb_defaults(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(CompanyKB).order_by(CompanyKB.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    kb = res.scalar_one_or_none()
+
+    if not kb:
+        kb = CompanyKB()
+        db.add(kb)
+
+    kb.services_json = DEFAULT_SERVICES
+    await db.commit()
+    await db.refresh(kb)
+
+    return CompanyKBResponse(
+        id=str(kb.id),
+        company_name=kb.company_name,
+        tagline_experience=kb.tagline_experience,
+        headquarters=kb.headquarters,
+        contact_phone=kb.contact_phone,
+        contact_email=kb.contact_email,
+        website_url=kb.website_url,
+        services_json=kb.services_json or DEFAULT_SERVICES,
+        is_active=kb.is_active,
+        created_at=kb.created_at.isoformat() if kb.created_at else None,
+        updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
+    )
+
+@router.post("/purge-data")
+async def purge_database_data(
+    req: PurgeRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    if admin_user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="Only Super Administrator can perform database purges.")
+
+    from sqlalchemy import delete
+    from app.models.lead import Lead, LeadScore, LeadFeedback
+    from app.models.research import ResearchRun, ResearchJob
+    from app.models.autopilot import EmailOutreachLog, AutopilotCampaign
+    from app.models.business import Business, BusinessLocation
+    from app.models.evidence import Evidence
+    from app.models.service import ServiceMatch
+
+    target = req.target.lower().strip()
+
+    if target == "rejected_leads":
+        stmt = delete(Lead).where(Lead.tier == "Rejected")
+        res = await db.execute(stmt)
+        await db.commit()
+        return {"status": "SUCCESS", "message": f"Purged {res.rowcount} rejected leads."}
+
+    elif target == "search_runs":
+        await db.execute(delete(ResearchJob))
+        res = await db.execute(delete(ResearchRun))
+        await db.commit()
+        return {"status": "SUCCESS", "message": f"Cleared all search runs and history."}
+
+    elif target in ["all_leads", "factory_reset"]:
+        await db.execute(delete(EmailOutreachLog))
+        await db.execute(delete(LeadFeedback))
+        await db.execute(delete(LeadScore))
+        await db.execute(delete(ServiceMatch))
+        await db.execute(delete(Lead))
+        await db.execute(delete(ResearchJob))
+        await db.execute(delete(ResearchRun))
+        await db.execute(delete(AutopilotCampaign))
+        await db.execute(delete(Evidence))
+        await db.execute(delete(BusinessLocation))
+        await db.execute(delete(Business))
+        await db.commit()
+
+        try:
+            r = aioredis.from_url(settings.REDIS_URL)
+            await r.delete("leadgen:tasks")
+            await r.delete("leadgen:events")
+            await r.aclose()
+        except Exception:
+            pass
+
+        return {"status": "SUCCESS", "message": "Database completely purged and reset to clean state."}
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown purge target: {req.target}")
 

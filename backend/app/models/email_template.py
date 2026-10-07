@@ -1,22 +1,16 @@
-"""
-Global Outreach Email Template & Signature Model
-"""
 import uuid
 from typing import Optional
 from sqlalchemy import String, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base, TimestampMixin, UUIDMixin
 
-
 class EmailTemplate(Base, UUIDMixin, TimestampMixin):
-    """Global outreach email template and signature configured by administrators."""
     __tablename__ = "email_templates"
 
     name: Mapped[str] = mapped_column(String(100), unique=True, default="default", nullable=False, index=True)
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # Signature attributes
     sender_name: Mapped[str] = mapped_column(String(150), default="Jamil Khan", nullable=False)
     sender_title: Mapped[str] = mapped_column(String(150), default="Senior Solutions Consultant", nullable=False)
     sender_company: Mapped[str] = mapped_column(String(150), default="Multi-Lead Gen AI", nullable=False)
@@ -29,7 +23,6 @@ class EmailTemplate(Base, UUIDMixin, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     def render_signature(self) -> str:
-        """Renders either the custom signature text or the structured signature block."""
         if self.signature_text and self.signature_text.strip():
             return self.signature_text.strip()
         
@@ -53,3 +46,37 @@ class EmailTemplate(Base, UUIDMixin, TimestampMixin):
             parts.append(self.sender_website)
 
         return "\n".join(parts)
+
+class SMTPInbox(Base, UUIDMixin, TimestampMixin):
+    __tablename__ = "smtp_inboxes"
+
+    host: Mapped[str] = mapped_column(String(255), nullable=False)
+    port: Mapped[int] = mapped_column(default=587, nullable=False)
+    username: Mapped[str] = mapped_column(String(255), nullable=False)
+    password: Mapped[str] = mapped_column(String(255), nullable=False)
+    from_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    from_name: Mapped[str] = mapped_column(String(150), default="Growth Team", nullable=False)
+    daily_limit: Mapped[int] = mapped_column(default=30, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+class PersonaSignature(Base, UUIDMixin, TimestampMixin):
+    __tablename__ = "persona_signatures"
+
+    title: Mapped[str] = mapped_column(String(150), default="Primary Signature", nullable=False)
+    raw_content: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    company: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    def render_signature(self) -> str:
+        if self.raw_content and self.raw_content.strip():
+            return self.raw_content.strip()
+        parts = []
+        if self.name:
+            parts.append(self.name)
+        if self.title:
+            parts.append(self.title)
+        if self.company:
+            parts.append(self.company)
+        return "\n".join(parts)
+

@@ -1,13 +1,9 @@
-"""
-Business Identity & Location Models
-"""
 import uuid
 from typing import Optional, List
 from sqlalchemy import String, Text, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin, UUIDMixin
-
 
 class Business(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "businesses"
@@ -23,7 +19,6 @@ class Business(Base, UUIDMixin, TimestampMixin):
     business_type: Mapped[str] = mapped_column(String(100), default="other", nullable=False, index=True)
     metadata_json: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
 
-    # Relationships
     locations: Mapped[List["BusinessLocation"]] = relationship("BusinessLocation", back_populates="business", cascade="all, delete-orphan")
     evidence: Mapped[List["Evidence"]] = relationship("Evidence", back_populates="business", cascade="all, delete-orphan")
     parameter_results: Mapped[List["ParameterResult"]] = relationship("ParameterResult", back_populates="business", cascade="all, delete-orphan")
@@ -32,7 +27,6 @@ class Business(Base, UUIDMixin, TimestampMixin):
     __table_args__ = (
         Index("idx_business_dedupe", "canonical_name", "phone", "business_type"),
     )
-
 
 class BusinessLocation(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "business_locations"

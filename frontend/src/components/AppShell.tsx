@@ -14,7 +14,7 @@ import {
   PhoneCall,
   LayoutGrid,
 } from "lucide-react";
-import { getStoredUser, logoutUser, AuthUser } from "@/lib/api";
+import { getStoredUser, logoutUser, AuthUser, hasPermission } from "@/lib/api";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -29,7 +29,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
     const isAuthRoute = pathname === "/login" || pathname === "/admin";
 
-    // Strict Protection: If not logged in and not on login/admin page -> redirect to /login immediately
     if (!user && !isAuthRoute) {
       router.replace("/login");
       return;
@@ -48,8 +47,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const isHubPage = pathname === "/" || pathname === "/admin" || pathname === "/login";
 
-  // Identify active module if on a sub-route
   const getSubRouteModule = () => {
+    if (pathname.startsWith("/autopilot")) {
+      return {
+        id: "autopilot",
+        label: "Autonomous Cold Email & Autopilot",
+        icon: Zap,
+        color: "text-amber-400 bg-amber-500/10 border-amber-500/30",
+      };
+    }
     if (pathname.startsWith("/research") || pathname.startsWith("/leads") || pathname.startsWith("/parameters")) {
       return {
         id: "leads",
@@ -79,7 +85,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const activeModule = getSubRouteModule();
 
-  // If on login/admin page and not logged in, render clean full-screen login without header/sidebar
   if (!currentUser && (pathname === "/login" || pathname === "/admin")) {
     return (
       <div className="min-h-screen w-full bg-background text-slate-100 flex items-center justify-center p-4">
@@ -88,7 +93,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // If not logged in and on any other page, block and show access restricted lock screen
   if (!currentUser) {
     return (
       <div className="min-h-screen w-full bg-background text-slate-100 flex flex-col items-center justify-center p-6 text-center space-y-4">
@@ -111,14 +115,52 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const checkRoutePermission = (): { allowed: boolean; reason?: string } => {
+    if (!currentUser) return { allowed: true };
+    if (currentUser.role === "super_admin") return { allowed: true };
+    if (currentUser.permissions_json?.all) return { allowed: true };
+
+    if (pathname.startsWith("/autopilot")) {
+      if (!hasPermission(currentUser, "can_access_autopilot", false)) {
+        return {
+          allowed: false,
+          reason: "Permission Denied: Autonomous Cold Email & Autopilot Outreach is strictly restricted to Super Admin. Please contact Super Admin to request access."
+        };
+      }
+    }
+    if (pathname.startsWith("/leads")) {
+      if (currentUser.permissions_json?.can_view_leads === false) {
+        return { allowed: false, reason: "Your account does not have permission to view the Qualified Leads Pipeline." };
+      }
+    }
+    if (pathname.startsWith("/research")) {
+      if (currentUser.permissions_json?.can_run_research === false) {
+        return { allowed: false, reason: "Your account does not have permission to launch Autonomous Lead Discovery." };
+      }
+    }
+    if (pathname.startsWith("/campaigns")) {
+      if (currentUser.permissions_json?.can_edit_campaigns === false) {
+        return { allowed: false, reason: "Your account does not have permission to manage Meta Ads and Marketing Campaigns." };
+      }
+    }
+    if (pathname.startsWith("/voice-agent")) {
+      if (currentUser.permissions_json?.can_access_voice === false) {
+        return { allowed: false, reason: "Your account does not have permission to access Autonomous Voice Outreach." };
+      }
+    }
+    return { allowed: true };
+  };
+
+  const routePerm = checkRoutePermission();
+
   return (
     <div className="min-h-screen w-full bg-background text-slate-100 flex flex-col">
-      {/* Sleek Top Navigation Bar (Zero Clutter, No Sidebar Links) */}
+
       <header className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-slate-800/80 px-4 sm:px-6 py-3 shrink-0">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-          {/* Left Brand & Hub Return */}
+
           <div className="flex items-center gap-4">
-            <Link href="/admin" className="flex items-center gap-2.5 group">
+            <Link href="/admin?tab=modules" className="flex items-center gap-2.5 group">
               <div className="w-8 h-8 rounded-xl bg-sky-500 flex items-center justify-center font-bold text-slate-950 text-base shadow-lg shadow-sky-500/20 group-hover:scale-105 transition">
                 Ω
               </div>
@@ -135,11 +177,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </Link>
 
-            {/* If on a sub-route, show prominent 'Back to 3 Modules' button */}
             {!isHubPage && (
               <div className="flex items-center gap-2 ml-2 pl-4 border-l border-slate-800">
                 <Link
-                  href="/admin"
+                  href="/admin?tab=modules"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-xs font-semibold text-sky-400 hover:text-sky-300 transition shadow-sm"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
@@ -158,31 +199,44 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </div>
 
-          {/* Right Header Controls: Hostinger Gateway status + Admin info + Sign Out */}
           <div className="flex items-center gap-3">
-            {/* Hostinger Gateway Status Pill */}
+
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs font-mono">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-slate-400 text-[11px]">Hostinger OpenClaw</span>
               <span className="text-emerald-400 font-semibold text-[11px]">Active</span>
             </div>
 
-            {/* Admin Profile Badge */}
             <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800">
-              <div className="w-6 h-6 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center text-xs font-bold border border-sky-500/30">
-                {currentUser.full_name?.charAt(0) || "A"}
+              <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold border ${
+                currentUser.role === "super_admin"
+                  ? "bg-purple-500/20 text-purple-300 border-purple-500/30"
+                  : currentUser.role === "admin"
+                  ? "bg-sky-500/20 text-sky-400 border-sky-500/30"
+                  : "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+              }`}>
+                {currentUser.full_name?.charAt(0) || "U"}
               </div>
               <div className="hidden sm:block text-left">
                 <div className="text-xs font-semibold text-slate-200 leading-tight">
                   {currentUser.email}
                 </div>
-                <div className="text-[9px] font-mono text-sky-400 font-bold uppercase tracking-wider">
-                  Admin Active
+                <div className={`text-[9px] font-mono font-bold uppercase tracking-wider ${
+                  currentUser.role === "super_admin"
+                    ? "text-amber-400"
+                    : currentUser.role === "admin"
+                    ? "text-sky-400"
+                    : "text-emerald-400"
+                }`}>
+                  {currentUser.role === "super_admin"
+                    ? "Super Admin"
+                    : currentUser.role === "admin"
+                    ? "Admin"
+                    : "Member"}
                 </div>
               </div>
             </div>
 
-            {/* Sign Out Button */}
             <button
               onClick={() => {
                 logoutUser();
@@ -199,9 +253,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* Main Full-Width Content View */}
       <main className="flex-1 w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-        {children}
+        {!routePerm.allowed ? (
+          <div className="py-20 flex flex-col items-center justify-center text-center space-y-4 max-w-md mx-auto">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xl shadow-amber-500/10">
+              <Lock className="w-7 h-7" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-xl font-bold text-white">Module Access Restricted</h2>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                {routePerm.reason || "Your assigned account permissions do not grant access to this module."}
+              </p>
+            </div>
+            <Link
+              href="/admin"
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs font-semibold transition border border-slate-700 flex items-center gap-1.5 shadow-sm"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Return to Modules Hub
+            </Link>
+          </div>
+        ) : (
+          children
+        )}
       </main>
     </div>
   );

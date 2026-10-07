@@ -1,9 +1,3 @@
-"""
-OpenClaw Live Research Engine & Web Intelligence Client.
-Performs real live discovery across multi-zone search grids, handles OSM Places directory queries,
-extracts businesses from directories, and executes deep multi-page website audits.
-Zero simulated or fake hash data.
-"""
 import asyncio
 import json
 import uuid
@@ -16,34 +10,25 @@ from app.core.logging import logger
 from app.services.geo_expander import GeoExpander
 from app.engine.discovery_optimizer import DiscoveryOptimizer
 
-
 class OpenClawGatewayError(Exception):
-    """Raised when an OpenClaw Gateway or agent execution error occurs."""
     pass
 
-
 class LiveResearchEngine:
-    """Robust, live autonomous web research and extraction engine."""
 
     USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
-    # Search engines, document archives, directories, and review platforms to exclude from business detection
     EXCLUDED_ROOT_DOMAINS = {
-        # Search & Social Platforms
         "duckduckgo.com", "google.com", "bing.com", "yahoo.com", "wikipedia.org", "youtube.com",
         "twitter.com", "x.com", "pinterest.com", "reddit.com", "quora.com", "medium.com", "github.com",
         "play.google.com", "apps.apple.com", "facebook.com", "instagram.com", "linkedin.com", "tiktok.com",
 
-        # Document & Slides Sharing Platforms (Prevent PDFs/Docs from becoming "businesses")
         "scribd.com", "slideshare.net", "docplayer.net", "academia.edu", "researchgate.net",
         "issuu.com", "pdfdrive.com", "archive.org", "scribdassets.com",
 
-        # General Aggregators, Directories, Review Platforms & Job Boards (Not target clients)
         "goodfirms.co", "clutch.co", "tripadvisor.com", "trustpilot.com", "yelp.com", "glassdoor.com",
         "indeed.com", "bdjobs.com", "bdtradeinfo.com", "yellowpages.com", "dnb.com", "kompass.com",
         "indiamart.com", "justdial.com", "zoominfo.com", "crunchbase.com", "pitchbook.com", "expat.com",
 
-        # Free blogging subdomains / generic website builders without custom domain
         "wixsite.com", "blogspot.com", "wordpress.com", "weebly.com", "sites.google.com", "tumblr.com"
     }
 
@@ -58,11 +43,6 @@ class LiveResearchEngine:
         company_limit: int = 0,
         business_type_override: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Executes hierarchical live discovery combining OpenStreetMap Verified Directory
-        and multi-zone web searches across country, city, and sub-city.
-        Auto-exhaustion loop: fetches all available verified businesses without arbitrary limit.
-        """
         loc_parts = [p for p in [sub_city, city, country] if p]
         full_location = ", ".join(loc_parts) if loc_parts else location.strip()
         effective_limit = 500 if company_limit <= 0 else min(company_limit, 1000)
@@ -74,7 +54,6 @@ class LiveResearchEngine:
 
         logger.info(f"LiveResearchEngine: Starting live discovery for '{industry}' in '{full_location}' (Auto-exhaustion cap: {effective_limit})")
 
-        # 1. LLM Query Expansion & Search Optimization Plan
         plan = await DiscoveryOptimizer.optimize_search_plan(
             industry=industry,
             location=full_location,
@@ -84,12 +63,11 @@ class LiveResearchEngine:
         )
         logger.info(f"DiscoveryOptimizer: Using {len(plan['search_queries'])} targeted search queries and {len(plan['osm_queries'])} OSM targets.")
 
-        # 2. Primary: Headless Browser Search with Optimized Queries & Smart Validation
         try:
             browser_discovered = await cls._search_commercial_companies_via_browser(
                 industry=industry,
                 location=full_location,
-                limit=min(25, effective_limit),
+                limit=effective_limit,
                 business_type_override=business_type_override,
                 seen_domains=seen_domains,
                 seen_names=seen_names,
@@ -104,7 +82,6 @@ class LiveResearchEngine:
         except Exception as e:
             logger.warning(f"Live browser discovery fallback: {e}")
 
-        # 3. Secondary: Clean OSM Search with Positive and Negative Keyword Enforcement
         osm_search_targets = plan.get("osm_queries", [])
 
         for target_q in osm_search_targets:
@@ -112,7 +89,7 @@ class LiveResearchEngine:
                 break
             try:
                 places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 50, country, city, sub_city)
-                for p in places:
+                for p in (places or []):
                     if len(discovered) >= effective_limit:
                         break
                     
@@ -121,7 +98,6 @@ class LiveResearchEngine:
                     if not p_name or clean_norm_name in seen_names or len(p_name) < 3:
                         continue
 
-                    # Validate candidate against positive and negative semantic rules
                     candidate_check = {
                         "canonical_name": p_name,
                         "industry": industry,
@@ -153,7 +129,6 @@ class LiveResearchEngine:
                     phone = p.get("phone")
                     email = p.get("email")
 
-                    # If no contact channel exists from map, execute autonomous secondary web search
                     if not website and not phone and not email:
                         enriched = await cls.enrich_contact_from_web(p_name, full_location)
                         if enriched.get("phone"):
@@ -164,10 +139,8 @@ class LiveResearchEngine:
                             website = enriched["website"]
                             domain = enriched.get("domain")
 
-                    # STRICT ZERO-CONTACT GATE:
-                    # Discard candidate if there is NO email, NO phone, and NO website/domain
-                    if not website and not domain and not phone and not email:
-                        logger.info(f"Zero-Contact Gate: Discarding unreachable entity '{p_name}' (No website, phone, or email).")
+                    if not website and not domain and not phone and not email and not p.get("address") and lat is None:
+                        logger.debug(f"Discarding ghost candidate '{p_name}' (No contact channel and no address).")
                         continue
 
                     if lat is not None and lon is not None:
@@ -206,7 +179,6 @@ class LiveResearchEngine:
             except Exception as e:
                 logger.warning(f"OSM directory search error for '{target_q}': {e}")
 
-        # 4. Tertiary: Fallback Web Search if limit not met
         if len(discovered) < effective_limit:
             queries = plan.get("search_queries", []) or GeoExpander.build_search_queries(industry, full_location)
             for q in queries[:4]:
@@ -244,10 +216,6 @@ class LiveResearchEngine:
         search_queries: Optional[List[str]] = None,
         plan: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
-        """
-        Executes live browser search to discover real operating commercial entities
-        with verified domains and portals, bypassing anti-bot challenges.
-        """
         if seen_domains is None:
             seen_domains = set()
         if seen_names is None:
@@ -301,12 +269,37 @@ class LiveResearchEngine:
                         logger.debug(f"Search query '{q}' error: {e}")
                 await browser.close()
         except Exception as e:
-            logger.warning(f"Browser search error: {e}")
+            logger.info(f"Browser search unavailable ({e}), using fast HTTP search engine fallback.")
+
+        if len(results) < limit:
+            queries = search_queries or [
+                f"{industry} company in {location}",
+                f"{industry} offices {location} official website",
+                f"{industry} firms {location}",
+            ]
+            for q in queries:
+                if len(results) >= limit:
+                    break
+                try:
+                    search_items = await cls._execute_web_search(q)
+                    for it in search_items:
+                        if len(results) >= limit:
+                            break
+                        url = it.get("url", "")
+                        title = it.get("title", "")
+                        snippet = it.get("snippet", "")
+                        biz = cls._process_candidate_url(
+                            url, title, snippet, industry, location, business_type_override, seen_domains, seen_names, plan=plan
+                        )
+                        if biz:
+                            results.append(biz)
+                except Exception as e:
+                    logger.debug(f"HTTP web search fallback query '{q}' notice: {e}")
+
         return results
 
     @classmethod
     async def resolve_domain_for_business(cls, business_name: str, location: str) -> Optional[str]:
-        """Attempts to find the official website domain of a discovered entity."""
         try:
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
@@ -330,22 +323,34 @@ class LiveResearchEngine:
                     if not l or not l.startswith("http"):
                         continue
                     parsed = urllib.parse.urlparse(l)
+                    dom = parsed.netloc.lower().replace("www.", "")
                     if any(bad in dom for bad in ["brave.com", "facebook.com", "linkedin.com", "youtube.com", "wikipedia.org", "yellowpages"]):
                         continue
                     if "." in dom and len(dom) > 4:
                         return dom
+        except Exception:
+            pass
+
+        try:
+            items = await cls._execute_web_search(f"{business_name} {location} official website")
+            for it in (items or []):
+                url = it.get("url", "")
+                if not url or not url.startswith("http"):
+                    continue
+                parsed = urllib.parse.urlparse(url)
+                dom = parsed.netloc.lower().replace("www.", "")
+                if any(bad in dom for bad in ["duckduckgo.com", "brave.com", "bing.com", "google.com", "facebook.com", "linkedin.com", "youtube.com", "wikipedia.org", "yellowpages"]):
+                    continue
+                if "." in dom and len(dom) > 4:
+                    return dom
         except Exception as e:
-            logger.debug(f"Resolve domain error for '{business_name}': {e}")
+            logger.debug(f"Resolve domain HTTP fallback error for '{business_name}': {e}")
         return None
 
     @classmethod
     async def enrich_contact_from_web(
         cls, business_name: str, location: str
     ) -> Dict[str, Optional[str]]:
-        """
-        Executes an autonomous secondary web search to locate contact channels
-        (email, phone, official domain, or facebook profile) for businesses found via maps.
-        """
         info: Dict[str, Optional[str]] = {
             "phone": None,
             "email": None,
@@ -362,7 +367,6 @@ class LiveResearchEngine:
                 snippet = r.get("snippet", "")
                 full_text = f"{title} {snippet}"
 
-                # Extract phone numbers (Global & International patterns)
                 if not info["phone"]:
                     phone_match = re.search(r'(?:\+?880\s?1[3-9]\d{8}|\+?1[2-9]\d{2}[2-9]\d{6}|\+?[0-9]{2,4}[\s.-]?[0-9]{3,4}[\s.-]?[0-9]{4,6})', full_text)
                     if phone_match:
@@ -370,7 +374,6 @@ class LiveResearchEngine:
                         if len(re.sub(r'\D', '', raw_ph)) >= 7:
                             info["phone"] = raw_ph
 
-                # Extract email
                 if not info["email"]:
                     email_match = re.search(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', full_text)
                     if email_match:
@@ -378,7 +381,6 @@ class LiveResearchEngine:
                         if not any(cand_em.endswith(x) for x in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"]):
                             info["email"] = cand_em
 
-                # Extract domain or Facebook URL
                 if url.startswith("http"):
                     parsed = urllib.parse.urlparse(url)
                     dom = parsed.netloc.lower().replace("www.", "")
@@ -403,12 +405,14 @@ class LiveResearchEngine:
         target_city: str = "",
         target_sub_city: str = "",
     ) -> List[Dict[str, Any]]:
-        """Queries OpenStreetMap via Photon (ultra-fast, comprehensive) and Nominatim for real verified businesses."""
         results = []
-        # 1. Primary: Photon OpenStreetMap Geocoder (high-volume, fast, no rate-limit blocking)
         try:
             p_url = f"https://photon.komoot.io/api/?q={urllib.parse.quote(query_str)}&limit={limit}"
-            headers = {"User-Agent": "LeadGenPlatform/1.0 (admin@leadgen.local)"}
+            headers = {
+                "User-Agent": cls.USER_AGENT,
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
             req = urllib.request.Request(p_url, headers=headers)
             with urllib.request.urlopen(req, timeout=6) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -419,13 +423,10 @@ class LiveResearchEngine:
                     if not name or len(name) < 3:
                         continue
 
-                    # Filter out non-matching country if country was specified
                     p_country = (props.get("country") or "").lower()
                     if target_country and p_country and target_country.lower() not in p_country:
                         continue
 
-                    # Filter out non-commercial government infrastructure, NGOs, and irrelevant matches
-                    # Filter out non-commercial government infrastructure, military, and public facilities
                     name_l = name.lower()
                     gov_words = [
                         "welfare committee", "ministry of", "department of", "police department",
@@ -439,15 +440,12 @@ class LiveResearchEngine:
                     osm_value = (props.get("osm_value") or "").lower()
                     ptype = (props.get("type") or "").lower()
 
-                    # Exclude roads, highways, streets, and paths
                     if osm_key in ["highway", "railway", "waterway"] or ptype in ["street", "highway", "residential", "neighbourhood", "suburb"]:
                         continue
 
-                    # Filter out purely residential apartment buildings that are not corporate offices
                     if osm_key == "building" and osm_value in ["apartments", "residential", "house", "dormitory", "detached"]:
                         continue
 
-                    # Filter out names that are clearly street addresses rather than business entities
                     address_match = False
                     for prefix in ["road ", "rd ", "street ", "st ", "lane ", "ln ", "sector ", "block ", "plot ", "house "]:
                         if name_l.startswith(prefix):
@@ -458,7 +456,6 @@ class LiveResearchEngine:
                     if address_match:
                         continue
 
-                    # Disqualify non-commercial places, residential areas, and places of worship
                     disqualified_osm_values = [
                         "place_of_worship", "school", "mosque", "cemetery", "graveyard",
                         "recreation_ground", "pitch", "living_street", "residential", "suburb",
@@ -473,11 +470,9 @@ class LiveResearchEngine:
                     city = props.get("city") or ""
                     formatted_addr = ", ".join([x for x in [street, district, city] if x])
 
-                    # Strict sub_city locality check: if user specified a sub_city, ensure it matches the address
-                    if target_sub_city:
-                        sub_l = target_sub_city.lower().strip()
-                        raw_loc_text = f"{street} {district} {props.get('locality', '')} {formatted_addr}".lower()
-                        if raw_loc_text and sub_l not in raw_loc_text:
+                    if target_city and city:
+                        city_l = target_city.lower().strip()
+                        if city_l and city.lower() not in city_l and city_l not in city.lower():
                             continue
 
                     geom = f.get("geometry") or {}
@@ -496,19 +491,20 @@ class LiveResearchEngine:
                         "longitude": lon,
                         "display_name": f"{name}, {formatted_addr}",
                     })
-                return results
+                if results:
+                    return results
         except Exception as e:
             logger.debug(f"Photon query error for '{query_str}': {e}")
 
-        # 2. Secondary: Nominatim OpenStreetMap Search (only if Photon network failed)
         url = f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(query_str)}&format=json&addressdetails=1&extratags=1&limit={limit}"
         headers = {
-            "User-Agent": "LeadGenPlatform/1.0 (contact: admin@leadgen.local)",
+            "User-Agent": cls.USER_AGENT,
+            "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
         }
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=3) as resp:
+            with urllib.request.urlopen(req, timeout=4) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 for item in data:
                     name = item.get("name")
@@ -526,11 +522,10 @@ class LiveResearchEngine:
                     city = addr_dict.get("city") or addr_dict.get("town") or ""
                     formatted_addr = ", ".join([x for x in [road, suburb, city] if x]) or item.get("display_name")
 
-                    # Strict sub_city locality check: if user specified a sub_city, ensure it matches the address
-                    if target_sub_city:
-                        sub_l = target_sub_city.lower().strip()
-                        raw_loc_text = f"{road} {suburb} {city} {formatted_addr} {item.get('display_name', '')}".lower()
-                        if raw_loc_text and sub_l not in raw_loc_text:
+                    if target_city:
+                        city_l = target_city.lower().strip()
+                        nom_c = (addr_dict.get("city") or addr_dict.get("town") or "").lower()
+                        if nom_c and city_l and nom_c not in city_l and city_l not in nom_c:
                             continue
 
                     phone = ext.get("phone") or ext.get("contact:phone")
@@ -544,7 +539,6 @@ class LiveResearchEngine:
                     if name_l in ["facebook", "facebook.com", "meta", "instagram", "google", "youtube", "twitter"] or "facebook.com" in name_l:
                         continue
 
-                    # Filter website url (do NOT treat facebook.com, instagram.com, etc. as official company website)
                     if website:
                         if not website.startswith("http"):
                             website = f"https://{website}"
@@ -569,9 +563,9 @@ class LiveResearchEngine:
                 return results
         except Exception as e:
             logger.warning(f"Nominatim fetch exception for query '{query_str}': {e}")
+        return results
     @classmethod
     async def _execute_web_search(cls, query_str: str) -> List[Dict[str, str]]:
-        """Executes a live web search for competitor intelligence and market analysis."""
         loop = asyncio.get_event_loop()
         html, _ = await loop.run_in_executor(None, cls._fetch_ddg_html, query_str)
         items = cls._parse_ddg_items(html)
@@ -579,7 +573,6 @@ class LiveResearchEngine:
 
     @classmethod
     def _fetch_ddg_html(cls, query_str: str, form_inputs: Optional[Dict[str, str]] = None) -> Tuple[str, Dict[str, str]]:
-        """Fetches HTML from DuckDuckGo search."""
         url = "https://html.duckduckgo.com/html/"
         headers = {
             "User-Agent": cls.USER_AGENT,
@@ -594,22 +587,39 @@ class LiveResearchEngine:
             else:
                 req = urllib.request.Request(f"{url}?q={urllib.parse.quote(query_str)}", headers=headers)
 
-            with urllib.request.urlopen(req, timeout=8) as resp:
+            with urllib.request.urlopen(req, timeout=7) as resp:
                 html = resp.read().decode("utf-8", errors="ignore")
                 inputs = dict(re.findall(r'<input[^>]+name=\"([^\"]+)\"[^>]+value=\"([^\"]*)\"', html))
-                return html, inputs
+                if "result__a" in html or "result__snippet" in html:
+                    return html, inputs
         except Exception:
-            return "", {}
+            pass
+
+        try:
+            lite_url = "https://lite.duckduckgo.com/lite/"
+            post_data = urllib.parse.urlencode({"q": query_str}).encode("utf-8")
+            lite_headers = {
+                "User-Agent": cls.USER_AGENT,
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Referer": "https://lite.duckduckgo.com/",
+            }
+            req = urllib.request.Request(lite_url, data=post_data, headers=lite_headers)
+            with urllib.request.urlopen(req, timeout=7) as resp:
+                html = resp.read().decode("utf-8", errors="ignore")
+                return html, {}
+        except Exception:
+            pass
+
+        return "", {}
 
     @classmethod
     def _parse_ddg_items(cls, html: str) -> List[Tuple[str, str, str]]:
-        """Parses raw search result links from HTML."""
-        a_matches = re.findall(r'<a[^>]+class=\"result__a\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>', html, re.DOTALL)
-        snippet_matches = re.findall(r'<a[^>]+class=\"result__snippet\"[^>]+href=\"([^\"]+)\"[^>]*>(.*?)</a>', html, re.DOTALL)
+        a_matches = re.findall(r'<a[^>]+class=\"(?:result__a|result-link)\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>', html, re.DOTALL)
+        snippet_matches = re.findall(r'<(?:a|td|div)[^>]+class=\"(?:result__snippet|result-snippet)\"[^>]*>(.*?)</(?:a|td|div)>', html, re.DOTALL)
 
         items = []
         for idx, (raw_u, raw_t) in enumerate(a_matches):
-            snip_t = snippet_matches[idx][1] if idx < len(snippet_matches) else ""
+            snip_t = snippet_matches[idx] if idx < len(snippet_matches) else ""
             actual_url = raw_u
             if "uddg=" in raw_u:
                 try:
@@ -638,7 +648,6 @@ class LiveResearchEngine:
         seen_names: set,
         plan: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Validates and constructs a verified business entity record."""
         if not actual_url.startswith("http"):
             return None
 
@@ -648,15 +657,12 @@ class LiveResearchEngine:
         if not domain or domain in seen_domains:
             return None
 
-        # Reject document file URLs directly
         if re.search(r'\.(pdf|docx?|pptx?|xlsx?|zip|rar|csv)(\?.*)?$', actual_url, re.I):
             return None
 
-        # Reject non-commercial associations, governmental, or educational sites
         if domain.endswith((".gov", ".edu", ".mil", ".org")):
             return None
 
-        # Reject path fragments representing document downloads or public forum threads
         if any(bad in actual_url.lower() for bad in ["/pdf/", ".pdf", "/download/", "/document/", "/presentation/", "/threads/", "/forum/"]):
             return None
 
@@ -679,7 +685,6 @@ class LiveResearchEngine:
             "confidence": 0.95,
         }
 
-        # Apply semantic validation against negative and positive keywords
         if plan:
             is_valid, reason = DiscoveryOptimizer.validate_candidate(candidate, plan)
             if not is_valid:
@@ -706,7 +711,6 @@ class LiveResearchEngine:
         search_industry: str,
         business_type_override: Optional[str] = None,
     ) -> Tuple[str, str]:
-        """Extracts a clean, human-readable brand name and business type."""
         b_type = (business_type_override or search_industry).lower().replace(" ", "_").replace("-", "_")
         dom_name = domain.split(".")[0].replace("-", " ").replace("_", " ").title()
 
@@ -736,18 +740,12 @@ class LiveResearchEngine:
 
     @classmethod
     def extract_contacts_from_text(cls, text: str) -> Tuple[Optional[str], Optional[str]]:
-        """
-        Extracts clean, verified phone numbers and emails from raw HTML or text.
-        Applies strict sanitization against false positives (dates, dimensions, asset files, dummy emails).
-        """
         if not text:
             return None, None
 
         extracted_phone = None
         extracted_email = None
 
-        # 1. Phone Extraction
-        # A. Priority: tel: links
         tel_matches = re.findall(r'tel:([+\d\s\-\(\)\.]{8,25})', text, re.IGNORECASE)
         for cand in tel_matches:
             clean_digits = re.sub(r'\D', '', cand)
@@ -755,13 +753,12 @@ class LiveResearchEngine:
                 extracted_phone = cand.strip()
                 break
 
-        # B. Regex international / domestic phones
         if not extracted_phone:
             raw_phone_patterns = [
                 r'(?:\+|00)[1-9]\d{0,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{0,4}',
                 r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
-                r'(?:01[3-9]\d{8})',  # Bangladesh local mobile
-                r'(?:0[1-9]\d{8,10})',  # UK/European local format
+                r'(?:01[3-9]\d{8})',
+                r'(?:0[1-9]\d{8,10})',
             ]
             for pattern in raw_phone_patterns:
                 matches = re.findall(pattern, text)
@@ -769,7 +766,6 @@ class LiveResearchEngine:
                     clean_str = p.strip()
                     digits = re.sub(r'\D', '', clean_str)
                     if 9 <= len(digits) <= 15:
-                        # Filter out dates, years, dimensions (e.g. 1920x1080)
                         if not any(clean_str.startswith(yr) for yr in ["2020", "2021", "2022", "2023", "2024", "2025", "2026"]):
                             if not re.search(r'^\d{4}[-/]\d{2}[-/]\d{2}$', clean_str) and "x" not in clean_str.lower():
                                 extracted_phone = clean_str
@@ -777,8 +773,6 @@ class LiveResearchEngine:
                 if extracted_phone:
                     break
 
-        # 2. Email Extraction
-        # A. Priority: mailto: links
         mailto_matches = re.findall(r'mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', text, re.IGNORECASE)
         for em in mailto_matches:
             em_clean = em.strip().lower()
@@ -787,7 +781,6 @@ class LiveResearchEngine:
                     extracted_email = em_clean
                     break
 
-        # B. Standard regex email
         if not extracted_email:
             email_matches = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
             for em in email_matches:
@@ -797,7 +790,6 @@ class LiveResearchEngine:
                         extracted_email = em_clean
                         break
 
-        # C. Obfuscated emails (e.g. info [at] domain.com or info(at)domain.com)
         if not extracted_email:
             obf_matches = re.findall(r'([a-zA-Z0-9._%+-]+)\s*(?:\[at\]|\(at\)|@)\s*([a-zA-Z0-9.-]+)\s*(?:\[dot\]|\(dot\)|\.)\s*([a-zA-Z]{2,})', text, re.IGNORECASE)
             for user, dom, tld in obf_matches:
@@ -809,34 +801,120 @@ class LiveResearchEngine:
         return extracted_phone, extracted_email
 
     @classmethod
-    async def fetch_page_with_browser(cls, target_url: str, human_scroll: bool = True) -> Optional[str]:
-        """Attempts to render dynamic SPA/JavaScript page using Playwright Chromium with human-like wait and scroll."""
+    async def fetch_page_with_browser(cls, target_url: str, human_scroll: bool = True) -> Dict[str, Any]:
+        result = {
+            "html": "",
+            "is_accessible": False,
+            "mobile_overflow": False,
+            "title": "",
+            "has_whatsapp": False,
+            "has_form": False,
+            "has_booking": False,
+        }
         try:
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
+                
                 page = await browser.new_page(
                     user_agent=cls.USER_AGENT,
                     viewport={"width": 1280, "height": 800},
                 )
-                await page.goto(target_url, timeout=12000, wait_until="domcontentloaded")
-                # Human wait for dynamic scripts/hydration
-                await page.wait_for_timeout(1500)
+                try:
+                    resp = await page.goto(target_url, timeout=15000, wait_until="domcontentloaded")
+                    result["is_accessible"] = resp is not None and resp.status < 400
+                except Exception:
+                    result["is_accessible"] = False
+
+                await page.wait_for_timeout(2500)
+
                 if human_scroll:
-                    # Scroll down smoothly to trigger lazy footer contact elements
                     try:
-                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
-                        await page.wait_for_timeout(500)
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 3)")
+                        await page.wait_for_timeout(400)
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 1.5)")
+                        await page.wait_for_timeout(400)
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        await page.wait_for_timeout(800)
+                        await page.wait_for_timeout(600)
                     except Exception:
                         pass
-                content = await page.content()
+
+                result["html"] = await page.content()
+                try:
+                    result["title"] = await page.title()
+                except Exception:
+                    pass
+
+                try:
+                    result["has_whatsapp"] = await page.evaluate('''() => {
+                        const html = document.body ? document.body.innerHTML.toLowerCase() : '';
+                        const hrefs = Array.from(document.querySelectorAll('a')).map(a => (a.href || '').toLowerCase());
+                        return hrefs.some(h => h.includes('wa.me') || h.includes('whatsapp.com') || h.includes('api.whatsapp.com')) ||
+                               html.includes('whatsapp') || html.includes('joinchat') || html.includes('elfsight-app-whatsapp');
+                    }''')
+                except Exception:
+                    pass
+
+                try:
+                    result["has_form"] = await page.evaluate('''() => {
+                        return document.querySelectorAll('form, input[type="email"], textarea').length > 0;
+                    }''')
+                except Exception:
+                    pass
+
+                try:
+                    result["has_booking"] = await page.evaluate('''() => {
+                        const html = document.body ? document.body.innerHTML.toLowerCase() : '';
+                        return html.includes('calendly.com') || html.includes('acuityscheduling') || html.includes('simplybook') || html.includes('book-now') || html.includes('appointment');
+                    }''')
+                except Exception:
+                    pass
+
+                try:
+                    result["has_ai_bot"] = await page.evaluate('''() => {
+                        const html = document.body ? document.body.innerHTML.toLowerCase() : '';
+                        const scripts = Array.from(document.querySelectorAll('script, iframe')).map(s => (s.src || '').toLowerCase());
+                        const ai_patterns = ['typebot', 'botpress', 'voiceflow', 'chatbase', 'dify', 'manychat', 'landbot', 'collect.chat', 'rasa', 'openai', 'chatgpt', 'vapi.ai', 'retell', 'bland.ai', 'synthflow', 'elevenlabs', 'activechat'];
+                        return scripts.some(src => ai_patterns.some(p => src.includes(p))) || ai_patterns.some(p => html.includes(p));
+                    }''')
+                except Exception:
+                    pass
+
+                try:
+                    result["has_workflow_automation"] = await page.evaluate('''() => {
+                        const html = document.body ? document.body.innerHTML.toLowerCase() : '';
+                        const forms = Array.from(document.querySelectorAll('form')).map(f => (f.action || '').toLowerCase());
+                        const scripts = Array.from(document.querySelectorAll('script, iframe')).map(s => (s.src || '').toLowerCase());
+                        const auto_patterns = ['n8n', 'zapier.com', 'hooks.zapier', 'make.com', 'integromat', 'leadconnector', 'gohighlevel', 'ghl', 'activecampaign', '/webhook', 'lambda-url', 'cloudfunctions', '/api/v1/lead', '/api/contact'];
+                        return scripts.some(src => auto_patterns.some(p => src.includes(p))) ||
+                               forms.some(act => auto_patterns.some(p => act.includes(p))) ||
+                               auto_patterns.some(p => html.includes(p));
+                    }''')
+                except Exception:
+                    pass
+
+                await page.close()
+
+                mobile_page = await browser.new_page(
+                    user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1",
+                    viewport={"width": 375, "height": 812},
+                )
+                try:
+                    await mobile_page.goto(target_url, timeout=12000, wait_until="domcontentloaded")
+                    await mobile_page.wait_for_timeout(1000)
+                    result["mobile_overflow"] = await mobile_page.evaluate('''() => {
+                        return document.documentElement.scrollWidth > window.innerWidth + 10;
+                    }''')
+                except Exception:
+                    result["mobile_overflow"] = False
+                finally:
+                    await mobile_page.close()
+
                 await browser.close()
-                return content
+                return result
         except Exception as e:
-            logger.debug(f"Playwright browser rendering fallback/skipped: {e}")
-            return None
+            logger.debug(f"Playwright browser rendering fallback/skipped for {target_url}: {e}")
+            return result
 
     @classmethod
     async def deep_contact_hunt(
@@ -848,14 +926,6 @@ class LiveResearchEngine:
         existing_email: Optional[str] = None,
         facebook_url: Optional[str] = None,
     ) -> Dict[str, Optional[str]]:
-        """
-        Autonomous secondary contact hunting simulating human researcher behavior.
-        Takes time like a human:
-        1. Deep browser render with smooth scroll to uncover lazy footers.
-        2. Live targeted DuckDuckGo search queries for public phone/email snippets.
-        3. Social profile bio search (Facebook, LinkedIn).
-        Returns {'phone': ..., 'email': ...}
-        """
         found_phone = existing_phone
         found_email = existing_email
 
@@ -864,7 +934,6 @@ class LiveResearchEngine:
 
         loop = asyncio.get_event_loop()
 
-        # Step 1: Headless browser with scroll on contact or home page
         if domain:
             for sub in ["/contact", "/contact-us", ""]:
                 if found_phone and found_email:
@@ -872,7 +941,8 @@ class LiveResearchEngine:
                 target = f"https://{domain}{sub}"
                 try:
                     logger.info(f"OpenClaw DeepHunt: Human-like browser inspection of {target}...")
-                    rendered_html = await cls.fetch_page_with_browser(target, human_scroll=True)
+                    bw_res = await cls.fetch_page_with_browser(target, human_scroll=True)
+                    rendered_html = bw_res.get("html", "")
                     if rendered_html:
                         p, e = cls.extract_contacts_from_text(rendered_html)
                         if p and not found_phone:
@@ -884,7 +954,6 @@ class LiveResearchEngine:
                 except Exception as ex:
                     logger.debug(f"DeepHunt browser inspection error on {target}: {ex}")
 
-        # Step 2: Live Search Snippet Extraction (DuckDuckGo)
         if not found_phone or not found_email:
             search_query = f'"{canonical_name}" "{domain or location}" contact OR phone OR email'
             logger.info(f"OpenClaw DeepHunt: Searching live web for contact snippets: {search_query}...")
@@ -906,7 +975,6 @@ class LiveResearchEngine:
             except Exception as ex:
                 logger.debug(f"DeepHunt search snippet error: {ex}")
 
-        # Step 3: Social Profile Bio Check (Facebook / LinkedIn)
         if not found_phone or not found_email:
             fb_query = f'site:facebook.com "{canonical_name}" contact OR phone OR email'
             try:
@@ -931,11 +999,6 @@ class LiveResearchEngine:
 
     @classmethod
     async def audit_website(cls, url: str, canonical_name: str = "Business", location: str = "") -> Dict[str, Any]:
-        """
-        Executes a real human-like multi-page audit across Home, Contact, About, and Services.
-        Collects strictly observable evidence (phone, email, WhatsApp, booking, mobile viewport).
-        If contacts are missing, takes human-like time to perform deep retries and scrolls.
-        """
         if not url or not url.startswith("http"):
             return {
                 "url": url,
@@ -943,6 +1006,7 @@ class LiveResearchEngine:
                 "is_accessible": False,
                 "title": canonical_name,
                 "mobile_responsive": None,
+                "mobile_overflow": False,
                 "has_whatsapp": False,
                 "has_online_booking": False,
                 "has_contact_form": False,
@@ -970,12 +1034,16 @@ class LiveResearchEngine:
             "Referer": base_url,
         }
 
-        # Step 1: Visit homepage like a human
-        homepage_html = ""
-        visited_pages = 0
+        logger.info(f"OpenClaw Audit: Executing deep human-like browser audit of {base_url}...")
+        bw_res = await cls.fetch_page_with_browser(base_url, human_scroll=True)
+        homepage_html = bw_res.get("html", "")
+        mobile_overflow = bw_res.get("mobile_overflow", False)
+        browser_accessible = bw_res.get("is_accessible", True)
+
+        visited_pages = 1 if homepage_html else 0
         broken_links_count = 0
-        rendered_by = "http"
-        status_code = 200
+        rendered_by = "playwright-chromium"
+        status_code = 200 if browser_accessible else 500
 
         import ssl
         ssl_ctx = ssl.create_default_context()
@@ -987,24 +1055,12 @@ class LiveResearchEngine:
             with urllib.request.urlopen(req, timeout=6, context=ssl_ctx) as resp:
                 return resp.getcode(), resp.read().decode("utf-8", errors="ignore")
 
-        try:
-            code, homepage_html = await loop.run_in_executor(None, _fetch_page, base_url)
-            status_code = code
-            if code == 200:
-                visited_pages += 1
-            else:
-                broken_links_count += 1
-        except Exception:
-            status_code = 500
-            broken_links_count += 1
-
-        # Discover dynamic contact links from homepage like a human
         discovered_paths = set()
         if homepage_html:
             raw_hrefs = re.findall(r'<a[^>]+href=["\']([^"\']+)["\']', homepage_html, re.I)
             for href in raw_hrefs:
                 clean_href = href.strip()
-                if any(k in clean_href.lower() for k in ["contact", "reach", "touch", "about", "connect", "impressum", "team"]):
+                if any(k in clean_href.lower() for k in ["contact", "reach", "touch", "about", "services", "pricing", "team", "booking", "appointment"]):
                     if clean_href.startswith("/"):
                         discovered_paths.add(clean_href.split("?")[0].split("#")[0])
                     elif clean_href.startswith(base_url):
@@ -1014,14 +1070,13 @@ class LiveResearchEngine:
 
         default_contact_paths = ["/contact", "/contact-us", "/about", "/about-us", "/services", "/pages/contact-us"]
         all_paths_to_visit = list(discovered_paths) + [p for p in default_contact_paths if p not in discovered_paths]
-        target_paths = all_paths_to_visit[:5]
+        target_paths = all_paths_to_visit[:6]
 
         aggregated_html = homepage_html
         for path in target_paths:
             target_page_url = base_url + (path if path.startswith("/") else f"/{path}")
             try:
-                # Human pacing between page clicks (0.3s)
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.5)
                 code, page_html = await loop.run_in_executor(None, _fetch_page, target_page_url)
                 if code == 200:
                     aggregated_html += f"\n--- PAGE: {path} ---\n" + page_html
@@ -1029,18 +1084,9 @@ class LiveResearchEngine:
                 else:
                     broken_links_count += 1
             except Exception:
-                if path in ("", "/contact"):
+                if path in ("", "/contact", "/contact-us"):
                     broken_links_count += 1
                 continue
-
-        # If HTTP request failed or was empty, attempt headless browser execution with Playwright
-        if not aggregated_html:
-            browser_html = await cls.fetch_page_with_browser(base_url, human_scroll=True)
-            if browser_html and len(browser_html) > 100:
-                aggregated_html = browser_html
-                visited_pages = 1
-                rendered_by = "playwright-human-scroll"
-                logger.info(f"LiveResearchEngine: Rendered {base_url} via Playwright Chromium headless with scroll")
 
         if not aggregated_html:
             logger.info(f"LiveResearchEngine: Could not reach {url}")
@@ -1050,6 +1096,7 @@ class LiveResearchEngine:
                 "is_accessible": False,
                 "title": canonical_name,
                 "mobile_responsive": None,
+                "mobile_overflow": False,
                 "has_whatsapp": False,
                 "has_online_booking": False,
                 "has_contact_form": False,
@@ -1071,10 +1118,8 @@ class LiveResearchEngine:
         html = aggregated_html
         html_lower = html.lower()
 
-        # 1. Clean Verified Contact Extraction
         extracted_phone, extracted_email = cls.extract_contacts_from_text(html)
 
-        # 2. Extract Real Social Profiles
         fb_matches = re.findall(r'https?://(?:www\.)?facebook\.com/[a-zA-Z0-9._-]+', html, re.IGNORECASE)
         ig_matches = re.findall(r'https?://(?:www\.)?instagram\.com/[a-zA-Z0-9._-]+', html, re.IGNORECASE)
         li_matches = re.findall(r'https?://(?:www\.)?linkedin\.com/(?:company|in)/[a-zA-Z0-9._-]+', html, re.IGNORECASE)
@@ -1083,7 +1128,6 @@ class LiveResearchEngine:
         instagram_url = ig_matches[0] if ig_matches else None
         linkedin_url = li_matches[0] if li_matches else None
 
-        # 3. Autonomous Human Retry: If Phone OR Email is missing, trigger deep contact hunt!
         parsed_domain = urllib.parse.urlparse(url).netloc or ""
         if not extracted_phone or not extracted_email:
             logger.info(f"LiveResearchEngine: Incomplete contacts on {url} (Phone: {bool(extracted_phone)}, Email: {bool(extracted_email)}). Triggering human-like deep contact hunt retry...")
@@ -1102,13 +1146,18 @@ class LiveResearchEngine:
                 extracted_email = hunt["email"]
                 rendered_by = "deep-contact-hunt"
 
-        # 4. Strictly Observable Technical Checks
-        mobile_responsive = "viewport" in html_lower
-        has_whatsapp = any(k in html_lower for k in ["wa.me", "whatsapp.com", "api.whatsapp.com", "whatsapp"])
-        has_online_booking = any(k in html_lower for k in ["booking", "appointment", "calendly.com", "acuityscheduling", "book-now", "schedule-consultation"])
-        has_contact_form = "<form" in html_lower or 'id="contact"' in html_lower or 'class="contact-form"' in html_lower
+        mobile_responsive = "viewport" in html_lower and not mobile_overflow
+        
+        has_whatsapp = bw_res.get("has_whatsapp", False) or any(k in html_lower for k in [
+            "wa.me", "whatsapp.com", "api.whatsapp.com", "whatsapp", "joinchat", "chatway", "elfsight-app-whatsapp"
+        ])
 
-        # 5. CMS Platform & Marketing Stack Detection
+        has_online_booking = bw_res.get("has_booking", False) or any(k in html_lower for k in [
+            "booking", "appointment", "calendly.com", "acuityscheduling", "simplybook", "book-now", "schedule-consultation", "book an appointment"
+        ])
+
+        has_contact_form = bw_res.get("has_form", False) or ("<form" in html_lower or 'id="contact"' in html_lower or 'class="contact-form"' in html_lower or 'wpcf7' in html_lower or 'elementor-form' in html_lower)
+
         cms_platform = "Custom"
         if "wp-content" in html_lower or "wp-includes" in html_lower:
             cms_platform = "WordPress"
@@ -1123,15 +1172,27 @@ class LiveResearchEngine:
         elif "webflow" in html_lower:
             cms_platform = "Webflow"
 
-        # 6. Meta Pixel & Google Analytics Checks
         has_meta_pixel = "fbq(" in html or "connect.facebook.net" in html_lower
         has_google_analytics = any(x in html_lower for x in ["gtag(", "google-analytics.com", "googletagmanager.com"])
         meta_ads_url = f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&q={urllib.parse.quote(canonical_name)}"
 
-        # 7. Decision Maker / Leadership Detection
+        has_live_chat = any(x in html_lower for x in [
+            "tawk.to", "crisp.chat", "intercom", "zendesk", "drift.com", "tidio", "chatwoot", "livechat", "freshchat"
+        ])
+
+        has_ssl_security = url.startswith("https://")
+
+        has_ai_chatbot = bw_res.get("has_ai_bot", False) or any(x in html_lower for x in [
+            "typebot", "botpress", "voiceflow", "chatbase", "dify", "manychat", "landbot", "collect.chat", "rasa", "openai", "chatgpt", "vapi.ai", "retell", "bland.ai", "synthflow", "elevenlabs", "activechat"
+        ])
+
+        has_automation_workflow = bw_res.get("has_workflow_automation", False) or any(x in html_lower for x in [
+            "n8n", "zapier.com", "hooks.zapier", "make.com", "integromat", "leadconnector", "gohighlevel", "ghl", "activecampaign"
+        ])
+
         contact_person = None
         contact_title = None
-        leadership_titles = ["Managing Director", "Founder", "Co-Founder", "CEO", "Chairman", "Chief Executive Officer", "Proprietor", "Principal"]
+        leadership_titles = ["Managing Director", "Founder", "Co-Founder", "CEO", "Chairman", "Chief Executive Officer", "Proprietor", "Principal", "Owner", "Dr."]
         
         for lt in leadership_titles:
             m = re.search(rf'([A-Z][a-z]+(?:\s+[A-Z][a-z]+){{1,3}})\s*[,–-]?\s*(?:is the\s+)?{lt}', html)
@@ -1144,10 +1205,73 @@ class LiveResearchEngine:
                     contact_title = lt
                     break
 
+        extracted_page_title = bw_res.get("title") or ""
+        extracted_meta_desc = ""
+        extracted_heading = ""
+
+        if not extracted_page_title:
+            title_m = re.search(r'<title[^>]*>(.*?)</title>', html, re.IGNORECASE | re.DOTALL)
+            if title_m:
+                extracted_page_title = re.sub(r'<[^>]+>', '', title_m.group(1)).strip()
+
+        meta_m = re.search(r'<meta[^>]+name=["\'](?:description|og:description)["\'][^>]+content=["\']([^"\']*)["\']', html, re.IGNORECASE)
+        if not meta_m:
+            meta_m = re.search(r'<meta[^>]+content=["\']([^"\']*)["\'][^>]+name=["\'](?:description|og:description)["\']', html, re.IGNORECASE)
+        if meta_m:
+            extracted_meta_desc = meta_m.group(1).strip()
+
+        copyright_year = None
+        c_match = re.search(r'(?:©|&copy;|copyright|all rights reserved)[^0-9]{0,20}(?:20\d\d\s*[-–/]\s*)?(20[12]\d)', html_lower)
+        if c_match:
+            try:
+                copyright_year = int(c_match.group(1))
+            except Exception:
+                pass
+
+        detected_weaknesses = []
+        if not mobile_responsive:
+            detected_weaknesses.append("Website layout breaks or lacks viewport optimization on mobile devices")
+        if not has_online_booking:
+            detected_weaknesses.append("Missing automated online appointment/quote booking system")
+        if not has_whatsapp:
+            detected_weaknesses.append("Missing click-to-WhatsApp instant conversion widget")
+        if not has_meta_pixel:
+            detected_weaknesses.append("Missing Meta/Google Ads retargeting pixel for visitor recapture")
+        if not has_contact_form:
+            detected_weaknesses.append("Missing direct lead capture/inquiry form")
+        if not has_live_chat and not has_ai_chatbot:
+            detected_weaknesses.append("Missing 24/7 live chat or AI customer assistant")
+        if not has_ssl_security:
+            detected_weaknesses.append("Missing SSL HTTPS security encryption")
+        if not extracted_meta_desc:
+            detected_weaknesses.append("Missing SEO meta description tags for Google search ranking")
+        if copyright_year and copyright_year < 2024:
+            detected_weaknesses.append(f"Outdated website layout & copyright ({copyright_year})")
+        if broken_links_count > 0:
+            detected_weaknesses.append(f"{broken_links_count} broken link references detected")
+
+        weakness_pitch = ""
+        if not mobile_responsive and not has_online_booking:
+            weakness_pitch = "the mobile user experience and the lack of an instant online booking form"
+        elif not has_meta_pixel and not has_whatsapp:
+            weakness_pitch = "visitor retargeting tracking and instant WhatsApp engagement"
+        elif not has_online_booking:
+            weakness_pitch = "automating your online quote & appointment booking flow"
+        elif not has_whatsapp:
+            weakness_pitch = "adding a direct WhatsApp chat option for rapid mobile client inquiries"
+        elif not has_meta_pixel:
+            weakness_pitch = "installing Meta retargeting pixels to re-engage past website visitors"
+        elif copyright_year and copyright_year < 2024:
+            weakness_pitch = "modernizing your website design to increase trust and inbound conversion rates"
+        elif detected_weaknesses:
+            weakness_pitch = detected_weaknesses[0].lower()
+        else:
+            weakness_pitch = "scaling your online visibility and inbound client conversion pipeline"
+
         logger.info(
             f"LiveResearchEngine: Audited {url} ({visited_pages} pages) -> "
-            f"Phone: {extracted_phone}, Email: {extracted_email}, WhatsApp: {has_whatsapp}, "
-            f"CMS: {cms_platform}, Meta Pixel: {has_meta_pixel}, Lead: {contact_person} ({contact_title})"
+            f"Title: '{extracted_page_title[:40]}', Phone: {extracted_phone}, Email: {extracted_email}, "
+            f"WhatsApp: {has_whatsapp}, LiveChat: {has_live_chat}, AIChatbot: {has_ai_chatbot}, Automation: {has_automation_workflow}, CMS: {cms_platform}, Meta Pixel: {has_meta_pixel}, Lead: {contact_person} ({contact_title}), Weaknesses: {len(detected_weaknesses)}"
         )
 
         return {
@@ -1155,11 +1279,22 @@ class LiveResearchEngine:
             "status": status_code,
             "is_accessible": True,
             "visited_pages_count": visited_pages,
-            "title": f"Audited Website - {canonical_name}",
+            "title": extracted_page_title or f"Audited Website - {canonical_name}",
+            "page_title": extracted_page_title,
+            "meta_description": extracted_meta_desc,
+            "heading": extracted_heading,
             "mobile_responsive": mobile_responsive,
+            "mobile_overflow": mobile_overflow,
             "has_whatsapp": has_whatsapp,
             "has_online_booking": has_online_booking,
             "has_contact_form": has_contact_form,
+            "has_live_chat": has_live_chat,
+            "has_ssl_security": has_ssl_security,
+            "has_ai_chatbot": has_ai_chatbot,
+            "has_automation_workflow": has_automation_workflow,
+            "has_h1_tag": bool(extracted_heading),
+            "has_meta_description": bool(extracted_meta_desc),
+            "copyright_year": copyright_year,
             "broken_links_count": broken_links_count,
             "extracted_phone": extracted_phone,
             "extracted_email": extracted_email,
@@ -1173,11 +1308,12 @@ class LiveResearchEngine:
             "contact_person": contact_person,
             "contact_title": contact_title,
             "rendered_by": rendered_by,
+            "detected_weaknesses": detected_weaknesses,
+            "weakness_pitch": weakness_pitch,
         }
 
     @classmethod
     async def inspect_advertising(cls, canonical_name: str, domain: str = "") -> Dict[str, Any]:
-        """Inspects Meta Ad Library presence and advertising consistency."""
         meta_ads_url = f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&q={urllib.parse.quote(canonical_name)}"
         return {
             "canonical_name": canonical_name,
@@ -1190,7 +1326,6 @@ class LiveResearchEngine:
 
     @classmethod
     async def inspect_reviews(cls, business_name: str, location: str = "") -> Dict[str, Any]:
-        """Inspects public review signals and ratings for customer pain points."""
         maps_query = urllib.parse.quote(f"{business_name} {location}")
         maps_url = f"https://www.google.com/maps/search/{maps_query}"
         return {
@@ -1203,16 +1338,13 @@ class LiveResearchEngine:
 
     @classmethod
     async def inspect_social(cls, canonical_name: str, domain: str = "") -> Dict[str, Any]:
-        """Inspects public social footprint and profile consistency."""
         return {
             "canonical_name": canonical_name,
             "domain": domain,
             "checked_live": True,
         }
 
-
 class OpenClawClient:
-    """OpenClaw client executing real-time research skills backed by LiveResearchEngine."""
 
     def __init__(
         self,
@@ -1231,11 +1363,6 @@ class OpenClawClient:
         response_json: bool = True,
         session_id: str = "leadgen_pipeline",
     ) -> Optional[Dict[str, Any]]:
-        """
-        Invokes OpenClaw Gateway's OpenAI-compatible completions endpoint.
-        Does NOT hardcode any model name - allows OpenClaw to route to its active agent model.
-        Uses dedicated session_id and user header to ensure complete isolation from UI chats.
-        """
         if not self.gateway_url:
             return None
 
@@ -1247,7 +1374,7 @@ class OpenClawClient:
             "x-openclaw-session": session_id,
         }
         payload = {
-            "model": "default",  # Dynamic server routing without hardcoded model name
+            "model": "default",
             "messages": messages,
             "temperature": temperature,
             "user": "leadgen_backend",
@@ -1282,7 +1409,6 @@ class OpenClawClient:
         parameters: Dict[str, Any],
         timeout_seconds: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Directly dispatches research tasks to live research engines."""
         logger.info(f"OpenClawClient: Executing skill '{skill_name}' with parameters {parameters}")
 
         if skill_name == "business-discovery":
@@ -1334,7 +1460,5 @@ class OpenClawClient:
 
         return {"status": "SUCCESS", "skill": skill_name}
 
-
 class MockOpenClawClient(OpenClawClient):
-    """Compatible mock alias that executes pure real research without simulated math."""
     pass

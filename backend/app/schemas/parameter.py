@@ -1,9 +1,5 @@
-"""
-Parameter & Business Type Pydantic Schemas
-"""
 from typing import Optional
 from pydantic import BaseModel
-
 
 class ParameterResponse(BaseModel):
     id: int
@@ -15,7 +11,6 @@ class ParameterResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class BusinessTypeResponse(BaseModel):
     slug: str

@@ -1,11 +1,7 @@
-"""
-Lead, Score, and Feedback Pydantic Schemas
-"""
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-
 
 class LeadScoreResponse(BaseModel):
     evidence_quality: float
@@ -19,11 +15,9 @@ class LeadScoreResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class LeadFeedbackCreate(BaseModel):
-    action: str = Field(..., example="APPROVED")  # APPROVED, REJECTED, WRONG_WEAKNESS, WRONG_SERVICE, INSUFFICIENT_EVIDENCE
+    action: str = Field(..., example="APPROVED")
     notes: Optional[str] = None
-
 
 class LeadFeedbackResponse(BaseModel):
     id: uuid.UUID
@@ -33,7 +27,6 @@ class LeadFeedbackResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class LeadResponse(BaseModel):
     id: uuid.UUID
@@ -48,7 +41,12 @@ class LeadResponse(BaseModel):
     domain: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
-    email_status: Optional[str] = "VERIFIED"  # VERIFIED, SUGGESTED, NOT_FOUND
+    email_status: Optional[str] = "UNVERIFIED"
+    verification_notes: Optional[str] = None
+    outreach_status: Optional[str] = "PENDING"
+    deal_status: Optional[str] = "COLD"
+    followup_step: Optional[int] = 0
+    last_contacted_at: Optional[datetime] = None
     contact_person: Optional[str] = None
     contact_title: Optional[str] = None
     address: Optional[str] = None
@@ -57,10 +55,14 @@ class LeadResponse(BaseModel):
     google_search_url: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    fit_tier: Optional[str] = "HOT"
+    why_they_need_us: Optional[str] = None
+    what_they_need: Optional[str] = None
+    discovery_call_script: Optional[str] = None
+    matched_service: Optional[str] = None
 
     class Config:
         from_attributes = True
-
 
 class EvidenceItemResponse(BaseModel):
     parameter_id: int
@@ -78,7 +80,6 @@ class EvidenceItemResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
 class ResearchJobSummaryResponse(BaseModel):
     id: uuid.UUID
     task_type: str
@@ -90,7 +91,6 @@ class ResearchJobSummaryResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
 
 class LeadDetailResponse(LeadResponse):
     business_name: str
@@ -109,3 +109,27 @@ class LeadDetailResponse(LeadResponse):
     research_jobs: List[ResearchJobSummaryResponse] = []
     all_parameters_matrix: List[Dict[str, Any]] = []
     metadata_json: Optional[Dict[str, Any]] = None
+    outreach_logs: List[Dict[str, Any]] = []
+    outreach_status: Optional[str] = None
+    deal_status: Optional[str] = None
+
+class LeadUpdate(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    contact_person: Optional[str] = None
+    contact_title: Optional[str] = None
+    address: Optional[str] = None
+    primary_gap_summary: Optional[str] = None
+    tier: Optional[str] = None
+    fit_tier: Optional[str] = None
+    why_they_need_us: Optional[str] = None
+    what_they_need: Optional[str] = None
+    discovery_call_script: Optional[str] = None
+    matched_service: Optional[str] = None
+    approve_for_outreach: Optional[bool] = None
+    outreach_status: Optional[str] = None
+
+class StaggeredDispatchCreate(BaseModel):
+    lead_ids: Optional[List[uuid.UUID]] = None
+    min_delay_sec: int = Field(default=45, ge=1, le=600)
+    max_delay_sec: int = Field(default=90, ge=1, le=600)

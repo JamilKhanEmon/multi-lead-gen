@@ -1,7 +1,3 @@
-"""
-Autonomous B2B Lead-Generation Platform — Structured Logging System
-Masks sensitive keys (tokens, passwords, secrets, cookies) automatically.
-"""
 import json
 import logging
 import sys
@@ -13,9 +9,7 @@ SENSITIVE_PATTERNS = {
     "key", "access_token", "refresh_token", "private_key"
 }
 
-
 def sanitize_data(data: Any) -> Any:
-    """Recursively mask sensitive values in dicts and lists."""
     if isinstance(data, dict):
         sanitized = {}
         for k, v in data.items():
@@ -28,9 +22,7 @@ def sanitize_data(data: Any) -> Any:
         return [sanitize_data(item) for item in data]
     return data
 
-
 class JSONFormatter(logging.Formatter):
-    """Formats log records as single-line JSON with timestamps and sanitized context."""
 
     def format(self, record: logging.LogRecord) -> str:
         log_payload: Dict[str, Any] = {
@@ -42,7 +34,6 @@ class JSONFormatter(logging.Formatter):
             "line": record.lineno,
         }
 
-        # Include structured extra fields if present
         if hasattr(record, "extra") and isinstance(record.extra, dict):
             log_payload["context"] = sanitize_data(record.extra)
 
@@ -51,13 +42,10 @@ class JSONFormatter(logging.Formatter):
 
         return json.dumps(log_payload)
 
-
 def setup_logger(name: str = "leadgen", level: str = "INFO") -> logging.Logger:
-    """Configures and returns a structured logger."""
     logger = logging.getLogger(name)
     logger.setLevel(getattr(logging, level.upper(), logging.INFO))
 
-    # Avoid duplicate handlers on reloads
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(JSONFormatter())
@@ -65,6 +53,5 @@ def setup_logger(name: str = "leadgen", level: str = "INFO") -> logging.Logger:
         logger.propagate = False
 
     return logger
-
 
 logger = setup_logger()

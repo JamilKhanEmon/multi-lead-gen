@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { fetchLeadDetail, submitLeadFeedback, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate } from "@/lib/api";
+import { fetchLeadDetail, submitLeadFeedback, updateLeadDetails, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate, evaluateLeadFitGate } from "@/lib/api";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -38,6 +38,11 @@ import {
   Trash2,
   Send,
   Edit3,
+  MessageSquare,
+  Flame,
+  PhoneCall,
+  Quote,
+  RefreshCw,
 } from "lucide-react";
 
 export default function LeadDetailPage() {
@@ -50,14 +55,12 @@ export default function LeadDetailPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
 
-  // Global email template & personalized outreach state
   const [emailTemplate, setEmailTemplate] = useState<EmailTemplate | null>(null);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [customDraftSubject, setCustomDraftSubject] = useState("");
   const [customDraftBody, setCustomDraftBody] = useState("");
 
-  // OpenClaw parameter inspection state
   const [evidenceSearch, setEvidenceSearch] = useState("");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("ALL");
   const [expandedJobs, setExpandedJobs] = useState<Record<string, boolean>>({});
@@ -65,6 +68,87 @@ export default function LeadDetailPage() {
   const [matrixViewMode, setMatrixViewMode] = useState<"gaps" | "all135">("gaps");
   const [showJsonModal, setShowJsonModal] = useState(false);
   const [copiedFullJson, setCopiedFullJson] = useState(false);
+
+  const [copiedEvidence, setCopiedEvidence] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
+  const [isEvaluatingFit, setIsEvaluatingFit] = useState(false);
+
+  const handleEvaluateFit = async () => {
+    if (!lead) return;
+    setIsEvaluatingFit(true);
+    try {
+      const updated = await evaluateLeadFitGate(lead.id);
+      setLead(updated);
+    } catch (err: any) {
+      alert("Fit Gate evaluation failed: " + err.message);
+    } finally {
+      setIsEvaluatingFit(false);
+    }
+  };
+
+  const copyEvidenceToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedEvidence(true);
+    setTimeout(() => setCopiedEvidence(false), 2000);
+  };
+
+  const copyScriptToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedScript(true);
+    setTimeout(() => setCopiedScript(false), 2000);
+  };
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editContactPerson, setEditContactPerson] = useState("");
+  const [editContactTitle, setEditContactTitle] = useState("");
+  const [editAddress, setEditAddress] = useState("");
+  const [editPrimaryGap, setEditPrimaryGap] = useState("");
+  const [editWhyUs, setEditWhyUs] = useState("");
+  const [editWhatNeed, setEditWhatNeed] = useState("");
+  const [editMatchedService, setEditMatchedService] = useState("");
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
+  const openEditModal = () => {
+    if (!lead) return;
+    setEditEmail(lead.email || "");
+    setEditPhone(lead.phone || "");
+    setEditContactPerson(lead.contact_person || "");
+    setEditContactTitle(lead.contact_title || "");
+    setEditAddress(lead.address || "");
+    setEditPrimaryGap(lead.primary_gap_summary || "");
+    setEditWhyUs(lead.why_they_need_us || "");
+    setEditWhatNeed(lead.what_they_need || "");
+    setEditMatchedService(lead.matched_service || "");
+    setShowEditModal(true);
+  };
+
+  const handleSaveLeadEdit = async (approveForOutreach: boolean = false) => {
+    if (!lead) return;
+    setIsSubmittingEdit(true);
+    try {
+      const updated = await updateLeadDetails(lead.id, {
+        email: editEmail,
+        phone: editPhone,
+        contact_person: editContactPerson,
+        contact_title: editContactTitle,
+        address: editAddress,
+        primary_gap_summary: editPrimaryGap,
+        why_they_need_us: editWhyUs,
+        what_they_need: editWhatNeed,
+        matched_service: editMatchedService,
+        approve_for_outreach: approveForOutreach,
+      });
+      setLead(updated);
+      setShowEditModal(false);
+      alert(approveForOutreach ? "✓ Lead updated and approved for Outreach Queue!" : "✓ Lead details updated successfully!");
+    } catch (err: any) {
+      alert("Failed to update lead: " + err.message);
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  };
 
   useEffect(() => {
     fetchLeadDetail(leadId)
@@ -81,6 +165,8 @@ export default function LeadDetailPage() {
     try {
       await submitLeadFeedback(leadId, action);
       setFeedbackSuccess(`Feedback '${action}' recorded.`);
+      const updated = await fetchLeadDetail(leadId);
+      setLead(updated);
     } catch (e: any) {
       alert("Failed to submit feedback: " + e.message);
     }
@@ -127,7 +213,6 @@ export default function LeadDetailPage() {
     }
   };
 
-  // Computed dynamic email outreach draft from Admin template + verified lead data
   const renderedOutreach = emailTemplate && lead
     ? renderEmailTemplate(emailTemplate, lead)
     : {
@@ -216,12 +301,18 @@ export default function LeadDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Back button & Action Toolbar */}
+
       <div className="flex items-center justify-between flex-wrap gap-2">
         <Link href="/leads" className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition">
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Lead Pipeline
         </Link>
         <div className="flex items-center gap-2">
+          <button
+            onClick={openEditModal}
+            className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
+          >
+            <Edit3 className="w-3.5 h-3.5 text-emerald-400" /> Edit Lead Details
+          </button>
           <button
             onClick={() => setShowJsonModal(true)}
             className="px-3 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
@@ -234,14 +325,6 @@ export default function LeadDetailPage() {
           >
             <Download className="w-3.5 h-3.5" /> Export JSON
           </button>
-          <button
-            onClick={handleDeleteLead}
-            disabled={isDeleting}
-            className="px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
-            title="Delete this lead permanently from the database"
-          >
-            <Trash2 className="w-3.5 h-3.5" /> {isDeleting ? "Deleting..." : "Delete Lead"}
-          </button>
           <Link
             href="/parameters"
             className="inline-flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 font-medium transition px-2.5 py-1.5 rounded-lg bg-violet-950/30 border border-violet-800/40"
@@ -251,7 +334,6 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
-      {/* Header Dossier Card */}
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex items-start justify-between">
           <div>
@@ -283,7 +365,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Company Contact & Decision Maker Intelligence */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs">
           <div className="space-y-1">
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
@@ -291,7 +372,21 @@ export default function LeadDetailPage() {
             </span>
             <div className="text-slate-200 font-mono">
               {lead.phone ? (
-                <a href={`tel:${lead.phone}`} className="hover:text-sky-400 hover:underline">{lead.phone}</a>
+                <div className="space-y-1">
+                  <a href={`tel:${lead.phone}`} className="hover:text-sky-400 hover:underline">{lead.phone}</a>
+                  <div>
+                    <a
+                      href={`https://wa.me/${lead.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
+                        `Hello ${lead.contact_person || lead.business_name}, I am reaching out from our business growth team regarding your business.`
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30 transition"
+                    >
+                      <MessageSquare className="w-2.5 h-2.5" /> WhatsApp
+                    </a>
+                  </div>
+                </div>
               ) : (
                 <span className="text-slate-500">Not public</span>
               )}
@@ -376,7 +471,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Explainability Summary Box */}
         <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800/80 text-xs text-slate-300 space-y-2">
           <div className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4 text-sky-400" /> Explainability & Evidence Rationale
@@ -384,7 +478,6 @@ export default function LeadDetailPage() {
           <p className="leading-relaxed text-slate-300">{explanation.summary || lead.primary_gap_summary}</p>
         </div>
 
-        {/* Reviewer Feedback Action Toolbar */}
         <div className="pt-2 flex items-center justify-between border-t border-slate-800/60">
           <span className="text-xs text-slate-400">Human-In-The-Loop Review:</span>
           <div className="flex items-center gap-2">
@@ -407,7 +500,218 @@ export default function LeadDetailPage() {
         )}
       </div>
 
-      {/* Interactive Map & Manual Outreach Discovery Hub */}
+      <div className="glass-panel p-6 rounded-2xl border border-amber-500/30 bg-gradient-to-b from-slate-900/95 via-slate-950 to-slate-900/90 space-y-5 shadow-xl shadow-amber-500/5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              <Flame className="w-5 h-5 fill-amber-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">Demand-Side Sales Intelligence & Call Pitch</h3>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono uppercase tracking-wider font-semibold">
+                  Evidence-First Framework
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Live buying signals matched to solution catalog. Sales representatives pitch only verified client bottlenecks.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+
+            <div className={`px-3 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1.5 ${
+              lead.fit_tier === "HOT"
+                ? "bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-sm shadow-rose-500/20"
+                : lead.fit_tier === "WARM"
+                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                : lead.fit_tier === "DROPPED"
+                ? "bg-slate-800 text-slate-400 border-slate-700"
+                : "bg-sky-500/20 text-sky-300 border-sky-500/40"
+            }`}>
+              {lead.fit_tier === "HOT" && <Flame className="w-3.5 h-3.5 fill-rose-400" />}
+              {lead.fit_tier === "WARM" && <Sparkles className="w-3.5 h-3.5 text-amber-400" />}
+              <span>{lead.fit_tier || "HOT"} LEAD</span>
+            </div>
+
+            <button
+              onClick={handleEvaluateFit}
+              disabled={isEvaluatingFit}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              title="Re-run Fit Gate Evaluation against live website & footprint"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isEvaluatingFit ? "animate-spin text-amber-400" : ""}`} />
+              <span>{isEvaluatingFit ? "Scanning..." : "Re-Scan Fit Gate"}</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          <div className="p-4 rounded-xl bg-gradient-to-br from-amber-950/30 to-slate-900/80 border border-amber-500/30 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Quote className="w-3.5 h-3.5 text-amber-400" /> Why They Need Us (Live Evidence)
+              </span>
+              <button
+                onClick={() => copyEvidenceToClipboard(lead.why_they_need_us || lead.primary_gap_summary)}
+                className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-semibold transition border border-amber-500/30 flex items-center gap-1 cursor-pointer"
+              >
+                {copiedEvidence ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                <span>{copiedEvidence ? "Copied!" : "Copy Proof"}</span>
+              </button>
+            </div>
+            <blockquote className="text-xs text-amber-100/90 leading-relaxed italic bg-black/30 p-3 rounded-lg border border-amber-500/20 select-all">
+              "{lead.why_they_need_us || lead.primary_gap_summary}"
+            </blockquote>
+            <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+              Sales rule: Open the call with this exact observed proof to disarm skepticism.
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-gradient-to-br from-sky-950/30 to-slate-900/80 border border-sky-500/30 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-sky-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-sky-400" /> Solution & Recommended Service
+              </span>
+              <span className="text-[10px] bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full border border-sky-500/30 font-medium">
+                Wedge Strategy
+              </span>
+            </div>
+            <div className="p-3 rounded-lg bg-black/30 border border-sky-500/20 space-y-1.5">
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span>🎯 Matched Service:</span>
+                <span className="text-sky-300">{lead.matched_service || "Web Design & Digital Growth Pipeline"}</span>
+              </div>
+              <div className="text-xs text-slate-300 leading-relaxed">
+                <span className="font-semibold text-slate-400">What They Need: </span>
+                {lead.what_they_need || "Modern digital presence with automated lead capture and customer inquiry management."}
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+              Pitch low-friction wedge product first before proposing large enterprise systems.
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+              <PhoneCall className="w-3.5 h-3.5 text-emerald-400" /> Discovery-First Sales Call Script (30-Sec Opener)
+            </span>
+            <button
+              onClick={() => copyScriptToClipboard(lead.discovery_call_script || "")}
+              className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold transition border border-emerald-500/30 flex items-center gap-1.5 cursor-pointer"
+            >
+              {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedScript ? "Copied Script!" : "Copy Call Script"}</span>
+            </button>
+          </div>
+          <div className="text-xs text-slate-200 font-mono bg-slate-900/90 p-3.5 rounded-lg border border-slate-800/80 whitespace-pre-wrap leading-relaxed select-all">
+            {lead.discovery_call_script || (
+              `1. OPENING EVIDENCE:\n   "Hello, is this ${lead.business_name}? I was reviewing your online presence and noticed you don't have an automated inquiry capture form on your website."\n\n2. DISCOVERY QUESTION (Wait for their answer):\n   "How are you currently tracking inbound client inquiries and follow-ups right now?"\n\n3. VALUE PITCH (${lead.matched_service || "Digital Growth Solutions"}):\n   "Our growth solutions team specializes in solving this with quick setup. Would you be open to a 5-minute preview of the custom audit report we prepared for ${lead.business_name}?"`
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+              <Mail className="w-4 h-4 text-emerald-400" />
+              Outreach Activity & Inbound Client Replies ({lead.outreach_logs?.length || 0} Records)
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Live audit history of sent cold emails and direct client replies with AI sentiment classification.
+            </p>
+          </div>
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+            lead.deal_status === "HOT_LEAD" || lead.outreach_status === "REPLIED_HOT"
+              ? "bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5"
+              : "bg-sky-500/20 text-sky-300 border border-sky-500/30"
+          }`}>
+            {(lead.deal_status === "HOT_LEAD" || lead.outreach_status === "REPLIED_HOT") && (
+              <Flame className="w-3.5 h-3.5 text-rose-400 fill-rose-400 animate-pulse" />
+            )}
+            {lead.outreach_status || "PENDING"}
+          </span>
+        </div>
+
+        {!lead.outreach_logs || lead.outreach_logs.length === 0 ? (
+          <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-800/80 text-xs text-slate-400 text-center space-y-1">
+            <div className="font-semibold text-slate-300">No email outreach logs sent yet for this lead.</div>
+            <p className="text-[11px] text-slate-500">When an outreach email is sent or a client replies, the complete message transcript will appear here.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {lead.outreach_logs.map((log: any, idx: number) => {
+              const isReply = Boolean(log.reply_content || log.status?.startsWith("REPLIED"));
+
+              return (
+                <div
+                  key={log.id || idx}
+                  className={`p-4 rounded-xl border transition space-y-2.5 ${
+                    isReply
+                      ? "bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-slate-900/70 border-emerald-500/40 shadow-lg shadow-emerald-500/5"
+                      : "bg-slate-900/60 border-slate-800"
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {isReply ? (
+                        <span className="px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold text-[10px] flex items-center gap-1.5">
+                          <Flame className="w-3 h-3 fill-emerald-400 text-emerald-400" /> INBOUND CLIENT REPLY ({log.reply_sentiment || "POSITIVE"})
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/30 text-[10px] font-mono">
+                          OUTBOUND EMAIL (STEP {log.step || 1})
+                        </span>
+                      )}
+                      <span className="text-slate-300 font-mono text-[11px] truncate">
+                        Recipient: {log.recipient_email}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {log.sent_at ? new Date(log.sent_at).toLocaleString() : "Recently"}
+                    </span>
+                  </div>
+
+                  <div className="text-xs font-semibold text-white font-sans">
+                    Subject: {log.subject}
+                  </div>
+
+                  {isReply ? (
+                    <div className="p-3.5 rounded-xl bg-slate-950/90 border border-emerald-500/30 space-y-2 text-xs">
+                      <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                        Received Client Response Message:
+                      </div>
+                      <div className="text-slate-100 font-sans text-xs leading-relaxed whitespace-pre-wrap select-all font-medium bg-slate-900/90 p-3 rounded-lg border border-emerald-900/50 shadow-inner">
+                        "{log.reply_content || log.body_snippet}"
+                      </div>
+                      {log.reply_sentiment && (
+                        <div className="text-[11px] text-emerald-300 font-mono pt-1 flex items-center gap-1.5">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>AI Sentiment: <strong>{log.reply_sentiment}</strong> — Automated sequence paused. Moved to Hot Deals CRM.</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-300 font-mono bg-slate-950/60 p-3 rounded-lg border border-slate-800/80 whitespace-pre-wrap leading-relaxed select-all">
+                      {log.body_snippet}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
@@ -447,7 +751,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Embedded Interactive Google Map */}
         <div className="rounded-xl overflow-hidden border border-slate-800 bg-slate-950 relative shadow-inner">
           <iframe
             title={`${lead.business_name} Google Map Location`}
@@ -474,7 +777,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Missing Website Outreach Guidance if Lead has No Domain */}
         {!lead.domain && (
           <div className="p-4 rounded-xl bg-gradient-to-r from-amber-950/30 via-slate-900/60 to-rose-950/30 border border-amber-500/30 space-y-3">
             <div className="space-y-1">
@@ -483,7 +785,7 @@ export default function LeadDetailPage() {
                 Top Web Agency Opportunity: No Official Website Found
               </div>
               <p className="text-[11px] text-slate-300 leading-relaxed">
-                This business is physically established and visible on Google Maps, but has no official web portal. 
+                This business is physically established and visible on Google Maps, but has no official web portal.
                 They are the <strong>highest conversion candidates for website design, digital menus, online booking, and local SEO services</strong>.
               </p>
             </div>
@@ -542,7 +844,6 @@ export default function LeadDetailPage() {
               )}
             </div>
 
-            {/* Quick Pitch Copy Template */}
             <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -586,7 +887,6 @@ export default function LeadDetailPage() {
         )}
       </div>
 
-      {/* Real-World Digital Footprint & Marketing Intelligence */}
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
@@ -599,7 +899,7 @@ export default function LeadDetailPage() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-          {/* CMS Platform */}
+
           <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
               <Code2 className="w-3.5 h-3.5 text-sky-400" /> CMS & Web Stack
@@ -610,7 +910,6 @@ export default function LeadDetailPage() {
             <p className="text-[10px] text-slate-500">Framework / Tech platform</p>
           </div>
 
-          {/* Meta Pixel Retargeting */}
           <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
               <Eye className="w-3.5 h-3.5 text-rose-400" /> Meta Retargeting Pixel
@@ -629,7 +928,6 @@ export default function LeadDetailPage() {
             <p className="text-[10px] text-slate-500">Facebook/Instagram tracking</p>
           </div>
 
-          {/* Google Analytics */}
           <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
               <Cpu className="w-3.5 h-3.5 text-amber-400" /> Analytics & GTM
@@ -648,7 +946,6 @@ export default function LeadDetailPage() {
             <p className="text-[10px] text-slate-500">Visitor event analytics</p>
           </div>
 
-          {/* Crawler Mode */}
           <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1">
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-purple-400" /> Audit Engine
@@ -660,7 +957,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* 1-Click Meta Ad Library Verification Banner */}
         <div className="p-3.5 rounded-xl bg-gradient-to-r from-sky-950/40 to-blue-950/40 border border-sky-800/40 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400">
@@ -682,7 +978,6 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
-      {/* 6-Factor Breakdown Grid */}
       {scores && (
         <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
           <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
@@ -709,7 +1004,6 @@ export default function LeadDetailPage() {
         </div>
       )}
 
-      {/* Verified Evidence & Parameter Findings Collected by OpenClaw */}
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
@@ -725,9 +1019,9 @@ export default function LeadDetailPage() {
                 : "Observable deficiencies, missing digital infrastructure, and service opportunities identified by OpenClaw."}
             </p>
           </div>
-          
+
           <div className="flex items-center gap-2 flex-wrap">
-            {/* View Mode Toggle */}
+
             <div className="inline-flex rounded-lg bg-slate-900 border border-slate-800 p-0.5 text-xs">
               <button
                 onClick={() => {
@@ -766,7 +1060,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Search & Filter Toolbar */}
         <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
           <div className="relative flex-1 w-full">
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -798,7 +1091,6 @@ export default function LeadDetailPage() {
           </div>
         </div>
 
-        {/* Evidence & Parameter List */}
         {filteredEvidence.length === 0 ? (
           <div className="p-8 text-center text-xs text-slate-400 rounded-xl bg-slate-900/40 border border-slate-800/80 space-y-1">
             <div className="font-semibold text-slate-300">No parameters matching filter</div>
@@ -889,7 +1181,6 @@ export default function LeadDetailPage() {
         )}
       </div>
 
-      {/* Raw OpenClaw Research Jobs & JSON Output Inspection */}
       {lead.research_jobs && lead.research_jobs.length > 0 && (
         <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
           <div className="flex items-center justify-between">
@@ -983,7 +1274,6 @@ export default function LeadDetailPage() {
         </div>
       )}
 
-      {/* Recommended Agency Solution & Client Outreach Pitch */}
       <div className="glass-panel p-6 rounded-2xl border border-sky-500/30 bg-sky-950/10 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
@@ -1018,7 +1308,6 @@ export default function LeadDetailPage() {
             </div>
           </div>
 
-          {/* Subject Line Bar */}
           <div className="p-2.5 bg-slate-900/90 border border-slate-800 rounded-lg flex items-center gap-2 text-xs">
             <span className="text-slate-500 font-mono text-[11px] shrink-0">Subject:</span>
             {isEditingDraft ? (
@@ -1033,7 +1322,6 @@ export default function LeadDetailPage() {
             )}
           </div>
 
-          {/* Email Body & Signature */}
           {isEditingDraft ? (
             <textarea
               rows={8}
@@ -1047,7 +1335,6 @@ export default function LeadDetailPage() {
             </div>
           )}
 
-          {/* Outreach Actions Bar */}
           <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-t border-slate-800/80">
             <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -1085,7 +1372,6 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
-      {/* Full 135-Parameter A-Z JSON Modal Overlay */}
       {showJsonModal && (
         <div
           role="dialog"
@@ -1097,7 +1383,7 @@ export default function LeadDetailPage() {
             className="glass-panel bg-slate-950/95 border border-slate-700/80 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
+
             <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400">
@@ -1136,14 +1422,12 @@ export default function LeadDetailPage() {
               </div>
             </div>
 
-            {/* Modal JSON Body */}
             <div className="p-4 sm:p-5 overflow-auto flex-1 bg-slate-950 font-mono text-[11px] sm:text-xs leading-relaxed">
               <pre className="text-emerald-400 select-all whitespace-pre-wrap word-break bg-slate-900/60 p-4 rounded-xl border border-slate-800/80">
                 {JSON.stringify(lead, null, 2)}
               </pre>
             </div>
 
-            {/* Modal Footer */}
             <div className="p-3 sm:p-4 border-t border-slate-800/80 bg-slate-900/40 flex items-center justify-between text-xs text-slate-400">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -1161,7 +1445,170 @@ export default function LeadDetailPage() {
           </div>
         </div>
       )}
+
+      {showEditModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6"
+          onClick={() => setShowEditModal(false)}
+        >
+          <div
+            className="glass-panel bg-slate-950/95 border border-slate-700/80 rounded-2xl w-full max-w-xl flex flex-col shadow-2xl overflow-hidden space-y-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Edit Lead Dossier & Contact Information</h3>
+                  <p className="text-[11px] text-slate-400">{lead.business_name}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Target Contact Email:</label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="e.g. contact@company.com"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Direct Phone Number / WhatsApp:</label>
+                <input
+                  type="text"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="e.g. +8801700000000"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Key Decision Maker Name:</label>
+                  <input
+                    type="text"
+                    value={editContactPerson}
+                    onChange={(e) => setEditContactPerson(e.target.value)}
+                    placeholder="e.g. Tanvir Ahmed"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">Designation / Title:</label>
+                  <input
+                    type="text"
+                    value={editContactTitle}
+                    onChange={(e) => setEditContactTitle(e.target.value)}
+                    placeholder="e.g. Managing Director"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Address / Metro Location:</label>
+                <input
+                  type="text"
+                  value={editAddress}
+                  onChange={(e) => setEditAddress(e.target.value)}
+                  placeholder="e.g. Gulshan 1, Dhaka"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">Primary Gap / Opportunity Summary:</label>
+                <textarea
+                  rows={2}
+                  value={editPrimaryGap}
+                  onChange={(e) => setEditPrimaryGap(e.target.value)}
+                  placeholder="Summarize the core weakness or service gap..."
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 resize-y font-sans"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-amber-300 mb-1">Why They Need Us (Live Evidence Quote):</label>
+                <textarea
+                  rows={2}
+                  value={editWhyUs}
+                  onChange={(e) => setEditWhyUs(e.target.value)}
+                  placeholder="Live observable proof on website/digital touchpoints..."
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 resize-y font-sans"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-sky-300 mb-1">Matched Service:</label>
+                  <input
+                    type="text"
+                    value={editMatchedService}
+                    onChange={(e) => setEditMatchedService(e.target.value)}
+                    placeholder="e.g. Web Design & Development (Site in 7 Days)"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">What They Need (Solution):</label>
+                  <input
+                    type="text"
+                    value={editWhatNeed}
+                    onChange={(e) => setEditWhatNeed(e.target.value)}
+                    placeholder="e.g. Modern web presence with WhatsApp booking"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300"
+              >
+                Cancel
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isSubmittingEdit}
+                  onClick={() => handleSaveLeadEdit(false)}
+                  className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition border border-slate-700"
+                >
+                  Save Changes
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isSubmittingEdit}
+                  onClick={() => handleSaveLeadEdit(true)}
+                  className="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-500/20"
+                >
+                  <Send className="w-3.5 h-3.5 text-slate-950" />
+                  Approve for Outreach Queue
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import {
   PhoneCall,
   PhoneForwarded,
@@ -30,6 +31,8 @@ import {
   ShieldCheck,
   Zap,
   Loader2,
+  Lock,
+  ArrowLeft,
 } from "lucide-react";
 import {
   fetchVoiceKB,
@@ -49,10 +52,9 @@ import {
 } from "@/lib/api";
 
 export default function VoiceAgentPage() {
-  // Navigation / Tabs
+
   const [activeTab, setActiveTab] = useState<"sheet" | "prompt" | "simulator" | "logs">("sheet");
 
-  // State
   const [kb, setKb] = useState<VoiceKnowledgeBase | null>(null);
   const [queue, setQueue] = useState<VoiceCallQueueItem[]>([]);
   const [logs, setLogs] = useState<VoiceCallLog[]>([]);
@@ -61,13 +63,11 @@ export default function VoiceAgentPage() {
     message: "Checking...",
   });
 
-  // Loading & Action states
   const [loading, setLoading] = useState(true);
   const [savingKb, setSavingKb] = useState(false);
   const [syncingLeads, setSyncingLeads] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
-  // New Lead Modal / Inline Add state
   const [newLead, setNewLead] = useState({
     contact_person: "",
     company_name: "",
@@ -76,7 +76,6 @@ export default function VoiceAgentPage() {
   });
   const [showAddModal, setShowAddModal] = useState(false);
 
-  // Live Simulator state
   const [selectedSimLead, setSelectedSimLead] = useState<VoiceCallQueueItem | null>(null);
   const [simActive, setSimActive] = useState(false);
   const [simConnecting, setSimConnecting] = useState(false);
@@ -88,7 +87,6 @@ export default function VoiceAgentPage() {
   const [isMuted, setIsMuted] = useState(false);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load initial data
   const loadData = async () => {
     try {
       setLoading(true);
@@ -117,7 +115,6 @@ export default function VoiceAgentPage() {
     loadData();
   }, []);
 
-  // Ensure selectedSimLead is always populated when queue loads
   useEffect(() => {
     if (queue.length > 0) {
       if (!selectedSimLead || !queue.some((q) => q.id === selectedSimLead.id)) {
@@ -138,7 +135,6 @@ export default function VoiceAgentPage() {
   const isAgentSpeakingRef = useRef(false);
   const isProcessingTurnRef = useRef(false);
 
-  // Text-To-Speech helper for browser simulation with voice selection
   const speakText = (text: string) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     try {
@@ -163,7 +159,7 @@ export default function VoiceAgentPage() {
       utterance.onstart = () => {
         setIsAgentSpeaking(true);
         isAgentSpeakingRef.current = true;
-        // Mute/abort mic immediately when agent starts talking to avoid acoustic speaker feedback
+
         if (recognitionRef.current) {
           try {
             recognitionRef.current.abort();
@@ -202,7 +198,6 @@ export default function VoiceAgentPage() {
       return;
     }
 
-    // Do not allow opening mic while agent is speaking or thinking
     if (isAgentSpeakingRef.current || isProcessingTurnRef.current) {
       return;
     }
@@ -215,12 +210,11 @@ export default function VoiceAgentPage() {
 
       recognition.onstart = () => setIsRecordingMic(true);
       recognition.onresult = (event: any) => {
-        // Drop all audio chunks if agent is speaking or processing
+
         if (isAgentSpeakingRef.current || isProcessingTurnRef.current) {
           return;
         }
 
-        // Only take the final transcript
         for (let i = event.resultIndex; i < event.results.length; ++i) {
           if (event.results[i].isFinal) {
             const transcript = event.results[i][0].transcript.trim();
@@ -245,10 +239,6 @@ export default function VoiceAgentPage() {
       setIsRecordingMic(false);
     }
   };
-
-  // ============================================================================
-  // TAB 1: INTERACTIVE SHEET VIEW ACTIONS
-  // ============================================================================
 
   const handleCellEdit = async (itemId: string, field: keyof VoiceCallQueueItem, value: any) => {
     setQueue((prev) =>
@@ -320,10 +310,6 @@ export default function VoiceAgentPage() {
     }
   };
 
-  // ============================================================================
-  // TAB 2: ELEVENLABS-STYLE PROMPT & KB ACTIONS
-  // ============================================================================
-
   const handleSaveKb = async () => {
     if (!kb) return;
     setSavingKb(true);
@@ -337,10 +323,6 @@ export default function VoiceAgentPage() {
       setSavingKb(false);
     }
   };
-
-  // ============================================================================
-  // TAB 3: LIVE TEST SIMULATOR ACTIONS
-  // ============================================================================
 
   const startSimulatorCall = (targetLead?: VoiceCallQueueItem) => {
     const lead = targetLead || selectedSimLead || queue[0];
@@ -359,7 +341,6 @@ export default function VoiceAgentPage() {
       setSimConnecting(false);
       setSimActive(true);
 
-      // Render First Greeting Message from KB
       const firstGreeting = kb?.first_message
         ? kb.first_message
             .replace(/\{\{\s*client_name\s*\}\}/gi, lead.contact_person || "Sir")
@@ -377,7 +358,6 @@ export default function VoiceAgentPage() {
       ]);
       speakText(firstGreeting);
 
-      // Start duration timer
       if (callTimerRef.current) clearInterval(callTimerRef.current);
       callTimerRef.current = setInterval(() => {
         setCallDuration((prev) => prev + 1);
@@ -449,7 +429,6 @@ export default function VoiceAgentPage() {
             : "Call completed. Client verified.",
         });
 
-        // Update local sheet row
         setQueue((prev) =>
           prev.map((item) =>
             item.id === selectedSimLead.id
@@ -477,15 +456,42 @@ export default function VoiceAgentPage() {
     }
   };
 
-  // Helper counters
   const totalLeads = queue.length;
   const selectedCount = queue.filter((q) => q.selected_for_call).length;
   const bookedCount = queue.filter((q) => q.status === "MEETING_BOOKED").length;
   const doneCount = queue.filter((q) => q.status === "CALL_DONE").length;
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 text-slate-100 overflow-y-auto">
-      {/* Toast Notification */}
+    <div className="flex flex-col h-full bg-slate-950 text-slate-100 overflow-y-auto space-y-6">
+
+      <div className="p-8 rounded-2xl bg-gradient-to-r from-slate-900 via-emerald-950/20 to-slate-900 border border-emerald-500/30 text-center space-y-4 shadow-2xl relative overflow-hidden m-4 sm:m-6">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 shadow-xl shadow-emerald-500/10 mb-1">
+          <Lock className="w-8 h-8 text-amber-400" />
+        </div>
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-mono font-bold uppercase tracking-wider mb-2">
+            <Lock className="w-3.5 h-3.5 text-amber-400" />
+            <span>Module Locked — Coming Soon</span>
+          </div>
+          <h2 className="text-2xl font-bold text-white tracking-tight">
+            Autonomous Voice Outreach Agent
+          </h2>
+          <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+            This module is currently locked for upcoming production integration with ElevenLabs Conversational Voice API.
+            Please utilize Module 01 for autonomous lead discovery and deterministic qualification.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            href="/admin"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-sky-500/20"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Return to Operations Center</span>
+          </Link>
+        </div>
+      </div>
+
       {toastMsg && (
         <div
           className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl border text-xs font-semibold shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2 ${
@@ -499,7 +505,6 @@ export default function VoiceAgentPage() {
         </div>
       )}
 
-      {/* Top Header & Operational Banner */}
       <header className="px-6 py-4 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
@@ -520,7 +525,6 @@ export default function VoiceAgentPage() {
           </div>
         </div>
 
-        {/* Office Hours Status Pill & Top Metrics */}
         <div className="flex items-center gap-3">
           <div
             className={`px-3 py-1.5 rounded-xl border text-xs font-mono flex items-center gap-2 ${
@@ -544,7 +548,6 @@ export default function VoiceAgentPage() {
         </div>
       </header>
 
-      {/* Top Metrics Row */}
       <div className="px-6 py-4 grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0">
         <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800/80">
           <div className="text-[11px] font-mono text-slate-400 uppercase">Total Queue Leads</div>
@@ -577,7 +580,6 @@ export default function VoiceAgentPage() {
         </div>
       </div>
 
-      {/* Tabs Navigation */}
       <div className="px-6 border-b border-slate-800/80 flex items-center gap-2 shrink-0">
         <button
           onClick={() => setActiveTab("sheet")}
@@ -628,14 +630,11 @@ export default function VoiceAgentPage() {
         </button>
       </div>
 
-      {/* Main Tab Views */}
       <div className="p-6 flex-1 flex flex-col">
-        {/* ========================================================================= */}
-        {/* TAB 1: INTERACTIVE SHEET VIEW                                             */}
-        {/* ========================================================================= */}
+
         {activeTab === "sheet" && (
           <div className="space-y-4 flex flex-col h-full">
-            {/* Sheet View Action Bar */}
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 p-3 rounded-2xl">
               <div className="flex items-center gap-2">
                 <button
@@ -687,7 +686,6 @@ export default function VoiceAgentPage() {
               </div>
             </div>
 
-            {/* Interactive Grid / Spreadsheet Table */}
             <div className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-900/40 flex-1 flex flex-col">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
@@ -724,7 +722,7 @@ export default function VoiceAgentPage() {
                             item.selected_for_call ? "bg-slate-900/30" : "opacity-75"
                           }`}
                         >
-                          {/* Checkbox */}
+
                           <td className="py-3 px-3 text-center">
                             <input
                               type="checkbox"
@@ -734,7 +732,6 @@ export default function VoiceAgentPage() {
                             />
                           </td>
 
-                          {/* Contact Person (Inline Editable) */}
                           <td className="py-3 px-3">
                             <input
                               type="text"
@@ -744,7 +741,6 @@ export default function VoiceAgentPage() {
                             />
                           </td>
 
-                          {/* Phone Number (Inline Editable) */}
                           <td className="py-3 px-3">
                             <input
                               type="text"
@@ -754,7 +750,6 @@ export default function VoiceAgentPage() {
                             />
                           </td>
 
-                          {/* Company Name (Inline Editable) */}
                           <td className="py-3 px-3">
                             <input
                               type="text"
@@ -764,7 +759,6 @@ export default function VoiceAgentPage() {
                             />
                           </td>
 
-                          {/* Exact Problem (Spoken by Agent - Inline Editable) */}
                           <td className="py-3 px-3">
                             <input
                               type="text"
@@ -774,7 +768,6 @@ export default function VoiceAgentPage() {
                             />
                           </td>
 
-                          {/* Status Badge */}
                           <td className="py-3 px-3">
                             {item.status === "MEETING_BOOKED" ? (
                               <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold">
@@ -794,7 +787,6 @@ export default function VoiceAgentPage() {
                             )}
                           </td>
 
-                          {/* Quick Actions */}
                           <td className="py-3 px-3 text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               {item.meeting_link && (
@@ -837,9 +829,6 @@ export default function VoiceAgentPage() {
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* TAB 2: ELEVENLABS-STYLE PROMPT & KNOWLEDGE BASE STUDIO                     */}
-        {/* ========================================================================= */}
         {activeTab === "prompt" && kb && (
           <div className="max-w-4xl mx-auto w-full space-y-6">
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 space-y-6">
@@ -863,7 +852,6 @@ export default function VoiceAgentPage() {
                 </button>
               </div>
 
-              {/* Dynamic Variables Helper Pills */}
               <div className="p-3.5 rounded-2xl bg-purple-950/30 border border-purple-800/40 space-y-2">
                 <span className="text-[11px] font-mono text-purple-300 font-bold uppercase tracking-wider">
                   Available Dynamic Variables (Injected at Runtime from Sheet View)
@@ -890,7 +878,6 @@ export default function VoiceAgentPage() {
                 </div>
               </div>
 
-              {/* Section 1: First Message Greeting */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-200 flex items-center justify-between">
                   <span>First Message (Initial Greeting Line Spoken Immediately)</span>
@@ -904,7 +891,6 @@ export default function VoiceAgentPage() {
                 />
               </div>
 
-              {/* Section 2: Core System Prompt & Rules */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-200 flex items-center justify-between">
                   <span>System Prompt & Conversational Constraints</span>
@@ -918,7 +904,6 @@ export default function VoiceAgentPage() {
                 />
               </div>
 
-              {/* Section 3: Company & Offer Settings */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-200">Your Company Name</label>
@@ -997,12 +982,9 @@ export default function VoiceAgentPage() {
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* TAB 3: LIVE TEST SIMULATOR                                                */}
-        {/* ========================================================================= */}
         {activeTab === "simulator" && (
           <div className="max-w-4xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Left: Lead Context & Controls */}
+
             <div className="md:col-span-1 space-y-4">
               <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3">
                 <span className="text-[11px] font-mono text-slate-400 uppercase">Target Lead Context</span>
@@ -1042,7 +1024,6 @@ export default function VoiceAgentPage() {
                   </div>
                 )}
 
-                {/* Call Control Button */}
                 <div className="pt-2">
                   {!simActive ? (
                     <button
@@ -1065,7 +1046,6 @@ export default function VoiceAgentPage() {
                 </div>
               </div>
 
-              {/* Generated Meeting Card if Booked */}
               {simBookedLink && (
                 <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 space-y-2 animate-in fade-in zoom-in-95">
                   <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold">
@@ -1088,9 +1068,8 @@ export default function VoiceAgentPage() {
               )}
             </div>
 
-            {/* Right: Live Audio Dialogue Transcript */}
             <div className="md:col-span-2 flex flex-col h-[520px] rounded-2xl bg-slate-900/60 border border-slate-800 overflow-hidden">
-              {/* Call Top Bar */}
+
               <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   <div
@@ -1122,7 +1101,6 @@ export default function VoiceAgentPage() {
                 )}
               </div>
 
-              {/* Dialogue Transcript Feed */}
               <div className="flex-1 p-4 overflow-y-auto space-y-3">
                 {simHistory.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-slate-500 text-xs space-y-2">
@@ -1180,7 +1158,6 @@ export default function VoiceAgentPage() {
                 )}
               </div>
 
-              {/* Quick Preset Phrases to Test Agent (Click to speak) */}
               {simActive && (
                 <div className="px-3 py-2 bg-slate-950/80 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto text-[11px]">
                   <span className="text-slate-500 shrink-0 font-mono">Test as Client:</span>
@@ -1215,7 +1192,6 @@ export default function VoiceAgentPage() {
                 </div>
               )}
 
-              {/* Speech Input Box */}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -1266,9 +1242,6 @@ export default function VoiceAgentPage() {
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* TAB 4: BOOKED DEMOS & CALL LOGS                                           */}
-        {/* ========================================================================= */}
         {activeTab === "logs" && (
           <div className="space-y-4 max-w-5xl mx-auto w-full">
             <div className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-900/40">
@@ -1335,7 +1308,6 @@ export default function VoiceAgentPage() {
         )}
       </div>
 
-      {/* Manual Add Lead Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl">

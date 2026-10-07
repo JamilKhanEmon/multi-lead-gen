@@ -1,6 +1,3 @@
-"""
-FastAPI Dependencies for Authentication & Authorization
-"""
 import uuid
 from typing import AsyncGenerator, Optional
 from fastapi import Depends, HTTPException, Security, status
@@ -14,12 +11,10 @@ from app.models.audit import User
 
 security = HTTPBearer(auto_error=False)
 
-
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    """Validates JWT access token and returns authenticated user."""
     if not credentials:
         if settings.ENVIRONMENT == "development":
             stmt = select(User).where(User.email == "dev@leadgen.local")
@@ -79,11 +74,46 @@ async def get_current_user(
 
     return user
 
+async def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    if not credentials:
+        if settings.ENVIRONMENT == "development":
+            stmt = select(User).where(User.email == "dev@leadgen.local")
+            res = await db.execute(stmt)
+            dev_user = res.scalar_one_or_none()
+            if not dev_user:
+                dev_user = User(
+                    email="dev@leadgen.local",
+                    hashed_password="development_mode_no_password",
+                    full_name="Local Developer",
+                    role="admin",
+                    is_active=True,
+                )
+                db.add(dev_user)
+                await db.commit()
+                await db.refresh(dev_user)
+            return dev_user
+        return None
+
+    try:
+        payload = decode_access_token(credentials.credentials)
+        if not payload:
+            return None
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            return None
+        user_id = uuid.UUID(user_id_str)
+        stmt = select(User).where(User.id == user_id, User.is_active == True)
+        res = await db.execute(stmt)
+        return res.scalar_one_or_none()
+    except Exception:
+        return None
 
 async def require_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Enforces admin or super_admin role requirement."""
     if current_user.role not in ["admin", "super_admin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -91,11 +121,9 @@ async def require_admin(
         )
     return current_user
 
-
 async def require_super_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Enforces super_admin role requirement."""
     if current_user.role != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

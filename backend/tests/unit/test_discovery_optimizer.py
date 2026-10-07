@@ -1,13 +1,7 @@
-"""
-Unit tests for DiscoveryOptimizer: Pure dynamic AI-driven query expansion and semantic filtering.
-Validates multi-business, worldwide discovery without hardcoded country or industry limitations.
-"""
 import pytest
 from app.engine.discovery_optimizer import DiscoveryOptimizer
 
-
 def test_dynamic_fallback_plan_generation():
-    # Multi-business test: Real Estate, Dental, Software, Plumbing
     industries = ["Real Estate", "Dental Clinic", "Software Development", "Plumbing Contractor"]
     for ind in industries:
         plan = DiscoveryOptimizer.build_fallback_plan(
@@ -19,9 +13,7 @@ def test_dynamic_fallback_plan_generation():
         assert len(plan["search_queries"]) >= 3
         assert len(plan["osm_queries"]) >= 2
         assert len(plan["negative_keywords"]) >= 5
-        # Ensure target industry itself is never in negative keywords
         assert not any(ind.lower() == neg.lower() for neg in plan["negative_keywords"])
-
 
 def test_validate_candidate_accepts_genuine_companies():
     plan = DiscoveryOptimizer.build_fallback_plan("Commercial Technology", "New York")
@@ -36,7 +28,6 @@ def test_validate_candidate_accepts_genuine_companies():
     for cand in valid_candidates:
         is_valid, reason = DiscoveryOptimizer.validate_candidate(cand, plan)
         assert is_valid is True, f"Expected {cand['canonical_name']} to be valid, but got: {reason}"
-
 
 def test_validate_candidate_rejects_negative_keywords():
     plan = {
@@ -56,18 +47,14 @@ def test_validate_candidate_rejects_negative_keywords():
         is_valid, reason = DiscoveryOptimizer.validate_candidate(cand, plan)
         assert is_valid is False, f"Expected {cand['canonical_name']} to be rejected by AI negative filter, but got accepted"
 
-
 def test_validate_candidate_rejects_short_names_and_category_matches():
     plan = DiscoveryOptimizer.build_fallback_plan("Dental Clinic", "London")
 
-    # Too short (< 3 chars)
     assert DiscoveryOptimizer.validate_candidate({"canonical_name": "Ab"}, plan)[0] is False
     assert DiscoveryOptimizer.validate_candidate({"canonical_name": ""}, plan)[0] is False
 
-    # Exact match to target industry name alone
     assert DiscoveryOptimizer.validate_candidate({"canonical_name": "Dental Clinic"}, plan)[0] is False
     assert DiscoveryOptimizer.validate_candidate({"canonical_name": "dental clinic"}, plan)[0] is False
-
 
 def test_validate_candidate_sub_city_matching():
     plan = {
@@ -77,7 +64,6 @@ def test_validate_candidate_sub_city_matching():
         "negative_keywords": ["pharmacy"],
     }
 
-    # Same area should pass
     cand_match = {
         "canonical_name": "Manhattan Dental Care Center",
         "domain": "manhattandental.com",
@@ -86,7 +72,6 @@ def test_validate_candidate_sub_city_matching():
     is_valid, _ = DiscoveryOptimizer.validate_candidate(cand_match, plan)
     assert is_valid is True
 
-    # Conflicting area with explicit address should fail (prevents cross-zone leakage)
     cand_mismatch = {
         "canonical_name": "Brooklyn Dental Surgery",
         "domain": "brooklyndental.com",
@@ -96,10 +81,58 @@ def test_validate_candidate_sub_city_matching():
     assert is_valid is False
     assert "does not match requested area" in reason
 
-
 def test_classify_entity_multi_industry():
     assert DiscoveryOptimizer.classify_entity("Summit Builders", "summit.com", "real_estate") == "Real Estate Commercial Firm"
     assert DiscoveryOptimizer.classify_entity("Smile Studio", "smilestudio.com", "dental_clinic") == "Dental Clinic"
     assert DiscoveryOptimizer.classify_entity("Baker Chambers", "bakerlaw.com", "legal_firm") == "Legal Firm"
     assert DiscoveryOptimizer.classify_entity("Apex Solutions", "apexsoft.com", "software_agency") == "Software Agency"
     assert DiscoveryOptimizer.classify_entity("Precision Services", "precision.com", "plumbing_contractor") == "Plumbing Contractor"
+
+@pytest.mark.asyncio
+async def test_verify_industry_fit_accepts_matching_industry():
+    test_cases = [
+        ("Dental Clinic", "Smile Dental Surgery", "smiledental.com", "Smile Dental Clinic & Orthodontics"),
+        ("Solar Energy Installation", "SunPower Systems", "sunpowersolar.com", "SunPower Solar Energy & Panel Installation"),
+        ("Roofing Contractor", "Apex Roofers Ltd", "apexroofers.com", "Premier Roofing Contractor & Roof Replacement"),
+        ("Gym & Fitness Studio", "Iron Pulse Gym", "ironpulsefit.com", "Iron Pulse Fitness Studio and Training"),
+    ]
+
+    for ind, bname, dom, title in test_cases:
+        is_fit, reason = await DiscoveryOptimizer.verify_industry_fit(
+            target_industry=ind,
+            business_name=bname,
+            domain=dom,
+            page_title=title,
+            meta_description="Providing professional commercial services.",
+        )
+        assert is_fit is True, f"Failed for {ind}: {reason}"
+        assert "Direct dynamic industry keyword matched" in reason
+
+@pytest.mark.asyncio
+async def test_verify_industry_fit_rejects_negative_keywords():
+    is_fit, reason = await DiscoveryOptimizer.verify_industry_fit(
+        target_industry="Dental Clinic",
+        business_name="Apex Holdings & Realty",
+        domain="apexrealty.com",
+        page_title="Apex Real Estate | Luxury Apartments for Sale",
+        meta_description="Find your dream home or commercial property with prime real estate developer.",
+        negative_keywords=["apartments for sale", "real estate developer", "housing society"],
+    )
+    assert is_fit is False
+    assert "Matched dynamic negative filter" in reason
+
+def test_validate_candidate_snippet_negative_rejection():
+    plan = {
+        "industry": "Dental Clinic",
+        "location": "Dhaka",
+        "negative_keywords": ["apartments for sale", "housing society", "real estate"],
+    }
+    cand = {
+        "canonical_name": "Gulshan Modern Center",
+        "domain": "gulshancenter.com",
+        "snippet": "Exclusive real estate agency offering commercial plots and apartments for sale.",
+    }
+    is_valid, reason = DiscoveryOptimizer.validate_candidate(cand, plan)
+    assert is_valid is False
+    assert "matched AI negative filter" in reason
+

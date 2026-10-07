@@ -1,9 +1,3 @@
-"""
-Meta Graph Marketing API Client & 2-Step B2B Funnel Dispatcher.
-Handles Campaign creation, Cold Video AdSet, 50%+ Video Custom Audience rules,
-and Retargeting AdSet with WhatsApp Action.
-Provides realistic sandbox emulation when live access token is pending.
-"""
 import uuid
 import time
 import httpx
@@ -11,9 +5,7 @@ from typing import Dict, Any, Optional
 from app.core.config import settings
 from app.core.logging import logger
 
-
 class MetaClient:
-    """Client for Meta Marketing API v19.0 / v20.0 with automatic sandbox fallback."""
 
     GRAPH_API_VERSION = "v19.0"
     GRAPH_API_URL = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
@@ -39,13 +31,6 @@ class MetaClient:
         budget_daily_bdt: float,
         retargeting_threshold_pct: int = 50,
     ) -> Dict[str, Any]:
-        """
-        Publishes the full 2-Step Funnel to Meta:
-        1. Parent Campaign (Objective: OUTCOME_ENGAGEMENT or OUTCOME_LEADS)
-        2. Cold AdSet (Video Views - ThruPlay optimization)
-        3. Custom Audience (People who watched 50%+ of Video 1)
-        4. Retargeting AdSet (Direct WhatsApp Click-to-Message CTA)
-        """
         if self.is_live:
             return await self._publish_to_live_meta_api(
                 name=name,
@@ -71,7 +56,6 @@ class MetaClient:
         budget_daily_bdt: float,
         retargeting_threshold_pct: int,
     ) -> Dict[str, Any]:
-        """Live Meta Marketing API POST requests."""
         account_id = self.ad_account_id.replace("act_", "")
         url = f"{self.GRAPH_API_URL}/act_{account_id}/campaigns"
 
@@ -87,7 +71,6 @@ class MetaClient:
             resp = await client.post(url, json=campaign_payload, headers=headers)
             if resp.status_code != 200:
                 logger.error(f"Meta API Campaign error: {resp.text}")
-                # Fallback to graceful sandbox tracking on permission failure
                 return self._simulate_sandbox_publish(name, budget_daily_bdt, retargeting_threshold_pct)
 
             data = resp.json()
@@ -103,7 +86,6 @@ class MetaClient:
             }
 
     async def update_campaign_status(self, meta_campaign_id: str, status: str) -> bool:
-        """Updates campaign status (ACTIVE / PAUSED) on live Meta account."""
         if not self.is_live or not meta_campaign_id or meta_campaign_id.startswith("meta_cmp_"):
             return True
         try:
@@ -117,7 +99,6 @@ class MetaClient:
             return False
 
     async def delete_meta_campaign(self, meta_campaign_id: str) -> bool:
-        """Permanently deletes a campaign from live Meta account."""
         if not self.is_live or not meta_campaign_id or meta_campaign_id.startswith("meta_cmp_"):
             return True
         try:
@@ -136,7 +117,6 @@ class MetaClient:
         budget_daily_bdt: float,
         retargeting_threshold_pct: int,
     ) -> Dict[str, Any]:
-        """Realistic simulated Meta publish response."""
         campaign_id = f"meta_cmp_{uuid.uuid4().hex[:12]}"
         adset_cold = f"meta_adset_cold_{uuid.uuid4().hex[:10]}"
         adset_retarget = f"meta_adset_retarget_{uuid.uuid4().hex[:10]}"
@@ -153,10 +133,6 @@ class MetaClient:
 
     @classmethod
     def calculate_live_metrics(cls, campaign: Any) -> Dict[str, Any]:
-        """
-        Calculates live performance metrics based on active campaign time and budget.
-        Simulates realistic high-efficiency B2B video ThruPlay and WhatsApp CTR.
-        """
         current_metrics = campaign.metrics or {}
         if campaign.status != "ACTIVE":
             return current_metrics

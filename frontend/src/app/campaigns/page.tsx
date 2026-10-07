@@ -31,6 +31,7 @@ import {
   ChevronDown,
   ChevronUp,
   Trash2,
+  Lock,
 } from "lucide-react";
 import {
   conductCampaignResearch,
@@ -97,13 +98,12 @@ const PRESET_EXCLUSIONS = [
 ];
 
 export default function MetaCampaignsPage() {
-  // Step State (1: Audience, 2: Service, 3: AI Creatives & Media Studio, 4: Budget, 5: Launch & Live)
+
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [researching, setResearching] = useState<boolean>(false);
   const [publishing, setPublishing] = useState<boolean>(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Form State
   const [serviceName, setServiceName] = useState("");
   const [industry, setIndustry] = useState("");
   const [customIndustry, setCustomIndustry] = useState("");
@@ -113,13 +113,11 @@ export default function MetaCampaignsPage() {
   const [painPoint, setPainPoint] = useState("");
   const [coreOffer, setCoreOffer] = useState("");
 
-  // Targeting State (Clean & Dynamic - No fake prefilled items)
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [selectedExclusions, setSelectedExclusions] = useState<string[]>([]);
   const [customRoleInput, setCustomRoleInput] = useState<string>("");
   const [customExclusionInput, setCustomExclusionInput] = useState<string>("");
 
-  // OpenClaw Intel & Creatives
   const [competitorIntel, setCompetitorIntel] = useState<any>(null);
   const [post1, setPost1] = useState<any>({
     hooks: [],
@@ -140,16 +138,13 @@ export default function MetaCampaignsPage() {
     poster_url: "",
   });
 
-  // Media Studio Mode State
   const [mediaMode, setMediaMode] = useState<"ai_video" | "ai_poster" | "manual_upload">("ai_video");
   const [manualUploadedFile, setManualUploadedFile] = useState<string | null>(null);
   const [manualFileName, setManualFileName] = useState<string>("");
 
-  // Reference Character / Hardware Consistency State
   const [referenceImageDescription, setReferenceImageDescription] = useState<string>("");
   const [referenceImageFile, setReferenceImageFile] = useState<string | null>(null);
 
-  // Storyboard & Multi-Scene State
   const [storyboardTopic, setStoryboardTopic] = useState<string>("roi_breakdown");
   const [customTopicText, setCustomTopicText] = useState<string>("");
   const [storyboardScenes, setStoryboardScenes] = useState<any[]>([]);
@@ -159,21 +154,17 @@ export default function MetaCampaignsPage() {
   const [renderingSceneNum, setRenderingSceneNum] = useState<number | null>(null);
   const [generatingPoster, setGeneratingPoster] = useState<boolean>(false);
 
-  // Budget & Funnel in USD ($)
   const [budgetDaily, setBudgetDaily] = useState<number>(30);
   const [retargetingThreshold, setRetargetingThreshold] = useState<number>(50);
 
-  // Active / Published Campaign
   const [activeCampaign, setActiveCampaign] = useState<MetaCampaign | null>(null);
   const [campaignHistory, setCampaignHistory] = useState<MetaCampaign[]>([]);
   const [previewTab, setPreviewTab] = useState<"post1" | "post2">("post1");
 
-  // Load existing campaigns on mount
   useEffect(() => {
     loadCampaigns();
   }, []);
 
-  // Poll metrics if campaign is active
   useEffect(() => {
     if (!activeCampaign || activeCampaign.status !== "ACTIVE") return;
     const interval = setInterval(async () => {
@@ -181,7 +172,6 @@ export default function MetaCampaignsPage() {
         const metrics = await fetchMetaCampaignMetrics(activeCampaign.id);
         setActiveCampaign((prev) => (prev ? { ...prev, metrics } : null));
       } catch (err) {
-        // ignore polling errors
       }
     }, 6000);
     return () => clearInterval(interval);
@@ -261,7 +251,7 @@ export default function MetaCampaignsPage() {
         ? customLocation.trim() || targetLocation || "Global / Worldwide"
         : targetLocation || customLocation.trim() || "Global / Worldwide";
     try {
-      // 1. OpenClaw Competitor & Targeting Analysis
+
       const res = await conductCampaignResearch({
         service_name: serviceName,
         industry: finalIndustry,
@@ -277,7 +267,6 @@ export default function MetaCampaignsPage() {
         setSelectedRoles(res.targeting.job_titles);
       }
 
-      // 2. LLM Creatives (Post 1 Cold + Post 2 Retargeting)
       const creativeRes = await generateCampaignCreatives({
         service_name: serviceName,
         industry: finalIndustry,
@@ -302,7 +291,6 @@ export default function MetaCampaignsPage() {
     }
   };
 
-  // Video Storyboard Generator Handler
   const handleGenerateStoryboard = async () => {
     setGeneratingStoryboard(true);
     const effectiveTopic =
@@ -336,7 +324,6 @@ export default function MetaCampaignsPage() {
     }
   };
 
-  // Re-generate individual scene
   const handleRegenerateScene = async (sceneNumber: number) => {
     setRenderingSceneNum(sceneNumber);
     const scene = storyboardScenes.find((s) => s.scene_number === sceneNumber);
@@ -368,7 +355,6 @@ export default function MetaCampaignsPage() {
     }
   };
 
-  // Stitch All Scenes Into Final Video
   const handleStitchVideo = async () => {
     setStitchingVideo(true);
     try {
@@ -391,7 +377,6 @@ export default function MetaCampaignsPage() {
     }
   };
 
-  // AI Poster Generator Handler (Google Imagen)
   const handleGeneratePoster = async () => {
     setGeneratingPoster(true);
     try {
@@ -417,7 +402,6 @@ export default function MetaCampaignsPage() {
     }
   };
 
-  // Manual File Upload Simulator
   const handleManualFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -436,7 +420,6 @@ export default function MetaCampaignsPage() {
     }
   };
 
-  // Reference Anchor Image Upload
   const handleReferenceImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -513,11 +496,37 @@ export default function MetaCampaignsPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* ========================================================= */}
-      {/* 1. TOP DUAL LAUNCHPAD CARDS (Card 1 vs Card 2)             */}
-      {/* ========================================================= */}
+
+      <div className="p-8 rounded-2xl bg-gradient-to-r from-slate-900 via-pink-950/20 to-slate-900 border border-pink-500/30 text-center space-y-4 shadow-2xl relative overflow-hidden">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-pink-500/10 border border-pink-500/30 text-pink-400 shadow-xl shadow-pink-500/10 mb-1">
+          <Lock className="w-8 h-8 text-amber-400" />
+        </div>
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-mono font-bold uppercase tracking-wider mb-2">
+            <Lock className="w-3.5 h-3.5 text-amber-400" />
+            <span>Module Locked — Coming Soon</span>
+          </div>
+          <h2 className="text-2xl font-bold text-white tracking-tight">
+            Meta Ads & Marketing Automation
+          </h2>
+          <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+            This module is currently locked for upcoming production integration with Meta Marketing API v21.0.
+            Please utilize Module 01 for autonomous lead discovery and deterministic qualification.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            href="/admin"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-sky-500/20"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Return to Operations Center</span>
+          </Link>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* CARD 1: Autonomous Lead Discovery */}
+
         <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition relative overflow-hidden group">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
@@ -550,7 +559,6 @@ export default function MetaCampaignsPage() {
           </div>
         </div>
 
-        {/* CARD 2: B2B Meta Ads & 2-Step Funnel (ACTIVE) */}
         <div className="p-5 rounded-2xl bg-gradient-to-br from-pink-950/40 via-purple-950/20 to-slate-900/80 border-2 border-pink-500/40 shadow-lg shadow-pink-500/10 relative overflow-hidden">
           <div className="absolute -top-12 -right-12 w-32 h-32 bg-pink-500/20 rounded-full blur-2xl pointer-events-none" />
           <div className="flex items-start justify-between">
@@ -589,9 +597,6 @@ export default function MetaCampaignsPage() {
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* 2. 5-STEP WIZARD PROGRESS BAR                              */}
-      {/* ========================================================= */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 sm:p-4 backdrop-blur-md">
         <div className="grid grid-cols-5 gap-1 sm:gap-2">
           {[
@@ -636,7 +641,6 @@ export default function MetaCampaignsPage() {
         </div>
       </div>
 
-      {/* Global Alerts / Feedback */}
       {feedbackMsg && (
         <div
           className={`p-3.5 rounded-xl border text-xs sm:text-sm flex items-center justify-between ${
@@ -662,13 +666,6 @@ export default function MetaCampaignsPage() {
         </div>
       )}
 
-      {/* ========================================================= */}
-      {/* 3. STEP CONTENT SWITCHER                                   */}
-      {/* ========================================================= */}
-
-      {/* --------------------------------------------------------- */}
-      {/* STEP 1: CUSTOM B2B AUDIENCE & GEOGRAPHY                   */}
-      {/* --------------------------------------------------------- */}
       {currentStep === 1 && (
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-7 space-y-6">
           <div>
@@ -684,7 +681,7 @@ export default function MetaCampaignsPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Target Industry */}
+
             <div className="space-y-3">
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
                 1. Target Industry
@@ -715,7 +712,6 @@ export default function MetaCampaignsPage() {
                 )}
               </div>
 
-              {/* Target Location */}
               <div className="pt-2 space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
@@ -803,9 +799,8 @@ export default function MetaCampaignsPage() {
               </div>
             </div>
 
-            {/* Decision Makers & Exclusions */}
             <div className="space-y-5">
-              {/* 3. Executive Decision Maker Job Titles */}
+
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
@@ -816,7 +811,6 @@ export default function MetaCampaignsPage() {
                   </span>
                 </div>
 
-                {/* Dropdown to add presets + Manual text input */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <select
                     onChange={(e) => {
@@ -859,7 +853,6 @@ export default function MetaCampaignsPage() {
                   </div>
                 </div>
 
-                {/* Selected Job Roles Tags */}
                 <div className="flex flex-wrap gap-2 pt-1">
                   {selectedRoles.map((role) => (
                     <button
@@ -882,7 +875,6 @@ export default function MetaCampaignsPage() {
                 </div>
               </div>
 
-              {/* 4. Smart Exclusions */}
               <div className="p-4 rounded-xl bg-slate-950/60 border border-amber-500/20 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-semibold text-amber-400">
@@ -894,7 +886,6 @@ export default function MetaCampaignsPage() {
                   </span>
                 </div>
 
-                {/* Dropdown to add presets + Manual custom input */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <select
                     onChange={(e) => {
@@ -937,7 +928,6 @@ export default function MetaCampaignsPage() {
                   </div>
                 </div>
 
-                {/* Exclusions Tags */}
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {selectedExclusions.map((ex) => (
                     <button
@@ -972,9 +962,6 @@ export default function MetaCampaignsPage() {
         </div>
       )}
 
-      {/* --------------------------------------------------------- */}
-      {/* STEP 2: SERVICE & CORE VALUE PROPOSITION                  */}
-      {/* --------------------------------------------------------- */}
       {currentStep === 2 && (
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-7 space-y-6">
           <div>
@@ -1059,12 +1046,9 @@ export default function MetaCampaignsPage() {
         </div>
       )}
 
-      {/* --------------------------------------------------------- */}
-      {/* STEP 3: OPENCLAW SPY INTEL & ADVANCED MEDIA STUDIO        */}
-      {/* --------------------------------------------------------- */}
       {currentStep === 3 && (
         <div className="space-y-6">
-          {/* OpenClaw Spy Intelligence Card */}
+
           <div className="bg-slate-900/90 border border-purple-500/30 rounded-2xl p-5 sm:p-6 relative overflow-hidden">
             <div className="flex items-center justify-between pb-3 border-b border-purple-500/20">
               <div className="flex items-center gap-2.5">
@@ -1085,7 +1069,6 @@ export default function MetaCampaignsPage() {
               </div>
             </div>
 
-            {/* Scraped Competitor Insights Display */}
             {competitorIntel ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div className="space-y-2">
@@ -1140,9 +1123,6 @@ export default function MetaCampaignsPage() {
             )}
           </div>
 
-          {/* ========================================================= */}
-          {/* MEDIA PRODUCTION STUDIO: AI Video vs AI Poster vs Upload */}
-          {/* ========================================================= */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
               <div>
@@ -1197,7 +1177,6 @@ export default function MetaCampaignsPage() {
               </div>
             </div>
 
-            {/* 1. MANUAL UPLOAD MODE */}
             {mediaMode === "manual_upload" && (
               <div className="p-6 rounded-2xl bg-slate-950/80 border-2 border-dashed border-slate-800 hover:border-slate-700 transition text-center space-y-3">
                 <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto text-slate-400">
@@ -1229,10 +1208,9 @@ export default function MetaCampaignsPage() {
               </div>
             )}
 
-            {/* 2. AI MULTI-SCENE VIDEO MODE (Google Veo + FFmpeg) */}
             {mediaMode === "ai_video" && (
               <div className="space-y-4">
-                {/* Character & Hardware Anchor Consistency Uploader */}
+
                 <div className="p-4 rounded-xl bg-slate-950 border border-purple-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
@@ -1265,7 +1243,6 @@ export default function MetaCampaignsPage() {
                   </div>
                 </div>
 
-                {/* Topic & Angle Selection */}
                 <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-slate-300 uppercase tracking-wide">
@@ -1348,7 +1325,6 @@ export default function MetaCampaignsPage() {
                   )}
                 </div>
 
-                {/* 4-Scene Storyboard Grid */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wide flex items-center gap-2">
@@ -1397,7 +1373,6 @@ export default function MetaCampaignsPage() {
                             </p>
                           </div>
 
-                          {/* Prompt Collapsible */}
                           <div className="space-y-2 pt-2 border-t border-slate-800/80">
                             <button
                               type="button"
@@ -1464,7 +1439,6 @@ export default function MetaCampaignsPage() {
               </div>
             )}
 
-            {/* 3. AI B2B POSTER MODE (Google Imagen 3) */}
             {mediaMode === "ai_poster" && (
               <div className="p-5 rounded-xl bg-slate-950 border border-slate-800 space-y-4">
                 <div className="flex items-center justify-between">
@@ -1525,9 +1499,8 @@ export default function MetaCampaignsPage() {
             )}
           </div>
 
-          {/* Creative Studio: Post 1 vs Post 2 + Live Mobile Feed Mockup */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left 7 Columns: Creative Text & Copy Editor */}
+
             <div className="lg:col-span-7 bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-5">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2">
@@ -1690,21 +1663,18 @@ export default function MetaCampaignsPage() {
               </div>
             </div>
 
-            {/* Right 5 Columns: Interactive Live Mobile Feed Mockup */}
             <div className="lg:col-span-5 flex flex-col items-center">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <Smartphone className="w-4 h-4 text-pink-400" />
                 <span>Live Meta Mobile Feed Preview</span>
               </div>
 
-              {/* Mobile Phone Mockup Device */}
               <div className="w-full max-w-[340px] bg-slate-950 border-4 border-slate-800 rounded-[36px] p-3 shadow-2xl shadow-black/80 relative overflow-hidden">
-                {/* Speaker notch */}
+
                 <div className="w-20 h-3 bg-slate-800 rounded-full mx-auto mb-3" />
 
-                {/* Facebook Post Mockup Container */}
                 <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden text-xs">
-                  {/* Post Header */}
+
                   <div className="p-3 flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center font-bold text-white text-xs">
                       AI
@@ -1720,13 +1690,11 @@ export default function MetaCampaignsPage() {
                     </div>
                   </div>
 
-                  {/* Post Copy */}
                   <div className="px-3 pb-2 text-[11px] text-slate-200 line-clamp-3 leading-relaxed">
                     {(previewTab === "post1" ? post1.primary_copy : post2.retargeting_copy) ||
                       "Enter your campaign copy or generate with AI to preview in live mobile feed..."}
                   </div>
 
-                  {/* Media Container (Live Video or Poster) */}
                   <div className="relative aspect-video bg-slate-950 flex flex-col items-center justify-center overflow-hidden border-y border-slate-800">
                     {previewTab === "post1" ? (
                       post1.video_url ? (
@@ -1771,7 +1739,6 @@ export default function MetaCampaignsPage() {
                     )}
                   </div>
 
-                  {/* Bottom Action Bar */}
                   <div className="p-3 bg-slate-950/80 flex items-center justify-between">
                     <div className="text-[11px] truncate max-w-[150px]">
                       <div className="text-[9px] uppercase tracking-wider text-slate-500 font-mono">
@@ -1800,9 +1767,6 @@ export default function MetaCampaignsPage() {
         </div>
       )}
 
-      {/* --------------------------------------------------------- */}
-      {/* STEP 4: BUDGET & 2-STEP RETARGETING CONFIGURATION         */}
-      {/* --------------------------------------------------------- */}
       {currentStep === 4 && (
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-7 space-y-6">
           <div>
@@ -1818,7 +1782,7 @@ export default function MetaCampaignsPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Daily Budget Selector in USD */}
+
             <div className="space-y-4">
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide">
                 Daily Budget (USD $)
@@ -1854,7 +1818,6 @@ export default function MetaCampaignsPage() {
                 </div>
               </div>
 
-              {/* Retargeting View Duration Threshold */}
               <div className="pt-2">
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wide mb-2">
                   Retargeting Watch Threshold (% of Post 1 watched)
@@ -1881,14 +1844,12 @@ export default function MetaCampaignsPage() {
               </div>
             </div>
 
-            {/* Funnel Visualizer */}
             <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
               <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wide flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-pink-400" />
                 <span>Automated 2-Step Budget Allocation:</span>
               </h4>
 
-              {/* Step 1 Visual */}
               <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-pink-400">Step 1: Cold Video ThruPlay Awareness</span>
@@ -1899,12 +1860,10 @@ export default function MetaCampaignsPage() {
                 </p>
               </div>
 
-              {/* The Filter Arrow */}
               <div className="flex items-center justify-center gap-2 text-xs font-mono text-emerald-400">
                 <span>↓ Automatic Meta Audience Rule ({retargetingThreshold}%+ Viewers) ↓</span>
               </div>
 
-              {/* Step 2 Visual */}
               <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/30 space-y-1 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-emerald-400">Step 2: WhatsApp Lead Retargeting</span>
@@ -1946,12 +1905,9 @@ export default function MetaCampaignsPage() {
         </div>
       )}
 
-      {/* --------------------------------------------------------- */}
-      {/* STEP 5: 1-CLICK LAUNCH & LIVE PERFORMANCE DASHBOARD       */}
-      {/* --------------------------------------------------------- */}
       {currentStep === 5 && (
         <div className="space-y-6">
-          {/* Live Campaign Status Bar */}
+
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
@@ -2017,9 +1973,8 @@ export default function MetaCampaignsPage() {
             </div>
           </div>
 
-          {/* Live Funnel Analytics Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Metric 1: Spent Budget */}
+
             <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-1">
               <span className="text-[11px] font-mono text-slate-400 uppercase">Total Spent</span>
               <div className="text-2xl font-black text-white font-mono">
@@ -2030,7 +1985,6 @@ export default function MetaCampaignsPage() {
               </div>
             </div>
 
-            {/* Metric 2: Video ThruPlays */}
             <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-1">
               <span className="text-[11px] font-mono text-slate-400 uppercase">Video ThruPlays</span>
               <div className="text-2xl font-black text-pink-400 font-mono">
@@ -2041,7 +1995,6 @@ export default function MetaCampaignsPage() {
               </div>
             </div>
 
-            {/* Metric 3: 50%+ Hot Viewers */}
             <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-1">
               <span className="text-[11px] font-mono text-slate-400 uppercase">50%+ Qualified Viewers</span>
               <div className="text-2xl font-black text-purple-400 font-mono">
@@ -2052,7 +2005,6 @@ export default function MetaCampaignsPage() {
               </div>
             </div>
 
-            {/* Metric 4: Direct WhatsApp Messages */}
             <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-950/40 to-slate-900 border border-emerald-500/40 space-y-1">
               <span className="text-[11px] font-mono text-emerald-400 uppercase">WhatsApp Inquiries</span>
               <div className="text-2xl font-black text-emerald-400 font-mono flex items-center gap-1.5">
@@ -2065,7 +2017,6 @@ export default function MetaCampaignsPage() {
             </div>
           </div>
 
-          {/* Campaign Details & Creative Recap Accordion */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
             <h3 className="text-sm font-bold text-white">Campaign Funnel Overview</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -2094,7 +2045,6 @@ export default function MetaCampaignsPage() {
             </div>
           </div>
 
-          {/* Historical Campaigns Table */}
           {campaignHistory.length > 0 && (
             <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-3">
               <h3 className="text-sm font-bold text-white">Historical Meta Campaigns</h3>

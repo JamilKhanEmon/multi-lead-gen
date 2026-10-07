@@ -1,6 +1,3 @@
-"""
-Evidence, Sources, and Snapshots Models (Immutable Historical Preservation)
-"""
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
@@ -9,23 +6,19 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin, UUIDMixin
 
-
 class Source(Base, UUIDMixin, TimestampMixin):
-    """External source domain/URL record."""
     __tablename__ = "sources"
 
     url: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     domain: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    source_type: Mapped[str] = mapped_column(String(50), nullable=False)  # website, google_maps, social, ad_library, news, jobs
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     last_fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     snapshots: Mapped[List["SourceSnapshot"]] = relationship("SourceSnapshot", back_populates="source", cascade="all, delete-orphan")
     evidence_items: Mapped[List["Evidence"]] = relationship("Evidence", back_populates="source")
 
-
 class SourceSnapshot(Base, UUIDMixin, TimestampMixin):
-    """Immutable raw HTML / content artifact snapshot stored on disk."""
     __tablename__ = "source_snapshots"
 
     source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("sources.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -36,9 +29,7 @@ class SourceSnapshot(Base, UUIDMixin, TimestampMixin):
 
     source: Mapped["Source"] = relationship("Source", back_populates="snapshots")
 
-
 class Evidence(Base, UUIDMixin, TimestampMixin):
-    """Immutable evidence unit supporting or refuting a parameter."""
     __tablename__ = "evidence"
 
     business_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -47,10 +38,10 @@ class Evidence(Base, UUIDMixin, TimestampMixin):
     job_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("research_jobs.id", ondelete="SET NULL"), nullable=True, index=True)
     
     evidence_text: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String(50), nullable=False)  # PASS, WEAK, STRONG, UNKNOWN, NOT_VERIFIED, UNAVAILABLE
-    classification: Mapped[str] = mapped_column(String(50), nullable=False)  # OBSERVABLE, INFERABLE, INTERNAL
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    classification: Mapped[str] = mapped_column(String(50), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
-    recency_weight: Mapped[int] = mapped_column(Integer, default=100, nullable=False)  # 0 to 100
+    recency_weight: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
     conflict: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     screenshot_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -65,15 +56,13 @@ class Evidence(Base, UUIDMixin, TimestampMixin):
         Index("idx_evidence_status", "status"),
     )
 
-
 class ParameterResult(Base, UUIDMixin, TimestampMixin):
-    """Aggregated parameter evaluation state for a business."""
     __tablename__ = "parameter_results"
 
     business_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE"), nullable=False, index=True)
     parameter_id: Mapped[int] = mapped_column(Integer, ForeignKey("parameters.id", ondelete="CASCADE"), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(50), nullable=False)
-    evidence_level: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # Level 0 through 4
+    evidence_level: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
 

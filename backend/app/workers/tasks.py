@@ -1,6 +1,3 @@
-"""
-Worker Task Handlers: Orchestrates OpenClaw, Ollama, and Decision Engines
-"""
 import json
 import uuid
 import urllib.parse
@@ -23,11 +20,10 @@ from app.engine.evidence_engine import EvidenceEngine
 from app.engine.service_matcher import ServiceMatcher
 from app.engine.qualification_engine import QualificationEngine
 from app.engine.discovery_optimizer import DiscoveryOptimizer
+from app.engine.fit_gate import FitGateEngine
 import redis.asyncio as aioredis
 
-
 async def publish_progress_event(event_type: str, data: Dict[str, Any]):
-    """Publishes a real-time progress event to Redis Pub/Sub for WebSocket clients."""
     try:
         r = aioredis.from_url(settings.REDIS_URL)
         payload = {
@@ -40,15 +36,10 @@ async def publish_progress_event(event_type: str, data: Dict[str, Any]):
     except Exception as e:
         logger.warning(f"Could not publish event to Redis: {e}")
 
-
 async def handle_discover_businesses(
     task_payload: Dict[str, Any],
     openclaw_client: OpenClawClient,
 ) -> Dict[str, Any]:
-    """
-    Executes business discovery, normalizes company identity,
-    deduplicates against database, and enqueues research jobs for new candidates.
-    """
     payload = task_payload.get("payload", {})
     try:
         run_id = uuid.UUID(task_payload["run_id"])
@@ -56,7 +47,6 @@ async def handle_discover_businesses(
         logger.error(f"TaskDiscover: Invalid run_id '{task_payload.get('run_id')}'. Aborting.")
         return {"discovered": 0, "enqueued": 0}
 
-    # Admin Run Cancellation Check
     async with AsyncSessionLocal() as session:
         r_chk = await session.execute(select(ResearchRun.status).where(ResearchRun.id == run_id))
         cur_status = r_chk.scalar_one_or_none()
@@ -74,7 +64,6 @@ async def handle_discover_businesses(
     city = payload.get("city", "").strip()
     sub_city = payload.get("sub_city", "").strip()
 
-    # Invoke OpenClaw business-discovery skill
     try:
         discovery_result = await openclaw_client.run_skill(
             skill_name="business-discovery",
@@ -96,7 +85,6 @@ async def handle_discover_businesses(
     companies = discovery_result.get("discovered_companies", [])
     logger.info(f"Discovered {len(companies)} candidate companies")
 
-    # Build semantic validation plan with AI query optimization & negative filtering
     val_plan = await DiscoveryOptimizer.optimize_search_plan(
         industry=industry,
         location=location,
@@ -116,7 +104,6 @@ async def handle_discover_businesses(
             if not raw_name:
                 continue
 
-            # Strict rejection: Generic social platforms or search engines (facebook.com, instagram.com, etc.)
             raw_name_l = raw_name.lower().strip()
             if any(bad in raw_name_l for bad in ["facebook.com", "instagram.com", "google.com", "youtube.com", "linkedin.com", "twitter.com"]) or raw_name_l in ["facebook", "instagram", "google", "meta"]:
                 logger.info(f"TaskDiscover: Discarding generic platform candidate '{raw_name}'")
@@ -127,21 +114,18 @@ async def handle_discover_businesses(
                 raw_domain = None
                 comp["website"] = None
 
-            # Strict semantic check against negative keywords and non-commercial markers
             is_valid, reason = DiscoveryOptimizer.validate_candidate(comp, val_plan)
             if not is_valid:
                 logger.info(f"TaskDiscover: Rejecting candidate '{raw_name}': {reason}")
                 continue
 
-            # Strict contactability gate: Reject ghost/unreachable records with zero contact channels
-            if not raw_domain and not raw_phone and not comp.get("email"):
-                logger.info(f"TaskDiscover: Discarding candidate '{raw_name}' due to zero contact channels (no website, phone, or email).")
+            if not raw_domain and not raw_phone and not comp.get("email") and not comp.get("address"):
+                logger.info(f"TaskDiscover: Discarding ghost candidate '{raw_name}' due to zero contact channels and no address.")
                 continue
 
             norm_domain = DeduplicationEngine.normalize_domain(raw_domain)
             norm_phone = DeduplicationEngine.normalize_phone(raw_phone)
 
-            # Check for existing canonical business by domain, phone, or name
             existing_biz = None
             if norm_domain:
                 stmt = select(Business).where(Business.domain == norm_domain)
@@ -202,7 +186,6 @@ async def handle_discover_businesses(
                 seen_biz_ids.add(target_biz.id)
                 candidate_businesses.append(target_biz)
 
-        # Update run counters with exact enqueued candidate count
         stmt = select(ResearchRun).where(ResearchRun.id == run_id)
         run_res = await session.execute(stmt)
         run = run_res.scalar_one_or_none()
@@ -215,7 +198,6 @@ async def handle_discover_businesses(
 
         await session.commit()
 
-    # Enqueue deep research task for each discovered company
     r = aioredis.from_url(settings.REDIS_URL)
     for biz in candidate_businesses:
         research_job = {
@@ -232,6 +214,11 @@ async def handle_discover_businesses(
                 "domain": biz.domain,
                 "phone": biz.phone,
                 "business_type": biz.business_type,
+                "industry": industry,
+                "location": location,
+                "auto_mail_enabled": payload.get("auto_mail_enabled", True),
+                "positive_keywords": val_plan.get("positive_keywords", []),
+                "negative_keywords": val_plan.get("negative_keywords", []),
             },
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -247,16 +234,11 @@ async def handle_discover_businesses(
 
     return {"discovered": len(companies), "enqueued": len(candidate_businesses)}
 
-
 async def handle_research_and_qualify(
     task_payload: Dict[str, Any],
     openclaw_client: OpenClawClient,
     ollama_client: OllamaClient,
 ) -> Dict[str, Any]:
-    """
-    Crash-immune dispatcher for research and qualification.
-    Checks cancellation before execution and catches all unexpected errors.
-    """
     payload = task_payload.get("payload", {})
     try:
         business_id = uuid.UUID(payload["business_id"])
@@ -267,7 +249,6 @@ async def handle_research_and_qualify(
 
     business_name = payload.get("business_name", "Unknown Business")
 
-    # Admin Run Cancellation Check: Skip company instantly if run was cancelled
     async with AsyncSessionLocal() as session:
         r_chk = await session.execute(select(ResearchRun.status).where(ResearchRun.id == run_id))
         cur_status = r_chk.scalar_one_or_none()
@@ -300,7 +281,6 @@ async def handle_research_and_qualify(
             pass
         return {"status": "SKIPPED", "reason": str(unhandled_err)}
 
-
 async def _execute_research_and_qualify(
     task_payload: Dict[str, Any],
     openclaw_client: OpenClawClient,
@@ -308,10 +288,6 @@ async def _execute_research_and_qualify(
     business_id: uuid.UUID,
     run_id: uuid.UUID,
 ) -> Dict[str, Any]:
-    """
-    Executes deep research across website and social, gathers evidence,
-    runs parameter and service matching, and deterministically qualifies the lead.
-    """
     payload = task_payload.get("payload", {})
     business_name = payload.get("business_name", "Unknown Business")
     domain = payload.get("domain")
@@ -321,7 +297,6 @@ async def _execute_research_and_qualify(
 
     logger.info(f"Researching & Qualifying: {business_name} ({business_type}) [Depth: {depth}]")
 
-    # 1. OpenClaw Website Research (resolve domain if missing, then deep audit)
     website_data = {}
     if not domain and business_name:
         try:
@@ -365,7 +340,6 @@ async def _execute_research_and_qualify(
                 "rendered_by": "fallback",
             }
 
-    # If domain was missing entirely and contacts are still missing, try quick deep contact hunt
     current_phone = website_data.get("extracted_phone") or payload.get("phone")
     current_email = website_data.get("extracted_email") or payload.get("email")
 
@@ -387,7 +361,6 @@ async def _execute_research_and_qualify(
             website_data["extracted_email"] = deep_hunt["email"]
             logger.info(f"TaskResearch: Discovered email on deep retry for '{business_name}': {deep_hunt['email']}")
 
-    # 2. Build observable evidence items with multi-source corroboration
     maps_query = urllib.parse.quote(f"{business_name} {location}")
     gmaps_url = f"https://www.google.com/maps/search/{maps_query}"
     gsearch_url = f"https://www.google.com/search?q={maps_query}"
@@ -406,7 +379,6 @@ async def _execute_research_and_qualify(
     ]
     detected_pids = []
 
-    # Check Mobile Responsiveness (Param 37)
     if website_data.get("mobile_responsive") is False:
         detected_pids.append(37)
         evidence_records.append({
@@ -420,7 +392,6 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    # Check Contact/WhatsApp (Param 43)
     if website_data.get("has_whatsapp") is False:
         detected_pids.append(43)
         evidence_records.append({
@@ -434,7 +405,6 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    # Check Booking System (Param 44)
     if website_data.get("has_online_booking") is False:
         detected_pids.append(44)
         evidence_records.append({
@@ -448,7 +418,6 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    # Check Outdated UX / Broken Assets (Param 36)
     if website_data.get("broken_links_count", 0) > 1:
         detected_pids.append(36)
         evidence_records.append({
@@ -462,8 +431,6 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    # Real Contact/Inquiry Gap Checks:
-    # Param 41: Missing Direct Phone Contact
     if not website_data.get("extracted_phone") and not payload.get("phone"):
         detected_pids.append(41)
         evidence_records.append({
@@ -477,7 +444,6 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    # Param 42: Missing Direct Email / Lead Capture
     if not website_data.get("extracted_email") and not website_data.get("has_contact_form"):
         detected_pids.append(42)
         evidence_records.append({
@@ -491,13 +457,11 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    # Real Social Presence Checks:
     fb_url = website_data.get("facebook_url")
     li_url = website_data.get("linkedin_url")
     ig_url = website_data.get("instagram_url")
 
     if not fb_url and not li_url and not ig_url and domain:
-        # Param 11: Missing or unlinked official social channels
         detected_pids.append(11)
         evidence_records.append({
             "parameter_id": 11,
@@ -510,7 +474,6 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
     elif fb_url or li_url:
-        # Verified verified social footprint
         detected_pids.append(1)
         evidence_records.append({
             "parameter_id": 1,
@@ -523,7 +486,6 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    # Meta Pixel Retargeting Check (Param 5)
     if website_data.get("has_meta_pixel") is False and website_data.get("is_accessible"):
         detected_pids.append(5)
         evidence_records.append({
@@ -537,7 +499,6 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    # Website Accessibility Check (Param 34)
     if not domain or website_data.get("is_accessible") is False:
         detected_pids.append(34)
         evidence_records.append({
@@ -551,7 +512,6 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    # 3. Call Ollama for Semantic Reasoning
     try:
         ollama_analysis = await ollama_client.analyze(
             system_prompt="You are a B2B business gap analyst. Evaluate public evidence and suggest service matches.",
@@ -564,11 +524,9 @@ async def _execute_research_and_qualify(
 
     llm_suggestions = ollama_analysis.get("service_matches", [])
 
-    # 4. Run Decision Engines
     active_params = ParameterEngine.get_active_parameters(business_type)
     relevant_detected = [p for p in detected_pids if p in active_params]
 
-    # Evaluate Evidence
     ev_eval = EvidenceEngine.evaluate_parameter_evidence(evidence_records)
     evidence_level = ev_eval["evidence_level"]
     avg_confidence = ev_eval["average_confidence"]
@@ -576,7 +534,6 @@ async def _execute_research_and_qualify(
     has_conflict = ev_eval["conflict"]
     sources_cnt = ev_eval["independent_sources_count"]
 
-    # Match Services
     service_matches = ServiceMatcher.match_services(
         detected_parameter_ids=relevant_detected,
         llm_service_suggestions=llm_suggestions,
@@ -600,8 +557,22 @@ async def _execute_research_and_qualify(
             else f"Identified issues do not align with agency service capabilities."
         )
 
-    # Evaluate Hard Gates
-    is_relevant = len(relevant_detected) > 0
+    target_ind = business_type or payload.get("industry") or "Commercial"
+    is_industry_fit, fit_reason = await DiscoveryOptimizer.verify_industry_fit(
+        target_industry=target_ind,
+        business_name=business_name,
+        domain=domain or "",
+        page_title=website_data.get("page_title") or website_data.get("title") or "",
+        meta_description=website_data.get("meta_description") or "",
+        heading=website_data.get("heading") or "",
+        positive_keywords=payload.get("positive_keywords"),
+        negative_keywords=payload.get("negative_keywords"),
+        ollama_client=ollama_client,
+    )
+    if not is_industry_fit:
+        logger.warning(f"Industry Gate: Entity '{business_name}' failed relevance check for '{target_ind}': {fit_reason}")
+
+    is_relevant = len(relevant_detected) > 0 and is_industry_fit
     has_inferable = any(e.get("classification") == "INFERABLE" for e in evidence_records)
     has_contact = bool(
         (website_data.get("extracted_phone") or payload.get("phone"))
@@ -616,15 +587,16 @@ async def _execute_research_and_qualify(
         has_primary_conflict=has_conflict,
         has_inferable_gaps=has_inferable,
         has_direct_contact=has_contact,
+        is_industry_verified=is_industry_fit,
+        industry_mismatch_reason=fit_reason if not is_industry_fit else "",
     )
 
-    # Calculate 6-Factor Score
     eq_score = avg_confidence * 100.0
-    pr_score = 85.0 if is_relevant else 10.0
+    pr_score = 85.0 if is_relevant else 0.0
     rep_score = min(100.0, len(evidence_records) * 35.0)
     rec_score = float(max_recency)
-    bi_score = 75.0 if relevant_detected else 10.0
-    sf_score = best_service_fit
+    bi_score = 75.0 if (relevant_detected and is_industry_fit) else 0.0
+    sf_score = best_service_fit if is_industry_fit else 0.0
 
     final_score = QualificationEngine.calculate_score(
         evidence_quality=eq_score,
@@ -635,11 +607,10 @@ async def _execute_research_and_qualify(
         service_fit=sf_score,
     )
 
-    tier = QualificationEngine.assign_tier(final_score, passed_gates)
+    tier = QualificationEngine.assign_tier(final_score, passed_gates, has_direct_contact=has_contact)
     is_qualified = tier in ("Strong Potential", "Review Needed")
     logger.info(f"Qualified {business_name}: score={final_score}, tier={tier}, passed_gates={passed_gates}, failures={gate_failures}")
 
-    # Generate Explainability Dossier
     explanation = QualificationEngine.generate_explanation(
         company_name=business_name,
         gap_summary=gap_summary,
@@ -651,9 +622,7 @@ async def _execute_research_and_qualify(
         gate_failures=gate_failures,
     )
 
-    # 5. Persist to PostgreSQL
     async with AsyncSessionLocal() as session:
-        # Update Business with live extracted contact details
         stmt = select(Business).where(Business.id == business_id)
         biz_res = await session.execute(stmt)
         biz_obj = biz_res.scalar_one_or_none()
@@ -678,18 +647,28 @@ async def _execute_research_and_qualify(
             if website_data.get("linkedin_url"):
                 biz_obj.linkedin_url = website_data.get("linkedin_url")
 
-            # Persist digital marketing & tech signals into metadata_json
             current_meta = dict(biz_obj.metadata_json or {})
             for key in ["cms_platform", "has_meta_pixel", "has_google_analytics", "meta_ads_url", "rendered_by"]:
                 if website_data.get(key) is not None:
                     current_meta[key] = website_data[key]
             biz_obj.metadata_json = current_meta
 
-        # Save Evidence Items
+        param_ids_in_evidence = {ev["parameter_id"] for ev in evidence_records if ev.get("parameter_id")}
+        valid_param_ids = set()
+        if param_ids_in_evidence:
+            from app.models.parameter import Parameter
+            p_stmt = select(Parameter.id).where(Parameter.id.in_(param_ids_in_evidence))
+            p_res = await session.execute(p_stmt)
+            valid_param_ids = set(p_res.scalars().all())
+
         for ev in evidence_records:
+            pid = ev.get("parameter_id")
+            if pid not in valid_param_ids:
+                logger.warning(f"TaskResearch: Skipping evidence item: parameter_id {pid} not present in 'parameters' table.")
+                continue
             ev_model = Evidence(
                 business_id=business_id,
-                parameter_id=ev["parameter_id"],
+                parameter_id=pid,
                 evidence_text=ev["evidence_text"],
                 status=ev["status"],
                 classification=ev["classification"],
@@ -699,8 +678,6 @@ async def _execute_research_and_qualify(
             )
             session.add(ev_model)
 
-        # Deduplication: Check if Lead already exists for this business
-        # Check if research run actually exists in DB to prevent foreign key violation
         valid_run_id = None
         if run_id:
             stmt_check_run = select(ResearchRun.id).where(ResearchRun.id == run_id)
@@ -708,9 +685,47 @@ async def _execute_research_and_qualify(
             if run_check_res.scalar_one_or_none():
                 valid_run_id = run_id
 
-        stmt = select(Lead).where(Lead.business_id == business_id)
-        lead_res = await session.execute(stmt)
+        stmt_lead = select(Lead).where(Lead.business_id == business_id)
+        lead_res = await session.execute(stmt_lead)
         lead = lead_res.scalar_one_or_none()
+        auto_mail = payload.get("auto_mail_enabled", True)
+        has_email = bool(biz_obj and biz_obj.email)
+        target_outreach_status = "READY_FOR_OUTREACH" if auto_mail else "HOLD"
+
+        if not is_industry_fit or tier == "Rejected":
+            logger.info(
+                f"TaskResearch: Discarding irrelevant/unqualified business '{business_name}' "
+                f"(Industry fit: {is_industry_fit}, Tier: {tier}, Reason: {fit_reason}). Not adding to leads."
+            )
+            if valid_run_id:
+                stmt_run = select(ResearchRun).where(ResearchRun.id == valid_run_id)
+                r_res = await session.execute(stmt_run)
+                run = r_res.scalar_one_or_none()
+                if run:
+                    run.rejected_count += 1
+                    processed = run.qualified_count + run.rejected_count + run.failed_count
+                    if processed >= run.discovered_count and run.discovered_count > 0:
+                        run.status = "COMPLETED"
+            await session.commit()
+            return {"status": "REJECTED", "business_id": str(business_id), "reason": fit_reason}
+
+        use_kb = payload.get("use_company_kb", True)
+        kb_dict = await FitGateEngine.fetch_active_kb_dict(session) if use_kb else None
+
+        gate_res = FitGateEngine.evaluate_candidate(
+            business_name=business_name,
+            domain=domain,
+            phone=payload.get("phone") or (website_data.get("extracted_phone") if website_data else None),
+            email=payload.get("email") or (website_data.get("extracted_email") if website_data else None),
+            business_type=business_type,
+            city=payload.get("city") or "Dhaka",
+            audit_res=website_data,
+            detected_weaknesses=[e["evidence_text"] for e in evidence_records if e.get("evidence_text")],
+            metadata_json=payload,
+            company_kb=kb_dict,
+            use_company_kb=use_kb,
+        )
+
         if lead:
             lead.run_id = valid_run_id
             lead.tier = tier
@@ -718,7 +733,15 @@ async def _execute_research_and_qualify(
             lead.is_qualified = is_qualified
             lead.primary_gap_summary = gap_summary
             lead.explanation_json = explanation
+            lead.fit_tier = gate_res["fit_tier"]
+            lead.why_they_need_us = gate_res["why_they_need_us"]
+            lead.what_they_need = gate_res["what_they_need"]
+            lead.matched_service = gate_res["matched_service"]
+            lead.discovery_call_script = gate_res["discovery_call_script"]
+            if is_qualified and has_email and lead.outreach_status in ("PENDING", "HOLD"):
+                lead.outreach_status = target_outreach_status
         else:
+            initial_outreach = target_outreach_status if (is_qualified and has_email) else "PENDING"
             lead = Lead(
                 business_id=business_id,
                 run_id=valid_run_id,
@@ -727,11 +750,16 @@ async def _execute_research_and_qualify(
                 is_qualified=is_qualified,
                 primary_gap_summary=gap_summary,
                 explanation_json=explanation,
+                outreach_status=initial_outreach,
+                fit_tier=gate_res["fit_tier"],
+                why_they_need_us=gate_res["why_they_need_us"],
+                what_they_need=gate_res["what_they_need"],
+                matched_service=gate_res["matched_service"],
+                discovery_call_script=gate_res["discovery_call_script"],
             )
             session.add(lead)
             await session.flush()
 
-        # Update or create LeadScore Factors
         stmt = select(LeadScore).where(LeadScore.lead_id == lead.id)
         score_res = await session.execute(stmt)
         score_record = score_res.scalar_one_or_none()
@@ -756,7 +784,6 @@ async def _execute_research_and_qualify(
             )
             session.add(score_record)
 
-        # Update Run Counters & Completion Status
         if valid_run_id:
             stmt = select(ResearchRun).where(ResearchRun.id == valid_run_id)
             r_res = await session.execute(stmt)
@@ -773,7 +800,6 @@ async def _execute_research_and_qualify(
 
         await session.commit()
 
-    # Broadcast Progress via Pub/Sub
     await publish_progress_event("lead_evaluated", {
         "run_id": str(run_id),
         "business_id": str(business_id),

@@ -1,11 +1,7 @@
-"""
-Pydantic Schemas for Voice Agent, Knowledge Base, and Outbound Call Queue.
-"""
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import uuid
 from pydantic import BaseModel, ConfigDict, Field
-
 
 class VoiceKnowledgeBaseCreate(BaseModel):
     name: str = "Primary B2B Sales Agent"
@@ -22,7 +18,6 @@ class VoiceKnowledgeBaseCreate(BaseModel):
     is_active: bool = True
     objections_json: List[Dict[str, str]] = Field(default_factory=list)
 
-
 class VoiceKnowledgeBaseUpdate(BaseModel):
     name: Optional[str] = None
     company_name: Optional[str] = None
@@ -37,7 +32,6 @@ class VoiceKnowledgeBaseUpdate(BaseModel):
     office_hours_end: Optional[str] = None
     is_active: Optional[bool] = None
     objections_json: Optional[List[Dict[str, str]]] = None
-
 
 class VoiceKnowledgeBaseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -59,7 +53,6 @@ class VoiceKnowledgeBaseResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-
 class VoiceCallQueueItemCreate(BaseModel):
     contact_person: str
     contact_title: Optional[str] = None
@@ -69,7 +62,6 @@ class VoiceCallQueueItemCreate(BaseModel):
     selected_for_call: bool = True
     lead_id: Optional[str] = None
     notes: Optional[str] = None
-
 
 class VoiceCallQueueItemUpdate(BaseModel):
     contact_person: Optional[str] = None
@@ -82,7 +74,6 @@ class VoiceCallQueueItemUpdate(BaseModel):
     meeting_link: Optional[str] = None
     meeting_time: Optional[str] = None
     notes: Optional[str] = None
-
 
 class VoiceCallQueueItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -103,22 +94,18 @@ class VoiceCallQueueItemResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-
 class BatchQueueActionRequest(BaseModel):
-    action: str = "select_all" # select_all, deselect_all, sync_from_leads
+    action: str = "select_all"
     item_ids: Optional[List[str]] = None
-
 
 class VoiceDialogueTurnRequest(BaseModel):
     queue_item_id: Optional[str] = None
     kb_id: Optional[str] = None
     user_speech_text: str
     conversation_history: List[Dict[str, str]] = Field(default_factory=list)
-    # Optional override parameters for instant simulation
     client_name: Optional[str] = None
     company_name: Optional[str] = None
     exact_problem: Optional[str] = None
-
 
 class VoiceDialogueTurnResponse(BaseModel):
     agent_reply_text: str
@@ -128,7 +115,6 @@ class VoiceDialogueTurnResponse(BaseModel):
     detected_intent: str = "general_query"
     audio_base64: Optional[str] = None
     audio_url: Optional[str] = None
-
 
 class VoiceCallLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

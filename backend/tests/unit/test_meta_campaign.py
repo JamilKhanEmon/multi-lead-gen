@@ -1,6 +1,3 @@
-"""
-Unit tests for B2B Meta Ads Engine, Intelligence, and Funnel Client.
-"""
 import pytest
 from unittest.mock import patch, AsyncMock
 from app.engine.meta_intelligence import MetaIntelligenceEngine
@@ -8,10 +5,8 @@ from app.services.meta_client import MetaClient
 from app.schemas.campaign import CampaignCreate, CampaignResponse
 from app.models.campaign import MetaCampaign
 
-
 @pytest.mark.asyncio
 async def test_meta_intelligence_targeting_and_competitor_synthesis():
-    """Validates that market and competitor analysis returns correct B2B parameters."""
     with patch("app.engine.meta_intelligence.OllamaClient.analyze", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = {
             "recommended_targeting": {
@@ -43,10 +38,8 @@ async def test_meta_intelligence_targeting_and_competitor_synthesis():
         assert "Managing Director" in res["targeting"]["job_titles"]
         assert "Students" in res["targeting"]["exclusions"]
 
-
 @pytest.mark.asyncio
 async def test_meta_intelligence_creatives_generation():
-    """Validates that 2-step creatives are properly formed with Post 1 hook and Post 2 WhatsApp CTA."""
     creatives = await MetaIntelligenceEngine.generate_funnel_creatives(
         service_name="Computer Vision Defect Detection",
         industry="Manufacturing & Engineering",
@@ -62,10 +55,8 @@ async def test_meta_intelligence_creatives_generation():
     assert "whatsapp_cta_label" in creatives["post2"]
     assert creatives["post2"]["whatsapp_cta_label"] == "Send WhatsApp Message"
 
-
 @pytest.mark.asyncio
 async def test_meta_client_sandbox_publish_and_metrics():
-    """Validates MetaClient sandbox deployment and live metric progression."""
     client = MetaClient()
     assert client.is_live is False
 
@@ -84,7 +75,6 @@ async def test_meta_client_sandbox_publish_and_metrics():
     assert "meta_adset_retarget_id" in publish_result
     assert publish_result["status"] == "ACTIVE"
 
-    # Test metric calculation
     mock_campaign = MetaCampaign(
         id="test-123",
         name="Commercial Tech Funnel",

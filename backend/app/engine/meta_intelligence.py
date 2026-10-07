@@ -1,8 +1,3 @@
-"""
-Autonomous B2B Meta Ads Intelligence Engine.
-Combines LLM query expansion, OpenClaw competitor scraping, winning ad analysis,
-and generates 2-Step Video Funnel Creatives (Cold Hook Video -> 50%+ Viewers WhatsApp Retargeting).
-"""
 import json
 import re
 from typing import Dict, Any, List, Optional
@@ -10,9 +5,7 @@ from app.services.ollama_client import OllamaClient
 from app.services.openclaw_client import LiveResearchEngine
 from app.core.logging import logger
 
-
 class MetaIntelligenceEngine:
-    """End-to-end intelligence engine for B2B Meta Campaigns."""
 
     @classmethod
     async def analyze_market_and_competitors(
@@ -23,15 +16,8 @@ class MetaIntelligenceEngine:
         pain_point: Optional[str] = None,
         core_offer: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Step 1 & 2:
-        1. Expands user input with LLM into precise search queries.
-        2. Leverages LiveResearchEngine / OpenClaw to probe competitor offerings & ad angles.
-        3. Formulates recommended Meta B2B targeting and competitor intelligence insights.
-        """
         ollama = OllamaClient()
 
-        # Generate targeted research queries
         query_prompt = f"""
 You are a top-tier B2B Meta Ads Strategist and Market Intelligence Researcher.
 The user wants to launch B2B Meta Ads for:
@@ -86,7 +72,6 @@ Provide a JSON object with:
         except Exception as e:
             logger.warning(f"LLM query expansion failed, using default robust B2B targeting: {e}")
 
-        # Real Live Web / OpenClaw inspection for competitors
         competitor_insights = await cls._scrape_competitor_ad_angles(
             service_name=service_name,
             industry=industry,
@@ -107,13 +92,9 @@ Provide a JSON object with:
         pain_point: Optional[str] = None,
         core_offer: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Gathers live intelligence on what other companies are advertising and their winning angles.
-        """
         search_query = f"{industry} {service_name} B2B solutions providers"
         web_results = []
         try:
-            # Query web results through LiveResearchEngine live DuckDuckGo scraper
             raw_results = await LiveResearchEngine._execute_web_search(search_query)
             for r in raw_results[:5]:
                 web_results.append({
@@ -124,7 +105,6 @@ Provide a JSON object with:
         except Exception as e:
             logger.warning(f"Competitor web search error: {e}")
 
-        # Build realistic competitor items from live web findings
         default_competitors = []
         if web_results:
             for r in web_results[:3]:
@@ -175,7 +155,6 @@ Provide a JSON object with:
 
         dynamic_positioning = f"Position {service_name} as the high-ROI B2B solution directly eliminating core {industry} operational bottlenecks."
 
-        # Synthesize winning angles and pain points via Ollama
         ollama = OllamaClient()
         synth_prompt = f"""
 Analyze these competitor snippets and industry offerings for {service_name} in {industry}:
@@ -228,11 +207,6 @@ Synthesize actionable competitor intelligence:
         core_offer: str,
         competitor_insights: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Generates:
-        - Post 1: Cold Hook Video Post (3 top hooks, 45s script, primary copy, headline).
-        - Post 2: Retargeting Closer Ad with WhatsApp CTA (offer copy, WhatsApp button, prefill message).
-        """
         ollama = OllamaClient()
 
         prompt = f"""
@@ -285,7 +259,6 @@ POST 2: Retargeting Closer Ad (Objective: Shown ONLY to 50%+ video viewers with 
             "whatsapp_number": "",
             "prefill_message": f"Hello, I watched your demo on {service_name} and would like to request more information or a live pilot.",
         }
-
 
         try:
             creatives = await ollama.analyze(

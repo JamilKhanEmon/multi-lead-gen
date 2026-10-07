@@ -1,7 +1,3 @@
-"""
-Ollama Multimodal Client Adapter (gemma3:4b Native macOS Integration)
-Adheres to official /api/chat contract supporting text and base64 images.
-"""
 import base64
 import json
 import os
@@ -11,14 +7,10 @@ import httpx
 from app.core.config import settings
 from app.core.logging import logger
 
-
 class OllamaClientError(Exception):
-    """Raised on Ollama HTTP or inference errors."""
     pass
 
-
 class OllamaClient:
-    """Async client for local Ollama multimodal models."""
 
     def __init__(
         self,
@@ -37,17 +29,12 @@ class OllamaClient:
         image_paths: Optional[List[str]] = None,
         response_schema: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Executes a multimodal or text-only inference call via POST /api/chat.
-        Returns parsed and validated structured JSON.
-        """
         messages = [
             {"role": "system", "content": system_prompt},
         ]
 
         user_message: Dict[str, Any] = {"role": "user", "content": user_prompt}
 
-        # Encode image files to base64 if provided
         if image_paths:
             base64_images = []
             for path in image_paths:
@@ -61,7 +48,6 @@ class OllamaClient:
         messages.append(user_message)
         t0 = time.time()
 
-        # 1. Cloud AI Priority: Route reasoning through Hostinger OpenClaw Gateway if configured
         if settings.OPENCLAW_GATEWAY_URL and not any(loc in settings.OPENCLAW_GATEWAY_URL for loc in ["127.0.0.1", "localhost"]):
             gw_base = settings.OPENCLAW_GATEWAY_URL.replace("ws://", "http://").replace("wss://", "https://").rstrip("/")
             gw_url = f"{gw_base}/v1/chat/completions"
@@ -71,7 +57,7 @@ class OllamaClient:
                 "x-openclaw-session": "leadgen_pipeline",
             }
             gw_payload = {
-                "model": "default",  # Dynamic server routing without hardcoded model name
+                "model": "default",
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -101,14 +87,13 @@ class OllamaClient:
                 except Exception as gw_err:
                     logger.debug(f"OpenClaw Cloud Gateway reasoning notice (graceful fallback): {gw_err}")
 
-        # 2. Local Ollama Runtime Fallback
         payload: Dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "stream": False,
             "format": "json",
             "options": {
-                "temperature": 0.1,  # Low temperature for deterministic analysis
+                "temperature": 0.1,
                 "num_ctx": 8192,
             },
         }
@@ -148,14 +133,11 @@ class OllamaClient:
                     last_err = str(conn_err)
                     break
 
-            # If cloud gateway was not reached and local daemon is absent, use deterministic heuristic reasoning
             logger.info("Using deterministic semantic reasoning fallback.")
             mock_fallback = MockOllamaClient()
             return await mock_fallback.analyze(system_prompt, user_prompt, image_paths, response_schema)
 
-
 class MockOllamaClient:
-    """Mock Ollama client for unit and integration testing without local daemon."""
 
     def __init__(self, return_payload: Optional[Dict[str, Any]] = None):
         self.return_payload = return_payload
@@ -167,7 +149,6 @@ class MockOllamaClient:
         image_paths: Optional[List[str]] = None,
         response_schema: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        # Dynamically infer service matches based on signals in user_prompt
         services = []
         findings = []
 
