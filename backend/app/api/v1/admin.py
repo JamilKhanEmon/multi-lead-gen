@@ -644,28 +644,38 @@ async def get_company_kb(
 
     if not kb:
         kb = CompanyKB(
-            company_name="Enterprise Solutions",
-            tagline_experience="10+ years of digital transformation & custom software engineering",
-            headquarters="Dhaka, Bangladesh",
+            company_name="",
+            tagline_experience="",
+            headquarters=None,
             contact_phone=None,
             contact_email=None,
             website_url=None,
-            services_json=DEFAULT_SERVICES,
+            master_kb_notes=None,
+            services_json=[],
             is_active=True,
         )
         db.add(kb)
         await db.commit()
         await db.refresh(kb)
+    else:
+        # Wipe old seed defaults if they were never customized
+        if kb.company_name == "Enterprise Solutions":
+            kb.company_name = ""
+        if kb.headquarters == "Dhaka, Bangladesh" and not kb.contact_phone and not kb.contact_email:
+            kb.headquarters = None
+        if "10+ years of digital transformation" in (kb.tagline_experience or ""):
+            kb.tagline_experience = ""
 
     return CompanyKBResponse(
         id=str(kb.id),
-        company_name=kb.company_name,
-        tagline_experience=kb.tagline_experience,
+        company_name=kb.company_name or "",
+        tagline_experience=kb.tagline_experience or "",
         headquarters=kb.headquarters,
         contact_phone=kb.contact_phone,
         contact_email=kb.contact_email,
         website_url=kb.website_url,
-        services_json=kb.services_json or DEFAULT_SERVICES,
+        master_kb_notes=getattr(kb, "master_kb_notes", None),
+        services_json=kb.services_json or [],
         is_active=kb.is_active,
         created_at=kb.created_at.isoformat() if kb.created_at else None,
         updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
@@ -697,6 +707,8 @@ async def update_company_kb(
         kb.contact_email = payload.contact_email.strip() or None
     if payload.website_url is not None:
         kb.website_url = payload.website_url.strip() or None
+    if payload.master_kb_notes is not None:
+        kb.master_kb_notes = payload.master_kb_notes.strip() or None
     if payload.services_json is not None:
         kb.services_json = payload.services_json
     if payload.is_active is not None:
@@ -707,13 +719,14 @@ async def update_company_kb(
 
     return CompanyKBResponse(
         id=str(kb.id),
-        company_name=kb.company_name,
-        tagline_experience=kb.tagline_experience,
+        company_name=kb.company_name or "",
+        tagline_experience=kb.tagline_experience or "",
         headquarters=kb.headquarters,
         contact_phone=kb.contact_phone,
         contact_email=kb.contact_email,
         website_url=kb.website_url,
-        services_json=kb.services_json or DEFAULT_SERVICES,
+        master_kb_notes=getattr(kb, "master_kb_notes", None),
+        services_json=kb.services_json or [],
         is_active=kb.is_active,
         created_at=kb.created_at.isoformat() if kb.created_at else None,
         updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
@@ -732,19 +745,27 @@ async def reset_company_kb_defaults(
         kb = CompanyKB()
         db.add(kb)
 
-    kb.services_json = DEFAULT_SERVICES
+    kb.company_name = ""
+    kb.tagline_experience = ""
+    kb.headquarters = None
+    kb.contact_phone = None
+    kb.contact_email = None
+    kb.website_url = None
+    kb.master_kb_notes = None
+    kb.services_json = []
     await db.commit()
     await db.refresh(kb)
 
     return CompanyKBResponse(
         id=str(kb.id),
-        company_name=kb.company_name,
-        tagline_experience=kb.tagline_experience,
+        company_name=kb.company_name or "",
+        tagline_experience=kb.tagline_experience or "",
         headquarters=kb.headquarters,
         contact_phone=kb.contact_phone,
         contact_email=kb.contact_email,
         website_url=kb.website_url,
-        services_json=kb.services_json or DEFAULT_SERVICES,
+        master_kb_notes=getattr(kb, "master_kb_notes", None),
+        services_json=kb.services_json or [],
         is_active=kb.is_active,
         created_at=kb.created_at.isoformat() if kb.created_at else None,
         updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
