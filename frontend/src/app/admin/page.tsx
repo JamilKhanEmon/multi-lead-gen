@@ -2586,36 +2586,6 @@ https://leadgen.local`,
               ))}
             </div>
           </div>
-
-          <div className="p-5 rounded-xl bg-purple-950/20 border border-purple-500/20 space-y-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-purple-300 uppercase tracking-wider">
-              <Sparkles className="w-4 h-4 text-purple-400" />
-              <span>Live Pitch Preview & Discovery Script Sandbox</span>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              When sales representatives open any hot lead dossier, or when the system drafts cold outreach emails, this is how your Company KB dynamically armors them:
-            </p>
-
-            <div className="p-3.5 rounded-lg bg-slate-950/80 border border-slate-800 font-mono text-[11px] text-slate-300 space-y-2">
-              <div className="text-slate-400">
-                <span className="text-purple-400 font-bold">1. OPENING EVIDENCE:</span> &quot;Hello, is this [Candidate Business]? I was reviewing your online presence in [City] and noticed orders and customer bookings are still being taken manually over phone calls...&quot;
-              </div>
-              <div className="text-slate-400">
-                <span className="text-sky-400 font-bold">2. DISCOVERY QUESTION:</span> &quot;How are you currently managing daily order tracking and repeat customer notifications?&quot;
-              </div>
-              <div className="text-emerald-400">
-                <span className="text-purple-400 font-bold">3. VALUE PITCH:</span> &quot;At <span className="text-white font-bold underline">{kbCompanyName || "our solutions team"}</span>, we specialize in solving this with our <span className="text-white font-bold underline">{kbServices[0]?.wedge || "High-Converting Solution"}</span>. Would you be open to a 5-minute preview of the custom audit report we prepared for [Candidate Business]?&quot;
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 text-[11px] text-slate-400 pt-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>
-                <strong>Optional Per Batch:</strong> In both <strong>/research</strong> and <strong>/autopilot</strong>, you can toggle &quot;Use Company KB &amp; Branded Pitch&quot; ON or OFF. Turning it OFF switches the engine into <strong>Generic AI Mode</strong> with zero company branding.
-              </span>
-            </div>
-          </div>
         </div>
       )}
 
