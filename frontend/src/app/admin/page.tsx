@@ -97,12 +97,13 @@ export default function AdminPortalPage() {
   const [kbLoading, setKbLoading] = useState(false);
   const [kbSaving, setKbSaving] = useState(false);
   const [kbResetting, setKbResetting] = useState(false);
-  const [kbCompanyName, setKbCompanyName] = useState("Enterprise Solutions");
-  const [kbTagline, setKbTagline] = useState("10+ years of digital transformation & custom software engineering");
-  const [kbHeadquarters, setKbHeadquarters] = useState("Dhaka, Bangladesh");
+  const [kbCompanyName, setKbCompanyName] = useState("");
+  const [kbTagline, setKbTagline] = useState("");
+  const [kbHeadquarters, setKbHeadquarters] = useState("");
   const [kbPhone, setKbPhone] = useState("");
   const [kbEmail, setKbEmail] = useState("");
   const [kbWebsite, setKbWebsite] = useState("");
+  const [kbMasterNotes, setKbMasterNotes] = useState("");
   const [kbServices, setKbServices] = useState<ServiceCatalogItem[]>([]);
   const [kbIsActive, setKbIsActive] = useState(true);
   const [kbActionSuccess, setKbActionSuccess] = useState<string | null>(null);
@@ -120,6 +121,7 @@ export default function AdminPortalPage() {
         setKbPhone(data.contact_phone || "");
         setKbEmail(data.contact_email || "");
         setKbWebsite(data.website_url || "");
+        setKbMasterNotes(data.master_kb_notes || "");
         setKbServices(data.services_json || []);
         setKbIsActive(data.is_active ?? true);
       }
@@ -141,11 +143,12 @@ export default function AdminPortalPage() {
         contact_phone: kbPhone,
         contact_email: kbEmail,
         website_url: kbWebsite,
+        master_kb_notes: kbMasterNotes,
         services_json: kbServices,
         is_active: kbIsActive,
       });
       setCompanyKb(updated);
-      setKbActionSuccess("✓ Company Knowledge Base and Services saved successfully!");
+      setKbActionSuccess("✓ Company Knowledge Base saved successfully!");
       setTimeout(() => setKbActionSuccess(null), 4000);
     } catch (e: any) {
       setKbActionError(e.message || "Failed to update Company Knowledge Base");
@@ -156,14 +159,21 @@ export default function AdminPortalPage() {
   };
 
   const handleResetKBDefaults = async () => {
-    if (!confirm("Are you sure you want to reset all service offerings back to the 5 default core products?")) return;
+    if (!confirm("Are you sure you want to clear and reset the knowledge base?")) return;
     try {
       setKbResetting(true);
       setKbActionError(null);
       const reset = await resetCompanyKBDefaults();
       setCompanyKb(reset);
-      setKbServices(reset.services_json || []);
-      setKbActionSuccess("✓ Reverted services to 5 core default software products.");
+      setKbCompanyName("");
+      setKbTagline("");
+      setKbHeadquarters("");
+      setKbPhone("");
+      setKbEmail("");
+      setKbWebsite("");
+      setKbMasterNotes("");
+      setKbServices([]);
+      setKbActionSuccess("✓ Knowledge Base reset to clean state.");
       setTimeout(() => setKbActionSuccess(null), 4000);
     } catch (e: any) {
       setKbActionError(e.message || "Failed to reset defaults");
@@ -2333,7 +2343,7 @@ https://leadgen.local`,
                   type="text"
                   value={kbCompanyName}
                   onChange={(e) => setKbCompanyName(e.target.value)}
-                  placeholder="e.g. Modern Digital Solutions / Global Software"
+                  placeholder="e.g. Acme Software / Your Agency Name"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                 />
               </div>
@@ -2403,6 +2413,31 @@ https://leadgen.local`,
                 />
               </div>
             </div>
+          </div>
+
+          {/* Master Knowledge Base (All-in-One Documentation Notebook) */}
+          <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-purple-400" />
+                <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                  Master Company Knowledge Base (All-in-One Documentation Notebook)
+                </span>
+              </div>
+              <span className="text-[10px] text-purple-300 font-mono bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20 self-start sm:self-auto">
+                Primary Master Document
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Write or paste all your company services, software features, landing links, pricing, and case studies here in plain text or bullet points. OpenClaw and the AI Decision Engine read this entire master document to ground cold pitch emails and match prospect weaknesses directly to your offerings.
+            </p>
+            <textarea
+              rows={8}
+              value={kbMasterNotes}
+              onChange={(e) => setKbMasterNotes(e.target.value)}
+              placeholder={`Write or paste all your services & business details here in one place...\n\nExample:\n• Real Estate Management Software (ERP): Complete solution with lead management, installment schedules, client portal, and automated SMS alerts. (Link: https://yourcompany.com/real-estate-software)\n• Custom CRM & Pipeline Automation: Captures leads directly from website into an active follow-up pipeline with WhatsApp notifications.\n• Modern Web & Mobile Development: Fast, mobile-responsive web portals launched in 7 days.\n• Cloud Accounting & Inventory ERP: End-to-end warehouse stock, billing, and financial reports.`}
+              className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 font-mono transition leading-relaxed"
+            />
           </div>
 
           <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-4">

@@ -45,6 +45,7 @@ class FitGateEngine:
                     "contact_phone": kb.contact_phone,
                     "contact_email": kb.contact_email,
                     "website_url": kb.website_url,
+                    "master_kb_notes": getattr(kb, "master_kb_notes", "") or "",
                     "services_json": kb.services_json,
                 }
         except Exception as e:
@@ -260,10 +261,32 @@ class FitGateEngine:
             }
 
         candidate_cards = DEFAULT_GENERIC_CATALOG
-        if use_company_kb and company_kb and company_kb.get("services_json"):
+        if use_company_kb and company_kb:
             kb_services = company_kb.get("services_json")
             if isinstance(kb_services, list) and len(kb_services) > 0:
                 candidate_cards = kb_services
+            else:
+                kb_notes = (company_kb.get("master_kb_notes") or "").strip()
+                if kb_notes:
+                    parsed_lines = [l.strip().lstrip("-•*").strip() for l in kb_notes.split("\n") if l.strip()]
+                    virtual_cards = []
+                    for idx, line in enumerate(parsed_lines):
+                        if len(line) < 5:
+                            continue
+                        if ":" in line:
+                            svc_title, svc_desc = line.split(":", 1)
+                        else:
+                            svc_title, svc_desc = line[:40], line
+                        virtual_cards.append({
+                            "key": f"note_svc_{idx+1}",
+                            "name": svc_title.strip(),
+                            "wedge": "Tailored workflow demonstration & gap audit",
+                            "features": svc_desc.strip(),
+                            "solves_problems": "operational bottlenecks and manual coordination delays",
+                            "description": svc_desc.strip(),
+                        })
+                    if virtual_cards:
+                        candidate_cards = virtual_cards
 
         ranked_cards = cls.match_service_cards(
             candidate_cards=candidate_cards,

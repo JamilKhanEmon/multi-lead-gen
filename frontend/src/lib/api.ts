@@ -1664,6 +1664,7 @@ export interface CompanyKB {
   contact_phone?: string | null;
   contact_email?: string | null;
   website_url?: string | null;
+  master_kb_notes?: string | null;
   services_json: ServiceCatalogItem[];
   is_active: boolean;
   created_at?: string;

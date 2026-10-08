@@ -92,6 +92,7 @@ class CompanyKBResponse(BaseModel):
     contact_phone: Optional[str] = None
     contact_email: Optional[str] = None
     website_url: Optional[str] = None
+    master_kb_notes: Optional[str] = None
     services_json: List[Dict[str, Any]]
     is_active: bool
     created_at: Optional[str] = None
@@ -104,6 +105,8 @@ class CompanyKBUpdate(BaseModel):
     contact_phone: Optional[str] = None
     contact_email: Optional[str] = None
     website_url: Optional[str] = None
+    master_kb_notes: Optional[str] = None
     services_json: Optional[List[Dict[str, Any]]] = None
     is_active: Optional[bool] = None
+
 
