@@ -5,38 +5,8 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base, TimestampMixin, UUIDMixin
 
-DEFAULT_SERVICES: List[Dict[str, Any]] = [
-    {
-        "key": "web_dev",
-        "name": "Web Design & Development (Site in 7 Days)",
-        "wedge": "High-Converting Mobile Landing Page / Website Revamp",
-        "description": "Custom modern responsive website with instant WhatsApp & lead capture forms.",
-    },
-    {
-        "key": "crm_lead",
-        "name": "Custom CRM & Lead Capture Pipeline",
-        "wedge": "Automated Lead Capture & Inquiry Notification System",
-        "description": "On-site buyer inquiry capture, automated WhatsApp/SMS notifications, and team sales tracking.",
-    },
-    {
-        "key": "erp_management",
-        "name": "Custom Enterprise ERP (Inventory, Accounts & Operations)",
-        "wedge": "Lightweight Cloud Billing & Daily Operations Tracker",
-        "description": "End-to-end ERP customized for Real Estate, Hospitals, Schools, Restaurants, or Supply Chain.",
-    },
-    {
-        "key": "digital_marketing",
-        "name": "Digital Marketing & SMS Outreach Wedge",
-        "wedge": "Targeted SMS Blast & Local Google SEO Audit",
-        "description": "Targeted local SEO, SMS campaigns, and Meta conversion tracking setup.",
-    },
-    {
-        "key": "ecommerce_portal",
-        "name": "E-Commerce & Digital Ordering System",
-        "wedge": "Online Product Showcase with Direct WhatsApp Ordering",
-        "description": "Full e-commerce platform with automated payment gateway, delivery tracking, and stock sync.",
-    },
-]
+DEFAULT_SERVICES: List[Dict[str, Any]] = []
+
 
 class CompanyKB(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "company_kb"
