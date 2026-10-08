@@ -106,7 +106,7 @@ class AutopilotRunner:
                         country=campaign.country,
                         city=target_city_clean,
                         sub_city=target_city_clean,
-                        company_limit=batch_size
+                        company_limit=max(batch_size * 5, 30)
                     )
                     discovered_candidates = discovery_res.get("discovered_companies", [])
                 except Exception as e:
@@ -251,22 +251,63 @@ class AutopilotRunner:
                     else:
                         primary_gap = "Solvable local search ranking weakness & mobile conversion gap"
 
+                    # STRICT REQUIREMENT: Only ingest leads that have a verified/actionable email
+                    if not resolved_email or "@" not in resolved_email:
+                        logger.info(f"[AUTOPILOT STRICT FILTER] Skipping '{c_name}' — no actionable email found.")
+                        continue
+
+                    metadata_payload = {
+                        "source": "autopilot_deep_intelligence",
+                        "city": target_city_clean,
+                        "keyword": target_keyword,
+                        "google_maps_url": cand.get("google_maps_url"),
+                        "google_search_url": cand.get("google_search_url"),
+                        "detected_weaknesses": detected_weaknesses
+                    }
+
+                    gate_eval = FitGateEngine.evaluate_candidate(
+                        business_name=c_name,
+                        domain=c_dom,
+                        phone=c_phone,
+                        email=resolved_email,
+                        business_type=b_type,
+                        city=target_city_clean,
+                        audit_res=audit_res,
+                        detected_weaknesses=detected_weaknesses,
+                        metadata_json=metadata_payload,
+                        company_kb=kb_dict,
+                        use_company_kb=use_kb,
+                    )
+
+                    fit_tier = gate_eval["fit_tier"]
+                    is_dropped = (fit_tier == "DROPPED")
+                    if is_dropped or fit_tier not in ("HOT", "WARM"):
+                        logger.info(f"[AUTOPILOT STRICT FILTER] Dropping rejected candidate '{c_name}' (Fit: {fit_tier}). Not adding to CRM.")
+                        continue
+
+                    lead_tier = "Strong Potential" if fit_tier == "HOT" else "Review Needed"
+                    final_lead_score = gate_eval["fit_score"]
+                    is_qualified = True
+                    outreach_status = "READY_FOR_OUTREACH"
+                    email_status = "VALID"
+                    verify_note = "Valid email address verified for autonomous outreach"
+
+                    why_they_need_us = gate_eval["why_they_need_us"]
+                    what_they_need = gate_eval["what_they_need"]
+                    matched_service = gate_eval["matched_service"]
+                    discovery_call_script = gate_eval["discovery_call_script"]
+
+                    lead_primary_gap = " • ".join(gate_eval["verified_gaps"][:2]) if gate_eval.get("verified_gaps") else primary_gap
+
                     biz = Business(
                         canonical_name=c_name,
                         domain=c_dom if c_dom else None,
                         phone=c_phone if c_phone else None,
-                        email=resolved_email if resolved_email else None,
+                        email=resolved_email,
                         contact_person=cand.get("contact_person") or "Executive / Director",
                         address=cand.get("address") or f"{target_city_clean}, {campaign.country}",
                         business_type=b_type,
-                        metadata_json={
-                            "source": "autopilot_deep_intelligence",
-                            "city": target_city_clean,
-                            "keyword": target_keyword,
-                            "google_maps_url": cand.get("google_maps_url"),
-                            "google_search_url": cand.get("google_search_url"),
-                            "detected_weaknesses": detected_weaknesses
-                        }
+                        metadata_json=metadata_payload,
                     )
                     db.add(biz)
                     await db.flush()
@@ -281,61 +322,12 @@ class AutopilotRunner:
                     )
                     db.add(loc)
 
-                    has_email = bool(resolved_email)
-                    if has_email:
-                        outreach_status = "READY_FOR_OUTREACH"
-                        email_status = "VALID"
-                        verify_note = "Valid email address ready for autonomous cold outreach"
-                    else:
-                        outreach_status = "NO_EMAIL"
-                        email_status = "NOT_FOUND"
-                        verify_note = "No public email address found"
-
-                    gate_eval = FitGateEngine.evaluate_candidate(
-                        business_name=c_name,
-                        domain=c_dom,
-                        phone=c_phone,
-                        email=resolved_email,
-                        business_type=b_type,
-                        city=target_city_clean,
-                        audit_res=audit_res,
-                        detected_weaknesses=detected_weaknesses,
-                        metadata_json=biz.metadata_json,
-                        company_kb=kb_dict,
-                        use_company_kb=use_kb,
-                    )
-
-                    fit_tier = gate_eval["fit_tier"]
-                    why_they_need_us = gate_eval["why_they_need_us"]
-                    what_they_need = gate_eval["what_they_need"]
-                    matched_service = gate_eval["matched_service"]
-                    discovery_call_script = gate_eval["discovery_call_script"]
-
-                    is_dropped = (fit_tier == "DROPPED")
-                    if is_dropped:
-                        outreach_status = "FILTERED_HEALTHY"
-                        lead_tier = "Rejected"
-                        is_qualified = False
-                        final_lead_score = 5.0
-                    elif fit_tier == "HOT" and has_email:
-                        lead_tier = "Strong Potential"
-                        is_qualified = True
-                        final_lead_score = gate_eval["fit_score"]
-                    elif fit_tier in ("HOT", "WARM"):
-                        lead_tier = "Review Needed"
-                        is_qualified = True
-                        final_lead_score = gate_eval["fit_score"]
-                    else:
-                        lead_tier = "Rejected"
-                        is_qualified = False
-                        final_lead_score = gate_eval["fit_score"]
-
-                    lead_primary_gap = " • ".join(gate_eval["verified_gaps"][:2]) if gate_eval.get("verified_gaps") else primary_gap
+                    has_email = True
 
                     lead = Lead(
                         business_id=biz.id,
                         tier=lead_tier,
-                        final_score=final_lead_score if not is_dropped else 40.0,
+                        final_score=final_lead_score,
                         is_qualified=is_qualified,
                         primary_gap_summary=lead_primary_gap,
                         explanation_json={
@@ -361,7 +353,7 @@ class AutopilotRunner:
                             "detected_weaknesses": detected_weaknesses,
                             "fit_gate": {
                                 "fit_tier": fit_tier,
-                                "passed_gate": not is_dropped,
+                                "passed_gate": True,
                                 "evidence_tags": gate_eval.get("evidence_tags", []),
                             }
                         },
@@ -453,6 +445,13 @@ class AutopilotRunner:
                     campaign.total_leads_found += 1
                     campaign.total_emails_sent += total_dispatched_count
                     await db.commit()
+
+                    if len(all_added_leads) >= batch_size:
+                        logger.info(f"[AUTOPILOT BATCH COMPLETE] Satisfied batch quota with {len(all_added_leads)} verified email leads.")
+                        break
+
+                if len(all_added_leads) >= batch_size:
+                    break
 
         except Exception as batch_err:
             logger.error(f"[AUTOPILOT RUN FAIL] Error in campaign run: {batch_err}")

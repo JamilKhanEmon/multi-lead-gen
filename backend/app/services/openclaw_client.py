@@ -45,14 +45,14 @@ class LiveResearchEngine:
     ) -> Dict[str, Any]:
         loc_parts = [p for p in [sub_city, city, country] if p]
         full_location = ", ".join(loc_parts) if loc_parts else location.strip()
-        effective_limit = 500 if company_limit <= 0 else min(company_limit, 1000)
+        effective_limit = 500 if company_limit <= 0 else max(company_limit * 3, 25)
 
         discovered = []
         seen_names = set()
         seen_domains = set()
         loop = asyncio.get_event_loop()
 
-        logger.info(f"LiveResearchEngine: Starting live discovery for '{industry}' in '{full_location}' (Auto-exhaustion cap: {effective_limit})")
+        logger.info(f"LiveResearchEngine: Starting live discovery for '{industry}' in '{full_location}' (Target candidate pool: {effective_limit})")
 
         plan = await DiscoveryOptimizer.optimize_search_plan(
             industry=industry,
@@ -63,6 +63,7 @@ class LiveResearchEngine:
         )
         logger.info(f"DiscoveryOptimizer: Using {len(plan['search_queries'])} targeted search queries and {len(plan['osm_queries'])} OSM targets.")
 
+        # 1. Primary: High-coverage Web Search for genuine companies with official domains
         try:
             browser_discovered = await cls._search_commercial_companies_via_browser(
                 industry=industry,
@@ -82,8 +83,31 @@ class LiveResearchEngine:
         except Exception as e:
             logger.warning(f"Live browser discovery fallback: {e}")
 
-        osm_search_targets = plan.get("osm_queries", [])
+        # 2. Multi-engine search expansion if still under effective limit
+        if len(discovered) < effective_limit:
+            queries = plan.get("search_queries", []) or GeoExpander.build_search_queries(industry, full_location)
+            for q in queries:
+                if len(discovered) >= effective_limit:
+                    break
+                try:
+                    page_html, _ = await loop.run_in_executor(None, cls._fetch_ddg_html, q, None)
+                    if not page_html:
+                        continue
+                    items = cls._parse_ddg_items(page_html)
+                    for actual_url, title, snippet in items:
+                        if len(discovered) >= effective_limit:
+                            break
+                        biz = cls._process_candidate_url(actual_url, title, snippet, industry, full_location, business_type_override, seen_domains, seen_names, plan=plan)
+                        if biz:
+                            biz["city"] = city
+                            biz["country"] = country
+                            discovered.append(biz)
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    logger.warning(f"Web search error for '{q}': {e}")
 
+        # 3. Supplemental: OSM Directory Search ONLY for entities that have website/domain or direct email
+        osm_search_targets = plan.get("osm_queries", [])
         for target_q in osm_search_targets:
             if len(discovered) >= effective_limit:
                 break
@@ -112,7 +136,6 @@ class LiveResearchEngine:
                         logger.debug(f"OSM candidate rejected: {reason}")
                         continue
 
-                    seen_names.add(clean_norm_name)
                     website = p.get("website")
                     domain = None
                     if website:
@@ -120,12 +143,9 @@ class LiveResearchEngine:
                             domain = urllib.parse.urlparse(website).netloc.lower().replace("www.", "")
                             if domain in seen_domains:
                                 continue
-                            seen_domains.add(domain)
                         except Exception:
                             pass
 
-                    lat = p.get("latitude")
-                    lon = p.get("longitude")
                     phone = p.get("phone")
                     email = p.get("email")
 
@@ -139,9 +159,17 @@ class LiveResearchEngine:
                             website = enriched["website"]
                             domain = enriched.get("domain")
 
-                    if not website and not domain and not phone and not email and not p.get("address") and lat is None:
-                        logger.debug(f"Discarding ghost candidate '{p_name}' (No contact channel and no address).")
+                    # STRICT FILTER: Discard any candidate without a website/domain or direct email
+                    if not website and not domain and not email:
+                        logger.debug(f"Discarding candidate '{p_name}' (No website, domain, or email for digital outreach).")
                         continue
+
+                    if domain:
+                        seen_domains.add(domain)
+                    seen_names.add(clean_norm_name)
+
+                    lat = p.get("latitude")
+                    lon = p.get("longitude")
 
                     if lat is not None and lon is not None:
                         gmaps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
@@ -175,31 +203,9 @@ class LiveResearchEngine:
                         "confidence": 0.98 if website else 0.92,
                     })
 
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.1)
             except Exception as e:
                 logger.warning(f"OSM directory search error for '{target_q}': {e}")
-
-        if len(discovered) < effective_limit:
-            queries = plan.get("search_queries", []) or GeoExpander.build_search_queries(industry, full_location)
-            for q in queries[:4]:
-                if len(discovered) >= effective_limit:
-                    break
-                try:
-                    page_html, _ = await loop.run_in_executor(None, cls._fetch_ddg_html, q, None)
-                    if not page_html:
-                        continue
-                    items = cls._parse_ddg_items(page_html)
-                    for actual_url, title, snippet in items:
-                        if len(discovered) >= effective_limit:
-                            break
-                        biz = cls._process_candidate_url(actual_url, title, snippet, industry, full_location, business_type_override, seen_domains, seen_names, plan=plan)
-                        if biz:
-                            biz["city"] = city
-                            biz["country"] = country
-                            discovered.append(biz)
-                    await asyncio.sleep(0.2)
-                except Exception as e:
-                    logger.warning(f"Web search error for '{q}': {e}")
 
         logger.info(f"LiveResearchEngine: Successfully discovered {len(discovered)} genuine businesses for '{industry}' in '{full_location}'.")
         return {"discovered_companies": discovered}

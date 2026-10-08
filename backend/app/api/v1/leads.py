@@ -78,11 +78,8 @@ async def list_leads(
     if deal_status:
         stmt = stmt.where(Lead.deal_status == deal_status)
 
-    stmt = stmt.order_by(desc(Lead.final_score)).offset(skip).limit(limit)
-    res = await db.execute(stmt)
-    leads = res.scalars().all()
-
     try:
+        from sqlalchemy import or_
         cleanup_stmt = select(Lead).join(Business).where(
             (Business.canonical_name.ilike("%facebook.com%")) |
             (Business.canonical_name.ilike("%instagram.com%")) |
@@ -94,7 +91,11 @@ async def list_leads(
             (Business.canonical_name == "Facebook") |
             (Business.canonical_name == "facebook") |
             (Business.canonical_name == "Google") |
-            (Business.canonical_name == "google")
+            (Business.canonical_name == "google") |
+            (Lead.tier == "Rejected") |
+            (Lead.outreach_status == "NO_EMAIL") |
+            (Business.email.is_(None)) |
+            (Business.email == "")
         )
         c_res = await db.execute(cleanup_stmt)
         bad_leads = c_res.scalars().all()
@@ -105,10 +106,14 @@ async def list_leads(
     except Exception:
         pass
 
+    stmt = stmt.order_by(desc(Lead.final_score)).offset(skip).limit(limit)
+    res = await db.execute(stmt)
+    leads = res.scalars().all()
+
     lead_items = []
     for l in leads:
         biz = l.business
-        if not biz:
+        if not biz or not biz.email or not biz.email.strip() or l.tier == "Rejected" or l.outreach_status == "NO_EMAIL":
             continue
         biz_name_l = (biz.canonical_name or "").lower().strip()
         biz_dom_l = (biz.domain or "").lower().strip()
@@ -122,26 +127,11 @@ async def list_leads(
 
         meta = (biz.metadata_json or {}) if biz else {}
         has_scraped_email = bool(meta.get("extracted_email") or (biz.email and not biz.email.startswith("contact@")))
-        if biz.email:
-            resolved_email = biz.email
-            email_status = "VERIFIED" if has_scraped_email else "SUGGESTED"
-        elif clean_dom and not DeduplicationEngine.is_generic_platform(clean_dom):
-            resolved_email = f"contact@{clean_dom}"
-            email_status = "SUGGESTED"
-        else:
-            resolved_email = None
-            email_status = "NOT_FOUND"
-
-        if not biz.email and resolved_email:
-            biz.email = resolved_email
+        resolved_email = biz.email.strip()
+        email_status = "VERIFIED" if has_scraped_email else "SUGGESTED"
 
         has_contact = bool(biz.phone or resolved_email)
-        if l.is_qualified and not has_contact:
-            l.is_qualified = False
-            if l.tier != "Rejected":
-                l.tier = "Rejected"
-
-        if is_qualified is True and not has_contact:
+        if not resolved_email:
             continue
 
         loc = biz.locations[0] if (biz and biz.locations) else None

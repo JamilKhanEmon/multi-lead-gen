@@ -227,17 +227,21 @@ export default function LeadsPipelinePage() {
   };
 
   const counts = useMemo(() => {
-    const total = leads.length;
-    const reviewNeeded = leads.filter(isNeedsReview).length;
-    const readyForMail = leads.filter(isReadyForMail).length;
-    const sentMail = leads.filter(isSentMail).length;
-    const hotDeals = leads.filter(isHotDeal).length;
-    const noEmail = leads.filter(isNoEmailLead).length;
+    const valid = leads.filter((l) => Boolean(l.email && l.email.trim() && l.tier !== "Rejected"));
+    const total = valid.length;
+    const reviewNeeded = valid.filter(isNeedsReview).length;
+    const readyForMail = valid.filter(isReadyForMail).length;
+    const sentMail = valid.filter(isSentMail).length;
+    const hotDeals = valid.filter(isHotDeal).length;
+    const noEmail = 0;
     return { total, reviewNeeded, readyForMail, sentMail, hotDeals, noEmail };
   }, [leads]);
 
   const filtered = useMemo(() => {
     return leads.filter((lead) => {
+      if (!lead.email || !lead.email.trim() || lead.tier === "Rejected") {
+        return false;
+      }
       const bizName = (lead.business_name || "").toLowerCase().trim();
       if (GENERIC_PLATFORMS.some((p) => bizName.includes(p)) || bizName === "facebook" || bizName === "instagram") {
         return false;
