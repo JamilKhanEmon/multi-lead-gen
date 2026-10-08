@@ -11,6 +11,7 @@ class ResearchRunCreate(BaseModel):
     location: Optional[str] = Field(default="")
     depth: str = Field(default="DEEP", example="DEEP")
     business_type_override: Optional[str] = None
+    company_limit: Optional[int] = Field(default=0, example=0)
     target_services: List[str] = Field(default_factory=list)
     auto_mail_enabled: bool = Field(default=True)
     use_company_kb: bool = Field(default=True)

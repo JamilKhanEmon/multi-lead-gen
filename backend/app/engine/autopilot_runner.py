@@ -60,8 +60,9 @@ class AutopilotRunner:
         cls,
         db: AsyncSession,
         campaign: AutopilotCampaign,
-        batch_size: int = 15
+        batch_size: int = 0
     ) -> Dict[str, Any]:
+        effective_batch = campaign.batch_size if (campaign.batch_size and campaign.batch_size > 0) else batch_size
         sub_cities = campaign.sub_cities or ([campaign.country] if campaign.country else [""])
         if not sub_cities:
             sub_cities = [campaign.country] if campaign.country else [""]
@@ -69,8 +70,9 @@ class AutopilotRunner:
         keywords = campaign.keywords or ["Business"]
         target_keyword = keywords[0] if keywords else "Business"
 
+        mode_desc = "UNLIMITED" if effective_batch <= 0 else f"Target Limit: {effective_batch}"
         logger.info(
-            f"[AUTOPILOT 1-CLICK RUN] Campaign '{campaign.name}' executing for ALL Sub-Cities: {sub_cities} | Keyword: '{target_keyword}'"
+            f"[AUTOPILOT 1-CLICK RUN] Campaign '{campaign.name}' ({mode_desc}) executing for ALL Sub-Cities: {sub_cities} | Keyword: '{target_keyword}'"
         )
 
         campaign.status = "RUNNING"
@@ -106,7 +108,7 @@ class AutopilotRunner:
                         country=campaign.country,
                         city=target_city_clean,
                         sub_city=target_city_clean,
-                        company_limit=max(batch_size * 5, 30)
+                        company_limit=effective_batch
                     )
                     discovered_candidates = discovery_res.get("discovered_companies", [])
                 except Exception as e:
@@ -446,11 +448,11 @@ class AutopilotRunner:
                     campaign.total_emails_sent += total_dispatched_count
                     await db.commit()
 
-                    if len(all_added_leads) >= batch_size:
+                    if effective_batch > 0 and len(all_added_leads) >= effective_batch:
                         logger.info(f"[AUTOPILOT BATCH COMPLETE] Satisfied batch quota with {len(all_added_leads)} verified email leads.")
                         break
 
-                if len(all_added_leads) >= batch_size:
+                if effective_batch > 0 and len(all_added_leads) >= effective_batch:
                     break
 
         except Exception as batch_err:

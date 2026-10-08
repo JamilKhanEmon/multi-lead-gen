@@ -45,14 +45,16 @@ class LiveResearchEngine:
     ) -> Dict[str, Any]:
         loc_parts = [p for p in [sub_city, city, country] if p]
         full_location = ", ".join(loc_parts) if loc_parts else location.strip()
-        effective_limit = 500 if company_limit <= 0 else max(company_limit * 3, 25)
+        is_unlimited = (company_limit <= 0)
+        effective_limit = 999999 if is_unlimited else company_limit
 
         discovered = []
         seen_names = set()
         seen_domains = set()
         loop = asyncio.get_event_loop()
 
-        logger.info(f"LiveResearchEngine: Starting live discovery for '{industry}' in '{full_location}' (Target candidate pool: {effective_limit})")
+        mode_str = "UNLIMITED Exhaustion" if is_unlimited else f"Explicit Cap: {company_limit}"
+        logger.info(f"LiveResearchEngine: Starting live discovery for '{industry}' in '{full_location}' ({mode_str})")
 
         plan = await DiscoveryOptimizer.optimize_search_plan(
             industry=industry,
@@ -83,11 +85,11 @@ class LiveResearchEngine:
         except Exception as e:
             logger.warning(f"Live browser discovery fallback: {e}")
 
-        # 2. Multi-engine search expansion if still under effective limit
-        if len(discovered) < effective_limit:
+        # 2. Multi-engine search expansion across all targeted queries
+        if is_unlimited or len(discovered) < effective_limit:
             queries = plan.get("search_queries", []) or GeoExpander.build_search_queries(industry, full_location)
             for q in queries:
-                if len(discovered) >= effective_limit:
+                if not is_unlimited and len(discovered) >= effective_limit:
                     break
                 try:
                     page_html, _ = await loop.run_in_executor(None, cls._fetch_ddg_html, q, None)
@@ -95,7 +97,7 @@ class LiveResearchEngine:
                         continue
                     items = cls._parse_ddg_items(page_html)
                     for actual_url, title, snippet in items:
-                        if len(discovered) >= effective_limit:
+                        if not is_unlimited and len(discovered) >= effective_limit:
                             break
                         biz = cls._process_candidate_url(actual_url, title, snippet, industry, full_location, business_type_override, seen_domains, seen_names, plan=plan)
                         if biz:
@@ -107,15 +109,16 @@ class LiveResearchEngine:
                     logger.warning(f"Web search error for '{q}': {e}")
 
         # 3. Supplemental: OSM Directory Search ONLY for entities that have website/domain or direct email
-        osm_search_targets = plan.get("osm_queries", [])
-        for target_q in osm_search_targets:
-            if len(discovered) >= effective_limit:
-                break
-            try:
-                places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 50, country, city, sub_city)
-                for p in (places or []):
-                    if len(discovered) >= effective_limit:
-                        break
+        if is_unlimited or len(discovered) < effective_limit:
+            osm_search_targets = plan.get("osm_queries", [])
+            for target_q in osm_search_targets:
+                if not is_unlimited and len(discovered) >= effective_limit:
+                    break
+                try:
+                    places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 50, country, city, sub_city)
+                    for p in (places or []):
+                        if not is_unlimited and len(discovered) >= effective_limit:
+                            break
                     
                     p_name = p.get("name", "").strip()
                     clean_norm_name = re.sub(r'[^a-zA-Z0-9]', '', p_name.lower())
@@ -202,10 +205,9 @@ class LiveResearchEngine:
                         "email": email,
                         "confidence": 0.98 if website else 0.92,
                     })
-
-                await asyncio.sleep(0.1)
-            except Exception as e:
-                logger.warning(f"OSM directory search error for '{target_q}': {e}")
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    logger.warning(f"OSM directory search error for '{target_q}': {e}")
 
         logger.info(f"LiveResearchEngine: Successfully discovered {len(discovered)} genuine businesses for '{industry}' in '{full_location}'.")
         return {"discovered_companies": discovered}

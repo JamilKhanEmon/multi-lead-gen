@@ -150,7 +150,7 @@ async def _bg_run_campaign(campaign_id: uuid.UUID):
         camp = res.scalar_one_or_none()
         if camp:
             try:
-                await AutopilotRunner.run_campaign_batch(db=session, campaign=camp, batch_size=15)
+                await AutopilotRunner.run_campaign_batch(db=session, campaign=camp, batch_size=camp.batch_size or 0)
             except Exception as e:
                 pass
 

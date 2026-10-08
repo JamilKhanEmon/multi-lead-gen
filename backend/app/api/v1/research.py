@@ -62,6 +62,7 @@ async def create_research_run(
             "depth": data.depth,
             "target_services": data.target_services,
             "business_type_override": data.business_type_override,
+            "company_limit": data.company_limit if data.company_limit is not None else 0,
             "auto_mail_enabled": data.auto_mail_enabled,
             "use_company_kb": data.use_company_kb,
         },
