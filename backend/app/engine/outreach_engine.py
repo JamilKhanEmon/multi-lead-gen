@@ -74,8 +74,15 @@ class OutreachEngine:
     @classmethod
     def render_email(cls, step: int, lead_data: Dict[str, Any]) -> Tuple[str, str]:
         company_name = lead_data.get("company_name") or "Your Team"
-        contact_person = lead_data.get("contact_person") or "there"
-        city = lead_data.get("city") or "your area"
+        raw_contact = str(lead_data.get("contact_person") or "").strip()
+        if raw_contact and raw_contact.lower() not in ["there", "sir", "madam", "n/a", "none", "unknown", "team"]:
+            contact_person = raw_contact
+        else:
+            contact_person = f"Team {company_name}"
+
+        raw_city = str(lead_data.get("city") or lead_data.get("location") or lead_data.get("address") or "").strip()
+        has_real_city = bool(raw_city and raw_city.lower() not in ["your area", "your city", "your office in your city", "n/a", "none", "unknown", ""])
+        city = raw_city if has_real_city else ""
         primary_gap = lead_data.get("primary_gap") or "optimizing your online presence and client acquisition"
         industry = (lead_data.get("industry") or lead_data.get("business_type") or "").lower()
 
@@ -122,12 +129,26 @@ class OutreachEngine:
                 sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
                 sig_block = "\n".join(sig_lines) if sig_lines else ""
 
+            # Clean location in subject/body if no real city is detected
+            if not has_real_city:
+                subj = subj.replace(" in {{location}}", f" - {company_name}").replace(" in {city}", f" - {company_name}")
+                subj = subj.replace("{{location}}", company_name).replace("{city}", company_name)
+                bdy = bdy.replace(" located in {{location}}", "").replace(" in {{location}}", "")
+                bdy = bdy.replace(" located in {city}", "").replace(" in {city}", "")
+                bdy = bdy.replace("{{location}}", company_name).replace("{city}", company_name)
+            else:
+                subj = subj.replace("{{location}}", city).replace("{city}", city)
+                bdy = bdy.replace("{{location}}", city).replace("{city}", city)
+
+            # Prevent robotic "Dear there" greeting leaks
+            bdy = bdy.replace("Dear there,", f"Hi {contact_person},").replace("Dear there", f"Hi {contact_person}")
+            bdy = bdy.replace("Dear {{contact_person}}", f"Hi {contact_person}")
+
             replacements = {
                 "{{company_name}}": company_name,
                 "{{business_name}}": company_name,
                 "{{contact_person}}": contact_person,
-                "{{location}}": city,
-                "{{address}}": city,
+                "{{address}}": city or company_name,
                 "{{website}}": lead_data.get("website") or "",
                 "{{domain}}": lead_data.get("website") or "",
                 "{{phone}}": lead_data.get("phone") or "",
@@ -141,7 +162,6 @@ class OutreachEngine:
                 "{{sender_company}}": sender_company,
                 "{company_name}": company_name,
                 "{contact_person}": contact_person,
-                "{city}": city,
                 "{primary_gap}": primary_gap,
                 "{sender_name}": sender_name,
                 "{sender_title}": sender_title,
@@ -150,6 +170,10 @@ class OutreachEngine:
             for tag, val in replacements.items():
                 subj = subj.replace(tag, str(val))
                 bdy = bdy.replace(tag, str(val))
+            
+            # Post-cleanup: Remove accidental double placeholders or punctuation
+            subj = subj.replace("in your city", company_name).replace("your city", company_name).strip()
+            bdy = bdy.replace("in your city", f"in {city}" if has_real_city else "").replace("..).", ".)")
             return subj, bdy
 
         if any(w in industry for w in ["dental", "clinic", "health", "medical", "doctor", "care"]):

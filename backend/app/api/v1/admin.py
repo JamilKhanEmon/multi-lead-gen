@@ -145,10 +145,10 @@ async def reset_database(
     await db.commit()
     return {"status": "SUCCESS", "message": "Database reset successfully. System parameters and services preserved."}
 
-DEFAULT_EMAIL_SUBJECT = "Quick inquiry regarding your office in {{location}}"
-DEFAULT_EMAIL_BODY = """Dear {{contact_person}},
+DEFAULT_EMAIL_SUBJECT = "Quick question regarding {{company_name}}"
+DEFAULT_EMAIL_BODY = """Hi {{contact_person}},
 
-I recently came across {{company_name}} located in {{location}}. You have an established local presence, but while researching your digital touchpoints online, I noticed key opportunities to improve your client acquisition pipeline{{primary_gap}}.
+I recently came across {{company_name}}. You have an established local presence, but while researching your digital touchpoints online, I noticed key opportunities to improve your client acquisition pipeline{{primary_gap}}.
 
 Today, over 70% of potential clients search and evaluate businesses on mobile devices before calling or visiting. Without an optimized, modern mobile presence and instant inquiry capture, many high-value leads contact competitors instead.
 
