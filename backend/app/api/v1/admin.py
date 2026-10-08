@@ -638,6 +638,12 @@ async def get_company_kb(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
+    try:
+        from sqlalchemy import text
+        await db.execute(text("ALTER TABLE company_kb ADD COLUMN IF NOT EXISTS master_kb_notes TEXT;"))
+    except Exception as e:
+        logger.warning(f"company_kb column check notice: {e}")
+
     stmt = select(CompanyKB).order_by(CompanyKB.created_at.desc()).limit(1)
     res = await db.execute(stmt)
     kb = res.scalar_one_or_none()
@@ -687,6 +693,12 @@ async def update_company_kb(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
+    try:
+        from sqlalchemy import text
+        await db.execute(text("ALTER TABLE company_kb ADD COLUMN IF NOT EXISTS master_kb_notes TEXT;"))
+    except Exception as e:
+        logger.warning(f"company_kb column check notice: {e}")
+
     stmt = select(CompanyKB).order_by(CompanyKB.created_at.desc()).limit(1)
     res = await db.execute(stmt)
     kb = res.scalar_one_or_none()
@@ -714,8 +726,13 @@ async def update_company_kb(
     if payload.is_active is not None:
         kb.is_active = payload.is_active
 
-    await db.commit()
-    await db.refresh(kb)
+    try:
+        await db.commit()
+        await db.refresh(kb)
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to update company KB: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")
 
     return CompanyKBResponse(
         id=str(kb.id),

@@ -239,6 +239,7 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_global_template BOOLEAN DEFAULT TRUE;"))
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
                 await conn.execute(text("ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
+                await conn.execute(text("ALTER TABLE company_kb ADD COLUMN IF NOT EXISTS master_kb_notes TEXT;"))
                 
                 await conn.execute(text("ALTER TABLE persona_signatures ADD COLUMN IF NOT EXISTS title VARCHAR(150) DEFAULT 'Primary Signature';"))
                 await conn.execute(text("ALTER TABLE persona_signatures ADD COLUMN IF NOT EXISTS raw_content TEXT;"))
