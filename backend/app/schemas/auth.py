@@ -24,6 +24,7 @@ class UserCreate(BaseModel):
     permissions_json: Optional[Dict[str, Any]] = None
 
 class UserUpdate(BaseModel):
+    email: Optional[str] = None
     full_name: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
@@ -49,6 +50,10 @@ class UserResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+class ChangeEmailRequest(BaseModel):
+    new_email: str
+    password: str
 
 class AdminResetPasswordRequest(BaseModel):
     new_password: str

@@ -19,8 +19,9 @@ import {
   Check,
   AlertCircle,
   X,
+  Mail,
 } from "lucide-react";
-import { getStoredUser, logoutUser, AuthUser, hasPermission, changePassword } from "@/lib/api";
+import { getStoredUser, logoutUser, AuthUser, hasPermission, changePassword, changeEmail } from "@/lib/api";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -28,8 +29,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Change Password state
+  // Account Settings Modal tab & state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [modalTab, setModalTab] = useState<"password" | "email">("password");
+
+  // Change Password state
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -38,6 +42,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+
+  // Change Email state
+  const [newEmail, setNewEmail] = useState("");
+  const [emailPassword, setEmailPassword] = useState("");
+  const [showEmailPass, setShowEmailPass] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
+  const [emailSubmitting, setEmailSubmitting] = useState(false);
 
   useEffect(() => {
     const user = getStoredUser();
@@ -91,6 +103,35 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       setPasswordError(err.message || "Failed to change password");
     } finally {
       setPasswordSubmitting(false);
+    }
+  };
+
+  const handleChangeEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEmailError(null);
+    setEmailSuccess(null);
+
+    const clean = newEmail.toLowerCase().trim();
+    if (!clean || !clean.includes("@") || !clean.includes(".")) {
+      setEmailError("Please enter a valid email address.");
+      return;
+    }
+
+    setEmailSubmitting(true);
+    try {
+      const res = await changeEmail(clean, emailPassword);
+      setEmailSuccess(`Account email updated to ${res.email}!`);
+      setCurrentUser((prev) => (prev ? { ...prev, email: res.email } : prev));
+      setNewEmail("");
+      setEmailPassword("");
+      setTimeout(() => {
+        setShowPasswordModal(false);
+        setEmailSuccess(null);
+      }, 1500);
+    } catch (err: any) {
+      setEmailError(err.message || "Failed to update email address");
+    } finally {
+      setEmailSubmitting(false);
     }
   };
 
@@ -348,10 +389,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center">
-                  <Key className="w-4 h-4" />
+                  {modalTab === "password" ? <Key className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Change Account Password</h3>
+                  <h3 className="text-sm font-bold text-white">Account Security & Settings</h3>
                   <p className="text-[11px] text-slate-400 font-mono">{currentUser.email}</p>
                 </div>
               </div>
@@ -364,99 +405,228 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
 
-            {passwordError && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{passwordError}</span>
-              </div>
+            {/* Modal Tabs */}
+            <div className="flex items-center gap-2 p-1 bg-slate-950 border border-slate-800 rounded-xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalTab("password");
+                  setPasswordError(null);
+                  setPasswordSuccess(null);
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  modalTab === "password"
+                    ? "bg-sky-500/20 text-sky-300 border border-sky-500/30 shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Key className="w-3.5 h-3.5" />
+                <span>Change Password</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setModalTab("email");
+                  setEmailError(null);
+                  setEmailSuccess(null);
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  modalTab === "email"
+                    ? "bg-sky-500/20 text-sky-300 border border-sky-500/30 shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>Change Email</span>
+              </button>
+            </div>
+
+            {/* Tab 1: Password Form */}
+            {modalTab === "password" && (
+              <>
+                {passwordError && (
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{passwordError}</span>
+                  </div>
+                )}
+
+                {passwordSuccess && (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                    <Check className="w-4 h-4 shrink-0" />
+                    <span>{passwordSuccess}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleChangePasswordSubmit} className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">
+                      Current Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showCurrentPass ? "text" : "password"}
+                        required
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="Enter current password"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 pr-9 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowCurrentPass(!showCurrentPass)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                      >
+                        {showCurrentPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">
+                      New Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showNewPass ? "text" : "password"}
+                        required
+                        minLength={6}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Minimum 6 characters"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 pr-9 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPass(!showNewPass)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                      >
+                        {showNewPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">
+                      Confirm New Password
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Repeat new password"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordModal(false)}
+                      className="px-3.5 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={passwordSubmitting}
+                      className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-lg shadow-sky-500/20"
+                    >
+                      {passwordSubmitting ? "Updating..." : "Update Password"}
+                    </button>
+                  </div>
+                </form>
+              </>
             )}
 
-            {passwordSuccess && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-                <Check className="w-4 h-4 shrink-0" />
-                <span>{passwordSuccess}</span>
-              </div>
+            {/* Tab 2: Email Form */}
+            {modalTab === "email" && (
+              <>
+                {emailError && (
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{emailError}</span>
+                  </div>
+                )}
+
+                {emailSuccess && (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                    <Check className="w-4 h-4 shrink-0" />
+                    <span>{emailSuccess}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleChangeEmailSubmit} className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">
+                      Current Email Address
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      value={currentUser.email}
+                      className="w-full px-3 py-2 bg-slate-950/60 border border-slate-800 rounded-xl text-xs text-slate-400 font-mono cursor-not-allowed"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">
+                      New Email Address
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="e.g. admin@company.com"
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">
+                      Confirm Account Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showEmailPass ? "text" : "password"}
+                        required
+                        value={emailPassword}
+                        onChange={(e) => setEmailPassword(e.target.value)}
+                        placeholder="Enter your current password to verify"
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 pr-9 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowEmailPass(!showEmailPass)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                      >
+                        {showEmailPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordModal(false)}
+                      className="px-3.5 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={emailSubmitting}
+                      className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-slate-950 font-bold text-xs transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-lg shadow-sky-500/20"
+                    >
+                      {emailSubmitting ? "Updating..." : "Update Email Address"}
+                    </button>
+                  </div>
+                </form>
+              </>
             )}
-
-            <form onSubmit={handleChangePasswordSubmit} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Current Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showCurrentPass ? "text" : "password"}
-                    required
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Enter current password"
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 pr-9 font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrentPass(!showCurrentPass)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
-                  >
-                    {showCurrentPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  New Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showNewPass ? "text" : "password"}
-                    required
-                    minLength={6}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Minimum 6 characters"
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 pr-9 font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPass(!showNewPass)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
-                  >
-                    {showNewPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Confirm New Password
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repeat new password"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowPasswordModal(false)}
-                  className="px-3.5 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={passwordSubmitting}
-                  className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-lg shadow-sky-500/20"
-                >
-                  {passwordSubmitting ? "Updating..." : "Update Password"}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}

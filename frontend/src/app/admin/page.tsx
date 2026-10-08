@@ -305,6 +305,17 @@ https://leadgen.local`,
   const [resetPasswordSubmitting, setResetPasswordSubmitting] = useState(false);
   const [showResetPassEye, setShowResetPassEye] = useState(false);
 
+  // Admin Edit User Details (Email, Name, Role)
+  const [editDetailsUser, setEditDetailsUser] = useState<AuthUser | null>(null);
+  const [editDetailsForm, setEditDetailsForm] = useState({
+    full_name: "",
+    email: "",
+    role: "member",
+  });
+  const [editDetailsSubmitting, setEditDetailsSubmitting] = useState(false);
+  const [editDetailsError, setEditDetailsError] = useState<string | null>(null);
+  const [editDetailsSuccess, setEditDetailsSuccess] = useState<string | null>(null);
+
   const [template, setTemplate] = useState<EmailTemplate | null>(null);
   const [tplLoading, setTplLoading] = useState(false);
   const [tplSaving, setTplSaving] = useState(false);
@@ -558,6 +569,53 @@ https://leadgen.local`,
       setResetPasswordError(err.message || "Failed to reset password");
     } finally {
       setResetPasswordSubmitting(false);
+    }
+  };
+
+  const handleOpenEditDetails = (u: AuthUser) => {
+    setEditDetailsUser(u);
+    setEditDetailsForm({
+      full_name: u.full_name || "",
+      email: u.email || "",
+      role: u.role || "member",
+    });
+    setEditDetailsError(null);
+    setEditDetailsSuccess(null);
+  };
+
+  const handleSaveUserDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editDetailsUser) return;
+    setEditDetailsError(null);
+    setEditDetailsSuccess(null);
+
+    if (!editDetailsForm.email || !editDetailsForm.email.includes("@")) {
+      setEditDetailsError("Please provide a valid email address.");
+      return;
+    }
+
+    setEditDetailsSubmitting(true);
+    try {
+      const updated = await updateUser(editDetailsUser.id, {
+        full_name: editDetailsForm.full_name,
+        email: editDetailsForm.email,
+        role: editDetailsForm.role,
+      });
+      setEditDetailsSuccess(`User details updated successfully for ${updated.email}!`);
+      if (currentUser && currentUser.id === editDetailsUser.id) {
+        setCurrentUser(updated);
+        localStorage.setItem("leadgen_user", JSON.stringify(updated));
+        window.dispatchEvent(new Event("auth_change"));
+      }
+      await loadUsersList();
+      setTimeout(() => {
+        setEditDetailsUser(null);
+        setEditDetailsSuccess(null);
+      }, 1200);
+    } catch (err: any) {
+      setEditDetailsError(err.message || "Failed to update user details");
+    } finally {
+      setEditDetailsSubmitting(false);
     }
   };
 
@@ -1131,6 +1189,7 @@ https://leadgen.local`,
                       const canDelete = isSuperAdmin ? u.id !== currentUser.id : !isTargetSuper && !isTargetAdmin && u.id !== currentUser.id;
                       const canEditPerms = isSuperAdmin || (!isTargetSuper && !isTargetAdmin);
                       const canResetPass = isSuperAdmin || (!isTargetSuper && !isTargetAdmin);
+                      const canEditUser = isSuperAdmin || (!isTargetSuper && !isTargetAdmin);
 
                       return (
                         <tr key={u.id} className="hover:bg-slate-800/40 transition">
@@ -1230,6 +1289,18 @@ https://leadgen.local`,
 
                           <td className="py-4 px-4 text-right whitespace-nowrap">
                             <div className="inline-flex items-center gap-2">
+
+                              {canEditUser && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditDetails(u)}
+                                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-slate-700 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
+                                  title={`Edit name, email, and role for ${u.email}`}
+                                >
+                                  <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Edit</span>
+                                </button>
+                              )}
 
                               {canEditPerms ? (
                                 <button
@@ -1834,6 +1905,110 @@ https://leadgen.local`,
                   className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer shadow-lg shadow-amber-500/20"
                 >
                   {resetPasswordSubmitting ? "Resetting..." : "Confirm & Reset Password"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editDetailsUser && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Edit User Profile</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    ID: {editDetailsUser.id.slice(0, 8)}...
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditDetailsUser(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {editDetailsError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{editDetailsError}</span>
+              </div>
+            )}
+
+            {editDetailsSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0" />
+                <span>{editDetailsSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveUserDetails} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editDetailsForm.full_name}
+                  onChange={(e) => setEditDetailsForm({ ...editDetailsForm, full_name: e.target.value })}
+                  placeholder="e.g. Sarah Jenkins"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editDetailsForm.email}
+                  onChange={(e) => setEditDetailsForm({ ...editDetailsForm, email: e.target.value })}
+                  placeholder="user@leadgen.local"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Role Level
+                </label>
+                <select
+                  value={editDetailsForm.role}
+                  onChange={(e) => setEditDetailsForm({ ...editDetailsForm, role: e.target.value })}
+                  disabled={!isSuperAdmin && editDetailsUser.role === "admin"}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-emerald-500 cursor-pointer disabled:opacity-50"
+                >
+                  {isSuperAdmin && <option value="super_admin">Super Admin (Master Access)</option>}
+                  <option value="admin">Admin (Team & Settings)</option>
+                  <option value="member">Team Member / Sales</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditDetailsUser(null)}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editDetailsSubmitting}
+                  className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer shadow-lg shadow-emerald-500/20"
+                >
+                  {editDetailsSubmitting ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </form>
