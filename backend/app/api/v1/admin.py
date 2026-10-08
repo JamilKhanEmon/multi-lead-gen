@@ -189,12 +189,12 @@ async def get_email_template(
             name="default",
             subject=DEFAULT_EMAIL_SUBJECT,
             body=DEFAULT_EMAIL_BODY,
-            sender_name="Jamil Khan",
-            sender_title="Senior Solutions Consultant",
-            sender_company="Multi-Lead Gen AI",
-            sender_email="contact@leadgen.local",
-            sender_phone="+880 1700-000000",
-            sender_website="https://leadgen.local",
+            sender_name="",
+            sender_title="",
+            sender_company="",
+            sender_email="",
+            sender_phone="",
+            sender_website="",
             sign_off="Sincerely,",
             signature_text="",
             is_active=True,
@@ -220,12 +220,12 @@ async def update_email_template(
             name="default",
             subject=update_data.subject,
             body=update_data.body,
-            sender_name=update_data.sender_name or "Jamil Khan",
-            sender_title=update_data.sender_title or "Senior Solutions Consultant",
-            sender_company=update_data.sender_company or "Multi-Lead Gen AI",
-            sender_email=update_data.sender_email or "contact@leadgen.local",
-            sender_phone=update_data.sender_phone or "+880 1700-000000",
-            sender_website=update_data.sender_website,
+            sender_name=update_data.sender_name or "",
+            sender_title=update_data.sender_title or "",
+            sender_company=update_data.sender_company or "",
+            sender_email=update_data.sender_email or "",
+            sender_phone=update_data.sender_phone or "",
+            sender_website=update_data.sender_website or "",
             sign_off=update_data.sign_off or "Sincerely,",
             signature_text=update_data.signature_text or "",
             is_active=update_data.is_active if update_data.is_active is not None else True,
@@ -265,12 +265,12 @@ async def preview_email_template(
     subject = preview_req.subject or DEFAULT_EMAIL_SUBJECT
     body = preview_req.body or DEFAULT_EMAIL_BODY
 
-    sender_name = preview_req.sender_name or "Jamil Khan"
-    sender_title = preview_req.sender_title or "Senior Solutions Consultant"
-    sender_company = preview_req.sender_company or "Multi-Lead Gen AI"
-    sender_email = preview_req.sender_email or "contact@leadgen.local"
-    sender_phone = preview_req.sender_phone or "+880 1700-000000"
-    sender_website = preview_req.sender_website or "https://leadgen.local"
+    sender_name = preview_req.sender_name or ""
+    sender_title = preview_req.sender_title or ""
+    sender_company = preview_req.sender_company or ""
+    sender_email = preview_req.sender_email or ""
+    sender_phone = preview_req.sender_phone or ""
+    sender_website = preview_req.sender_website or ""
     sign_off = preview_req.sign_off or "Sincerely,"
 
     if preview_req.signature_text and preview_req.signature_text.strip():
@@ -297,14 +297,14 @@ async def preview_email_template(
     gap_text = f" ({preview_req.primary_gap})" if preview_req.primary_gap else ""
 
     replacements = {
-        "{{company_name}}": preview_req.company_name or "Tropical Homes Ltd.",
-        "{{business_name}}": preview_req.company_name or "Tropical Homes Ltd.",
+        "{{company_name}}": preview_req.company_name or "Acme Enterprise",
+        "{{business_name}}": preview_req.company_name or "Acme Enterprise",
         "{{contact_person}}": preview_req.contact_person or "Decision Maker",
-        "{{location}}": preview_req.location or "Gulshan-2, Dhaka",
-        "{{address}}": preview_req.location or "Gulshan-2, Dhaka",
-        "{{website}}": preview_req.website or "tropicalhomesltd.com",
-        "{{domain}}": preview_req.website or "tropicalhomesltd.com",
-        "{{phone}}": preview_req.phone or "+880 1711-223344",
+        "{{location}}": preview_req.location or "Metro City",
+        "{{address}}": preview_req.location or "Metro City",
+        "{{website}}": preview_req.website or "acme.example.com",
+        "{{domain}}": preview_req.website or "acme.example.com",
+        "{{phone}}": preview_req.phone or "+1 555-0199",
         "{{primary_gap}}": gap_text,
         "{{signature}}": sig,
         "{{sender_name}}": sender_name,
@@ -334,7 +334,7 @@ class SMTPInboxCreate(BaseModel):
     username: str
     password: str
     from_email: str
-    from_name: str = "Growth Team"
+    from_name: str = ""
     daily_limit: int = 30
     is_active: bool = True
 

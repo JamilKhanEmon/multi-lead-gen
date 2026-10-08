@@ -9,12 +9,12 @@ from .base import Base, TimestampMixin, UUIDMixin
 class VoiceKnowledgeBase(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "voice_knowledge_bases"
 
-    name: Mapped[str] = mapped_column(String(255), default="Primary B2B Sales Agent", nullable=False)
-    company_name: Mapped[str] = mapped_column(String(255), default="Apex AI Solutions", nullable=False)
-    agent_persona_name: Mapped[str] = mapped_column(String(100), default="Jamil", nullable=False)
-    service_name: Mapped[str] = mapped_column(String(255), default="Enterprise Operations Automation", nullable=False)
-    service_description: Mapped[str] = mapped_column(Text, default="Automated visual quality control and ERP sync eliminating operational defects.", nullable=False)
-    core_offer: Mapped[str] = mapped_column(String(255), default="Free 14-Day On-Site Trial with Zero Setup Cost", nullable=False)
+    name: Mapped[str] = mapped_column(String(255), default="Sales Assistant", nullable=False)
+    company_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    agent_persona_name: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    service_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    service_description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    core_offer: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     
     first_message: Mapped[str] = mapped_column(
         Text, 

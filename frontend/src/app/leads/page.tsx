@@ -403,7 +403,7 @@ export default function LeadsPipelinePage() {
     const cleanPhone = phone.replace(/[^0-9]/g, "");
     if (!cleanPhone) return null;
     const text = encodeURIComponent(
-      `Hello ${name || 'there'}, I am reaching out from our business growth team regarding your services. We noticed solvable gaps in your online visibility and would love to share a free audit.`
+      `Hello ${name || 'there'}, I am reaching out regarding your business. We noticed solvable gaps in your online visibility and would love to share a free audit.`
     );
     return `https://wa.me/${cleanPhone}?text=${text}`;
   };

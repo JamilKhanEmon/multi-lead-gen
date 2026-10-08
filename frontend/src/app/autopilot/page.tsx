@@ -71,9 +71,9 @@ export default function AutopilotPage() {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [cName, setCName] = useState("");
-  const [cKeywords, setCKeywords] = useState("Software Agency, Web Development");
-  const [cCountry, setCCountry] = useState("Bangladesh");
-  const [cSubCities, setCSubCities] = useState<string[]>(["Uttara", "Gazipur", "Mirpur", "Tangail"]);
+  const [cKeywords, setCKeywords] = useState("");
+  const [cCountry, setCCountry] = useState("");
+  const [cSubCities, setCSubCities] = useState<string[]>([]);
   const [subCityInput, setSubCityInput] = useState("");
   const [cDailyLimit, setCDailyLimit] = useState(100);
   const [cUnlimited, setCUnlimited] = useState(false);

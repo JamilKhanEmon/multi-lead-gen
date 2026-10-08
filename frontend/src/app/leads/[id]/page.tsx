@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { fetchLeadDetail, submitLeadFeedback, updateLeadDetails, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate, evaluateLeadFitGate } from "@/lib/api";
+import { fetchLeadDetail, submitLeadFeedback, updateLeadDetails, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate, evaluateLeadFitGate, fetchPersonaSignatures, PersonaSignatureItem } from "@/lib/api";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -56,6 +56,7 @@ export default function LeadDetailPage() {
   const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
 
   const [emailTemplate, setEmailTemplate] = useState<EmailTemplate | null>(null);
+  const [personaSignatures, setPersonaSignatures] = useState<PersonaSignatureItem[]>([]);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [customDraftSubject, setCustomDraftSubject] = useState("");
@@ -159,6 +160,10 @@ export default function LeadDetailPage() {
     fetchEmailTemplate()
       .then((tpl) => setEmailTemplate(tpl))
       .catch((e) => console.warn("Could not fetch global email template:", e));
+
+    fetchPersonaSignatures()
+      .then((p) => setPersonaSignatures(p || []))
+      .catch((e) => console.warn("Could not fetch persona signatures:", e));
   }, [leadId]);
 
   const handleFeedback = async (action: string) => {
@@ -213,11 +218,12 @@ export default function LeadDetailPage() {
     }
   };
 
+  const leadGapText = lead?.why_they_need_us || lead?.primary_gap_summary || "growth opportunities in your digital client acquisition";
   const renderedOutreach = emailTemplate && lead
-    ? renderEmailTemplate(emailTemplate, lead)
+    ? renderEmailTemplate(emailTemplate, lead, personaSignatures)
     : {
-        subject: `Quick inquiry regarding your office in ${lead?.address || "your area"}`,
-        body: `Dear Sir,\n\nI recently came across ${lead?.business_name || "your business"} located in ${lead?.address || "your area"}. I noticed you do not currently have an official corporate website or modern client booking portal.\n\nWould you be open to a quick 3-minute discussion or a sample preview prepared for your business?\n\nSincerely,\nGrowth Team`,
+        subject: `Quick inquiry regarding ${lead?.business_name || "your office"} in ${lead?.address || "your area"}`,
+        body: `Hello ${lead?.contact_person || lead?.business_name || "there"},\n\nI recently came across ${lead?.business_name || "your business"} located in ${lead?.address || "your area"}. We noticed ${leadGapText}.\n\nWould you be open to a quick 3-minute discussion or a sample preview prepared for your business?`,
         fullEmail: "",
       };
 
@@ -377,7 +383,7 @@ export default function LeadDetailPage() {
                   <div>
                     <a
                       href={`https://wa.me/${lead.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
-                        `Hello ${lead.contact_person || lead.business_name}, I am reaching out from our business growth team regarding your business.`
+                        `Hello ${lead.contact_person || lead.business_name}, I am reaching out regarding your business.`
                       )}`}
                       target="_blank"
                       rel="noreferrer"
@@ -612,7 +618,7 @@ export default function LeadDetailPage() {
           </div>
           <div className="text-xs text-slate-200 font-mono bg-slate-900/90 p-3.5 rounded-lg border border-slate-800/80 whitespace-pre-wrap leading-relaxed select-all">
             {lead.discovery_call_script || (
-              `1. OPENING EVIDENCE:\n   "Hello, is this ${lead.business_name}? I was reviewing your online presence and noticed you don't have an automated inquiry capture form on your website."\n\n2. DISCOVERY QUESTION (Wait for their answer):\n   "How are you currently tracking inbound client inquiries and follow-ups right now?"\n\n3. VALUE PITCH (${lead.matched_service || "Digital Growth Solutions"}):\n   "Our growth solutions team specializes in solving this with quick setup. Would you be open to a 5-minute preview of the custom audit report we prepared for ${lead.business_name}?"`
+              `1. OPENING EVIDENCE:\n   "Hello, is this ${lead.business_name}? I was reviewing your online presence and noticed: ${lead.why_they_need_us || lead.primary_gap_summary || "solvable gaps in online visibility"}.\n\n2. DISCOVERY QUESTION (Wait for their answer):\n   "How are you currently handling inbound client acquisition and follow-ups right now?"\n\n3. VALUE PITCH (${lead.matched_service || ""}):\n   "We specialize in solving this with quick setup. Would you be open to a 5-minute preview of the custom audit report we prepared for ${lead.business_name}?"`
             )}
           </div>
         </div>
@@ -1490,7 +1496,7 @@ export default function LeadDetailPage() {
                   type="text"
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
-                  placeholder="e.g. +8801700000000"
+                  placeholder="e.g. +1 555-0199"
                   className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                 />
               </div>

@@ -88,9 +88,9 @@ class OutreachEngine:
                 if not raw_sig and (p.get("name") or p.get("title")):
                     raw_sig = f"{p.get('name', '')}\n{p.get('title', '')}\n{p.get('company', '')}".strip()
                 sig_block = raw_sig.strip()
-                sender_name = p.get("name") or "Growth Team"
-                sender_title = p.get("title") or "Solutions Specialist"
-                sender_company = p.get("company") or os.getenv("COMPANY_NAME", "Enterprise Solutions")
+                sender_name = p.get("name") or ""
+                sender_title = p.get("title") or ""
+                sender_company = p.get("company") or os.getenv("COMPANY_NAME", "")
             else:
                 raw_sig = getattr(p, "raw_content", "") or ""
                 if not raw_sig and hasattr(p, "render_signature"):
@@ -98,14 +98,17 @@ class OutreachEngine:
                 elif not raw_sig and (getattr(p, "name", None) or getattr(p, "title", None)):
                     raw_sig = f"{getattr(p, 'name', '')}\n{getattr(p, 'title', '')}\n{getattr(p, 'company', '')}".strip()
                 sig_block = raw_sig.strip()
-                sender_name = getattr(p, "name", "Growth Team")
-                sender_title = getattr(p, "title", "Solutions Specialist")
-                sender_company = getattr(p, "company", os.getenv("COMPANY_NAME", "Enterprise Solutions"))
+                sender_name = getattr(p, "name", "")
+                sender_title = getattr(p, "title", "")
+                sender_company = getattr(p, "company", os.getenv("COMPANY_NAME", ""))
         else:
-            sender_name = lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or "Growth Team"
-            sender_title = lead_data.get("sender_title") or "Solutions Specialist"
-            sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or "Enterprise Solutions"
-            sig_block = lead_data.get("signature_text") or f"Sincerely,\n{sender_name}\n{sender_title}, {sender_company}"
+            sender_name = lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or ""
+            if str(sender_name).strip().lower() == "test":
+                sender_name = ""
+            sender_title = lead_data.get("sender_title") or ""
+            sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or ""
+            sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
+            sig_block = lead_data.get("signature_text") or ("\n".join(sig_lines) if sig_lines else "")
 
         custom_tpl = lead_data.get("custom_template")
         if custom_tpl and step == 1:
@@ -114,6 +117,10 @@ class OutreachEngine:
             
             if not sig_block and hasattr(custom_tpl, "render_signature"):
                 sig_block = custom_tpl.render_signature()
+
+            if not sig_block or sig_block.strip().lower() == "test":
+                sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
+                sig_block = "\n".join(sig_lines) if sig_lines else ""
 
             replacements = {
                 "{{company_name}}": company_name,
@@ -126,8 +133,8 @@ class OutreachEngine:
                 "{{phone}}": lead_data.get("phone") or "",
                 "{{primary_gap}}": f" ({primary_gap})" if primary_gap else "",
                 "{{why_they_need_us}}": lead_data.get("why_they_need_us") or primary_gap,
-                "{{what_they_need}}": lead_data.get("what_they_need") or "Modern Lead Funnel & CRM",
-                "{{matched_service}}": lead_data.get("matched_service") or "Enterprise Solutions",
+                "{{what_they_need}}": lead_data.get("what_they_need") or "",
+                "{{matched_service}}": lead_data.get("matched_service") or "",
                 "{{signature}}": sig_block,
                 "{{sender_name}}": sender_name,
                 "{{sender_title}}": sender_title,
@@ -351,8 +358,8 @@ class OutreachEngine:
         base_user = os.getenv("SMTP_USER")
         base_pass = os.getenv("SMTP_PASSWORD")
         base_port = int(os.getenv("SMTP_PORT", "587"))
-        base_from = os.getenv("SMTP_FROM_EMAIL", base_user or "outreach@leadgen.local")
-        base_name = os.getenv("SMTP_FROM_NAME", "Growth Team")
+        base_from = os.getenv("SMTP_FROM_EMAIL", base_user or "")
+        base_name = os.getenv("SMTP_FROM_NAME", "")
 
         if base_host and base_user:
             inboxes.append({
@@ -371,8 +378,8 @@ class OutreachEngine:
             u = os.getenv(f"SMTP_USER_{i}")
             p = os.getenv(f"SMTP_PASSWORD_{i}")
             port = int(os.getenv(f"SMTP_PORT_{i}", "587"))
-            fe = os.getenv(f"SMTP_FROM_EMAIL_{i}", u or f"inbox{i}@leadgen.local")
-            fn = os.getenv(f"SMTP_FROM_NAME_{i}", os.getenv("SMTP_FROM_NAME", f"Growth Specialist #{i}"))
+            fe = os.getenv(f"SMTP_FROM_EMAIL_{i}", u or "")
+            fn = os.getenv(f"SMTP_FROM_NAME_{i}", os.getenv("SMTP_FROM_NAME", ""))
 
             if h and u:
                 inboxes.append({

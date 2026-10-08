@@ -204,10 +204,10 @@ class VoiceAgentService:
             "client_name": client_name,
             "company_name": company_name,
             "exact_problem": exact_problem,
-            "my_company": getattr(kb, "company_name", "Apex AI"),
-            "agent_persona_name": getattr(kb, "agent_persona_name", "Jamil"),
-            "core_offer": getattr(kb, "core_offer", "Free 14-Day Pilot"),
-            "service_name": getattr(kb, "service_name", "Enterprise Automation"),
+            "my_company": getattr(kb, "company_name", "") or "",
+            "agent_persona_name": getattr(kb, "agent_persona_name", "") or "",
+            "core_offer": getattr(kb, "core_offer", "") or "",
+            "service_name": getattr(kb, "service_name", "") or "",
         }
 
         system_instruction = (

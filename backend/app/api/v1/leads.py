@@ -399,13 +399,14 @@ async def export_leads_csv(
         ai_weaknesses = ", ".join(exp.get("weaknesses", [])) if isinstance(exp.get("weaknesses"), list) else str(exp.get("weaknesses") or "")
 
         email_subj = f"Quick inquiry regarding {biz.canonical_name if biz else 'your office'} in {address or 'your area'}"
+        tailored_sol = f" ({suggested_services_str})" if suggested_services_str else ""
         email_body = (
             f"Hello {biz.contact_person or 'Team'},\n\n"
             f"I recently reviewed {biz.canonical_name if biz else 'your business'} in {address or 'your city'}. "
             f"We noticed that {l.primary_gap_summary or 'there are major growth opportunities in your online presence'}. "
-            f"We have prepared tailored solutions ({suggested_services_str or 'Digital Growth System'}) that could help resolve this.\n\n"
+            f"We have prepared tailored solutions{tailored_sol} that could help resolve this.\n\n"
             f"Would you be open to a quick 3-minute discussion this week?\n\n"
-            f"Best regards,\nGrowth Team"
+            f"Best regards"
         )
 
         passed_params = []
@@ -792,7 +793,7 @@ async def export_leads_json(
                     f"We noticed that {l.primary_gap_summary or 'there are major growth opportunities in your online presence'}. "
                     f"We have prepared tailored solutions that could help resolve this.\n\n"
                     f"Would you be open to a quick 3-minute discussion this week?\n\n"
-                    f"Best regards,\nGrowth Team"
+                    f"Best regards"
                 ),
             },
             "metadata": meta,
@@ -1364,6 +1365,9 @@ async def dispatch_staggered_outreach(
                 "website": getattr(biz, "domain", ""),
                 "industry": getattr(biz, "business_type", ""),
                 "primary_gap": lead.primary_gap_summary,
+                "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
+                "what_they_need": getattr(lead, "what_they_need", None) or "",
+                "matched_service": getattr(lead, "matched_service", None) or "",
                 "personas": active_personas,
                 "custom_template": active_tpl
             }
