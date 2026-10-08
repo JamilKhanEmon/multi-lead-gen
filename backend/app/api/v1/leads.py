@@ -1336,7 +1336,7 @@ async def dispatch_staggered_outreach(
     p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
     p_res = await db.execute(p_stmt)
     active_personas = [
-        {"name": p.name, "title": p.title, "company": p.company}
+        {"name": p.name, "title": p.title, "company": p.company, "raw_content": p.render_signature()}
         for p in p_res.scalars().all()
     ]
 
@@ -1344,9 +1344,7 @@ async def dispatch_staggered_outreach(
     t_res = await db.execute(t_stmt)
     active_tpl = t_res.scalar_one_or_none()
 
-    smtp_host = os.getenv("SMTP_HOST")
-    smtp_user = os.getenv("SMTP_USER")
-    is_live = bool(smtp_host and smtp_user)
+    is_live = await OutreachEngine.is_smtp_configured(db=db)
 
     dispatched = 0
     results = []
@@ -1375,7 +1373,8 @@ async def dispatch_staggered_outreach(
             recipient_email=recipient,
             subject=subject,
             body=body,
-            dry_run=not is_live
+            dry_run=not is_live,
+            db=db
         )
 
         if success:
