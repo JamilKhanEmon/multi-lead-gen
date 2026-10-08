@@ -23,9 +23,7 @@ from app.core.logging import logger
 
 async def dispatch_pending_outreach(force_live: bool = False):
     async with AsyncSessionLocal() as session:
-        smtp_host = os.getenv("SMTP_HOST")
-        smtp_user = os.getenv("SMTP_USER")
-        is_smtp_ready = bool(smtp_host and smtp_user)
+        is_smtp_ready = await OutreachEngine.is_smtp_configured(db=session)
 
         mode_str = "LIVE SMTP DISPATCH" if (is_smtp_ready or force_live) else "SIMULATION (DRY-RUN)"
         print(f"[*] Starting Outreach Dispatcher in [{mode_str}] mode...")
@@ -48,7 +46,7 @@ async def dispatch_pending_outreach(force_live: bool = False):
         p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
         p_res = await session.execute(p_stmt)
         active_personas = [
-            {"name": p.name, "title": p.title, "company": p.company}
+            {"name": p.name, "title": p.title, "company": p.company, "raw_content": p.render_signature()}
             for p in p_res.scalars().all()
         ]
 
@@ -86,7 +84,8 @@ async def dispatch_pending_outreach(force_live: bool = False):
                 recipient_email=recipient_email,
                 subject=subject,
                 body=body,
-                dry_run=dry_run
+                dry_run=dry_run,
+                db=session
             )
 
             if success:
