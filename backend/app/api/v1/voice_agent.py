@@ -39,12 +39,12 @@ async def get_active_knowledge_base(
 
     if not kb:
         kb = VoiceKnowledgeBase(
-            name="Primary B2B Sales Agent",
-            company_name="Apex AI Solutions",
-            agent_persona_name="Jamil",
-            service_name="Enterprise Operations Automation",
-            service_description="Automated visual quality inspection and defect reduction.",
-            core_offer="Free 14-Day On-Site Trial with Zero Setup Cost",
+            name="Sales Assistant",
+            company_name="",
+            agent_persona_name="",
+            service_name="",
+            service_description="",
+            core_offer="",
             first_message="Hello {{client_name}}, this is {{agent_persona_name}} from {{my_company}}. I'm reaching out regarding {{company_name}}'s operational line audit.",
             system_prompt="""You are an elite, consultative B2B Sales Executive.
 Goal: Mention the exact flaw/problem identified at {{company_name}}: "{{exact_problem}}".

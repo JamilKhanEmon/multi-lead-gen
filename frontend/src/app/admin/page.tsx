@@ -225,7 +225,7 @@ export default function AdminPortalPage() {
     username: "",
     password: "",
     from_email: "",
-    from_name: "Growth Team",
+    from_name: "",
     daily_limit: 30,
   });
   const [inboxSubmitting, setInboxSubmitting] = useState(false);
@@ -235,12 +235,8 @@ export default function AdminPortalPage() {
   const [showAddPersonaModal, setShowAddPersonaModal] = useState(false);
   const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
   const [personaForm, setPersonaForm] = useState({
-    title: "Primary Signature",
-    raw_content: `Sincerely,
-test
-Senior Solutions Consultant, Multi-Lead Gen AI
-Email: contact@leadgen.local | Phone: +880 1700-000000
-https://leadgen.local`,
+    title: "",
+    raw_content: "",
     is_active: true,
   });
   const [personaSubmitting, setPersonaSubmitting] = useState(false);
@@ -338,12 +334,12 @@ https://leadgen.local`,
 
   const [subject, setSubject] = useState("Quick inquiry regarding your office in {{location}}");
   const [body, setBody] = useState("");
-  const [senderName, setSenderName] = useState("Jamil Khan");
-  const [senderTitle, setSenderTitle] = useState("Senior Solutions Consultant");
-  const [senderCompany, setSenderCompany] = useState("Multi-Lead Gen AI");
-  const [senderEmail, setSenderEmail] = useState("contact@leadgen.local");
-  const [senderPhone, setSenderPhone] = useState("+880 1700-000000");
-  const [senderWebsite, setSenderWebsite] = useState("https://leadgen.local");
+  const [senderName, setSenderName] = useState("");
+  const [senderTitle, setSenderTitle] = useState("");
+  const [senderCompany, setSenderCompany] = useState("");
+  const [senderEmail, setSenderEmail] = useState("");
+  const [senderPhone, setSenderPhone] = useState("");
+  const [senderWebsite, setSenderWebsite] = useState("");
   const [signOff, setSignOff] = useState("Sincerely,");
   const [signatureText, setSignatureText] = useState("");
   const [previewSample, setPreviewSample] = useState<"tropical" | "cafe" | "nowebsite">("tropical");
@@ -424,12 +420,12 @@ https://leadgen.local`,
             setTemplate(tpl);
             setSubject(tpl.subject || "Quick inquiry regarding your office in {{location}}");
             setBody(tpl.body || "");
-            setSenderName(tpl.sender_name || "Jamil Khan");
-            setSenderTitle(tpl.sender_title || "Senior Solutions Consultant");
-            setSenderCompany(tpl.sender_company || "Multi-Lead Gen AI");
-            setSenderEmail(tpl.sender_email || "contact@leadgen.local");
-            setSenderPhone(tpl.sender_phone || "+880 1700-000000");
-            setSenderWebsite(tpl.sender_website || "https://leadgen.local");
+            setSenderName(tpl.sender_name || "");
+            setSenderTitle(tpl.sender_title || "");
+            setSenderCompany(tpl.sender_company || "");
+            setSenderEmail(tpl.sender_email || "");
+            setSenderPhone(tpl.sender_phone || "");
+            setSenderWebsite(tpl.sender_website || "");
             setSignOff(tpl.sign_off || "Sincerely,");
             setSignatureText(tpl.signature_text || "");
           }
@@ -696,7 +692,7 @@ https://leadgen.local`,
       username: "",
       password: "",
       from_email: "",
-      from_name: "Growth Team",
+      from_name: "",
       daily_limit: 30,
     });
     setShowAddInboxModal(true);
@@ -718,7 +714,7 @@ https://leadgen.local`,
         username: "",
         password: "",
         from_email: "",
-        from_name: "Growth Team",
+        from_name: "",
         daily_limit: 30,
       });
       await loadInboxMonitor();
@@ -765,11 +761,7 @@ https://leadgen.local`,
     const count = (inboxMonitorData?.persona_signatures?.length || 0) + 1;
     setPersonaForm({
       title: `Signature Note #${count}`,
-      raw_content: `Sincerely,
-test
-Senior Solutions Consultant, Multi-Lead Gen AI
-Email: contact@leadgen.local | Phone: +880 1700-000000
-https://leadgen.local`,
+      raw_content: "",
       is_active: true,
     });
     setShowAddPersonaModal(true);
@@ -883,7 +875,7 @@ https://leadgen.local`,
   const activeSigs = inboxMonitorData?.persona_signatures?.filter((p) => p.is_active !== false) || [];
   const currentPreviewSig = activeSigs.length > 0
     ? (activeSigs[selectedPreviewSigIdx % activeSigs.length]?.raw_content || "")
-    : (signatureText || `Sincerely,\ntest\nSenior Solutions Consultant, Multi-Lead Gen AI\nEmail: contact@leadgen.local | Phone: +880 1700-000000\nhttps://leadgen.local`);
+    : (signatureText || "");
 
   const currentPreviewLead = sampleLeads[previewSample];
   const renderedPreview = renderEmailTemplate(
@@ -1424,7 +1416,7 @@ https://leadgen.local`,
                   required
                   value={createEmail}
                   onChange={(e) => setCreateEmail(e.target.value)}
-                  placeholder="user@leadgen.local"
+                  placeholder="user@company.com"
                   className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
                 />
               </div>
@@ -1988,7 +1980,7 @@ https://leadgen.local`,
                   required
                   value={editDetailsForm.email}
                   onChange={(e) => setEditDetailsForm({ ...editDetailsForm, email: e.target.value })}
-                  placeholder="user@leadgen.local"
+                  placeholder="user@company.com"
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
                 />
               </div>
@@ -2395,7 +2387,7 @@ https://leadgen.local`,
                   type="text"
                   value={kbPhone}
                   onChange={(e) => setKbPhone(e.target.value)}
-                  placeholder="e.g. +880 1700-000000"
+                  placeholder="e.g. +1 555-0199"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                 />
               </div>
@@ -3332,7 +3324,7 @@ https://leadgen.local`,
                   required
                   value={personaForm.raw_content}
                   onChange={(e) => setPersonaForm({ ...personaForm, raw_content: e.target.value })}
-                  placeholder={`Sincerely,\ntest\nSenior Solutions Consultant, Multi-Lead Gen AI\nEmail: contact@leadgen.local | Phone: +880 1700-000000\nhttps://leadgen.local`}
+                  placeholder="Paste or type your signature block here (e.g. Name, Title, Company, Phone, Email, Website)..."
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono leading-relaxed resize-y"
                 />
                 <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">

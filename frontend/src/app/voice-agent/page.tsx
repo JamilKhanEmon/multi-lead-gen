@@ -345,9 +345,9 @@ export default function VoiceAgentPage() {
         ? kb.first_message
             .replace(/\{\{\s*client_name\s*\}\}/gi, lead.contact_person || "Sir")
             .replace(/\{\{\s*company_name\s*\}\}/gi, lead.company_name)
-            .replace(/\{\{\s*agent_persona_name\s*\}\}/gi, kb.agent_persona_name || "Jamil")
-            .replace(/\{\{\s*my_company\s*\}\}/gi, kb.company_name || "Apex AI")
-        : `Hello ${lead.contact_person}, this is Jamil from ${kb?.company_name || "Apex AI"} regarding ${lead.company_name}'s recent line audit.`;
+            .replace(/\{\{\s*agent_persona_name\s*\}\}/gi, kb.agent_persona_name || "")
+            .replace(/\{\{\s*my_company\s*\}\}/gi, kb.company_name || "")
+        : `Hello ${lead.contact_person || "there"}, this is ${kb?.agent_persona_name || "our team"} from ${kb?.company_name || "our company"} regarding ${lead.company_name || "your business"}'s recent inquiry.`;
 
       setSimHistory([
         {
@@ -1341,7 +1341,7 @@ export default function VoiceAgentPage() {
                   required
                   value={newLead.phone}
                   onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
-                  placeholder="e.g. +8801711000000"
+                  placeholder="e.g. +1 555-0199"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none focus:border-emerald-500 font-mono"
                 />
               </div>

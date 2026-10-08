@@ -11,12 +11,12 @@ class EmailTemplate(Base, UUIDMixin, TimestampMixin):
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
 
-    sender_name: Mapped[str] = mapped_column(String(150), default="Jamil Khan", nullable=False)
-    sender_title: Mapped[str] = mapped_column(String(150), default="Senior Solutions Consultant", nullable=False)
-    sender_company: Mapped[str] = mapped_column(String(150), default="Multi-Lead Gen AI", nullable=False)
-    sender_email: Mapped[str] = mapped_column(String(255), default="contact@leadgen.local", nullable=False)
-    sender_phone: Mapped[str] = mapped_column(String(100), default="+880 1700-000000", nullable=False)
-    sender_website: Mapped[Optional[str]] = mapped_column(String(255), default="https://leadgen.local", nullable=True)
+    sender_name: Mapped[str] = mapped_column(String(150), default="", nullable=False)
+    sender_title: Mapped[str] = mapped_column(String(150), default="", nullable=False)
+    sender_company: Mapped[str] = mapped_column(String(150), default="", nullable=False)
+    sender_email: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    sender_phone: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    sender_website: Mapped[Optional[str]] = mapped_column(String(255), default="", nullable=True)
     sign_off: Mapped[str] = mapped_column(String(100), default="Sincerely,", nullable=False)
     signature_text: Mapped[Optional[str]] = mapped_column(Text, default="", nullable=True)
 
@@ -26,13 +26,16 @@ class EmailTemplate(Base, UUIDMixin, TimestampMixin):
         if self.signature_text and self.signature_text.strip():
             return self.signature_text.strip()
         
-        parts = [self.sign_off or "Sincerely,"]
-        name_line = self.sender_name
+        parts = []
+        if self.sign_off:
+            parts.append(self.sign_off)
+        name_line = self.sender_name or ""
         if self.sender_title:
-            name_line += f"\n{self.sender_title}"
+            name_line = f"{name_line}\n{self.sender_title}".strip()
         if self.sender_company:
-            name_line += f", {self.sender_company}"
-        parts.append(name_line)
+            name_line = f"{name_line}, {self.sender_company}".strip(", ")
+        if name_line:
+            parts.append(name_line)
 
         contact_line = []
         if self.sender_email:
@@ -45,7 +48,7 @@ class EmailTemplate(Base, UUIDMixin, TimestampMixin):
         if self.sender_website:
             parts.append(self.sender_website)
 
-        return "\n".join(parts)
+        return "\n".join(parts).strip()
 
 class SMTPInbox(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "smtp_inboxes"
@@ -55,7 +58,7 @@ class SMTPInbox(Base, UUIDMixin, TimestampMixin):
     username: Mapped[str] = mapped_column(String(255), nullable=False)
     password: Mapped[str] = mapped_column(String(255), nullable=False)
     from_email: Mapped[str] = mapped_column(String(255), nullable=False)
-    from_name: Mapped[str] = mapped_column(String(150), default="Growth Team", nullable=False)
+    from_name: Mapped[str] = mapped_column(String(150), default="", nullable=False)
     daily_limit: Mapped[int] = mapped_column(default=30, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 

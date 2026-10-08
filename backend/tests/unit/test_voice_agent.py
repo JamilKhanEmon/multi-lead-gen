@@ -53,8 +53,8 @@ def test_objection_counter():
 async def test_process_dialogue_turn_meeting_booked():
     class MockKB:
         meeting_platform = "Google Meet"
-        company_name = "Apex AI"
-        agent_persona_name = "Jamil"
+        company_name = "Acme AI"
+        agent_persona_name = "Alex"
         core_offer = "Free 14-day trial"
         service_name = "Enterprise Automation"
         system_prompt = "Keep responses under 15 words."

@@ -4,12 +4,12 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field
 
 class VoiceKnowledgeBaseCreate(BaseModel):
-    name: str = "Primary B2B Sales Agent"
-    company_name: str = "Apex AI Solutions"
-    agent_persona_name: str = "Jamil"
-    service_name: str = "Enterprise Operations Automation"
-    service_description: str = "Automated visual quality control and ERP sync eliminating operational defects."
-    core_offer: str = "Free 14-Day On-Site Trial with Zero Setup Cost"
+    name: str = "Sales Assistant"
+    company_name: str = ""
+    agent_persona_name: str = ""
+    service_name: str = ""
+    service_description: str = ""
+    core_offer: str = ""
     first_message: str = "Hello {{client_name}}, this is {{agent_persona_name}} from {{my_company}}. I'm reaching out regarding {{company_name}}'s recent operational audit."
     system_prompt: str
     meeting_platform: str = "Google Meet"

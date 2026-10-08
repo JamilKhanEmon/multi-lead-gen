@@ -991,41 +991,54 @@ export async function updateEmailTemplate(
 
 export function renderEmailTemplate(
   template: Partial<EmailTemplate>,
-  lead: Partial<Lead>
+  lead: Partial<Lead>,
+  personaSignatures?: PersonaSignatureItem[]
 ): { subject: string; body: string; fullEmail: string } {
-  const sender_name = template.sender_name || "Growth Advisory Team";
-  const sender_title = template.sender_title || "Solutions Specialist";
-  const sender_company = template.sender_company || "Multi-Lead Gen AI";
-  const sender_email = template.sender_email || "contact@leadgen.local";
-  const sender_phone = template.sender_phone || "+880 1700-000000";
-  const sender_website = template.sender_website || "https://leadgen.local";
-  const sign_off = template.sign_off || "Sincerely,";
-
   let sig = "";
-  if (template.signature_text && template.signature_text.trim()) {
+  const activePersonas = (personaSignatures || []).filter((p) => p.is_active);
+  if (activePersonas.length > 0) {
+    const bizKey = lead.business_name || lead.domain || "company";
+    let hash = 0;
+    for (let i = 0; i < bizKey.length; i++) {
+      hash = (hash << 5) - hash + bizKey.charCodeAt(i);
+      hash |= 0;
+    }
+    const p = activePersonas[Math.abs(hash) % activePersonas.length];
+    sig = (p.raw_content || "").trim();
+  } else if (template.signature_text && template.signature_text.trim()) {
     sig = template.signature_text.trim();
   } else {
-    const parts = [sign_off];
-    let nameLine = sender_name;
-    if (sender_title) nameLine += `\n${sender_title}`;
-    if (sender_company) nameLine += `, ${sender_company}`;
-    parts.push(nameLine);
+    const parts: string[] = [];
+    if (template.sign_off) parts.push(template.sign_off);
+    let nameLine = template.sender_name || "";
+    if (template.sender_title) nameLine += (nameLine ? `\n${template.sender_title}` : template.sender_title);
+    if (template.sender_company) nameLine += (nameLine ? `, ${template.sender_company}` : template.sender_company);
+    if (nameLine) parts.push(nameLine);
 
     const contactParts: string[] = [];
-    if (sender_email) contactParts.push(`Email: ${sender_email}`);
-    if (sender_phone) contactParts.push(`Phone: ${sender_phone}`);
+    if (template.sender_email) contactParts.push(`Email: ${template.sender_email}`);
+    if (template.sender_phone) contactParts.push(`Phone: ${template.sender_phone}`);
     if (contactParts.length) parts.push(contactParts.join(" | "));
 
-    if (sender_website) parts.push(sender_website);
-    sig = parts.join("\n");
+    if (template.sender_website) parts.push(template.sender_website);
+    sig = parts.join("\n").trim();
   }
 
+  const sender_name = template.sender_name || "";
+  const sender_title = template.sender_title || "";
+  const sender_company = template.sender_company || "";
+  const sender_email = template.sender_email || "";
+  const sender_phone = template.sender_phone || "";
+
   const companyName = lead.business_name || "your company";
-  const contactPerson = lead.contact_person || "Sir/Madam";
+  const contactPerson = lead.contact_person || "there";
   const location = lead.address || "your city";
   const website = lead.domain || "official website";
   const phone = lead.phone || "";
   const primaryGap = lead.primary_gap_summary ? ` (${lead.primary_gap_summary})` : "";
+  const whyTheyNeedUs = (lead as any).why_they_need_us || primaryGap || "";
+  const whatTheyNeed = (lead as any).what_they_need || "";
+  const matchedService = (lead as any).matched_service || "";
 
   const replacements: Record<string, string> = {
     "{{company_name}}": companyName,
@@ -1037,12 +1050,19 @@ export function renderEmailTemplate(
     "{{domain}}": website,
     "{{phone}}": phone,
     "{{primary_gap}}": primaryGap,
+    "{{why_they_need_us}}": whyTheyNeedUs,
+    "{{what_they_need}}": whatTheyNeed,
+    "{{matched_service}}": matchedService,
     "{{signature}}": sig,
     "{{sender_name}}": sender_name,
     "{{sender_title}}": sender_title,
     "{{sender_company}}": sender_company,
     "{{sender_email}}": sender_email,
     "{{sender_phone}}": sender_phone,
+    "{company_name}": companyName,
+    "{contact_person}": contactPerson,
+    "{city}": location,
+    "{primary_gap}": lead.primary_gap_summary || "",
   };
 
   let renderedSubject = template.subject || "Quick inquiry regarding your office in {{location}}";

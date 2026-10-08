@@ -411,6 +411,9 @@ class AutopilotRunner:
                                     "website": biz.domain or "",
                                     "industry": b_type,
                                     "primary_gap": primary_gap,
+                                    "why_they_need_us": why_they_need_us,
+                                    "what_they_need": what_they_need,
+                                    "matched_service": matched_service,
                                     "personas": active_personas,
                                     "custom_template": active_tpl if getattr(campaign, "use_global_template", True) else None
                                 }

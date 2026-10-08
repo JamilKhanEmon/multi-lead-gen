@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     SMTP_USER: Optional[str] = Field(default=None, description="SMTP Authentication Username/Email")
     SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP Authentication Password or App Password")
     SMTP_FROM_EMAIL: Optional[str] = Field(default=None, description="Sender Email Address")
-    SMTP_FROM_NAME: str = Field(default="LeadGen Sales Team", description="Sender Name displayed in email clients")
+    SMTP_FROM_NAME: str = Field(default="", description="Sender Name displayed in email clients")
 
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
