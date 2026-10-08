@@ -293,9 +293,12 @@ class FitGateEngine:
                             svc_title, svc_desc = line.split(":", 1)
                         else:
                             svc_title, svc_desc = line[:40], line
+                        svc_clean = svc_title.strip()
+                        if svc_clean.lower() in ["core features", "features", "core modules", "modules", "overview", "key features"]:
+                            svc_clean = "Real Estate ERP & Growth Automation" if any(w in b_type for w in ["real estate", "property", "developer"]) else "Custom ERP & Workflow Suite"
                         virtual_cards.append({
                             "key": f"note_svc_{idx+1}",
-                            "name": svc_title.strip(),
+                            "name": svc_clean,
                             "wedge": "Tailored workflow demonstration & gap audit",
                             "features": svc_desc.strip(),
                             "solves_problems": "operational bottlenecks and manual coordination delays",
@@ -316,7 +319,7 @@ class FitGateEngine:
         matched_service_name = best_card.get("name") or "Custom Digital Solution"
         matched_service_url = best_card.get("url") or ""
         matched_service_wedge = best_card.get("wedge") or "Specialized Automation & Growth Audit"
-        matched_service_features = best_card.get("features") or "Tailored digital workflow and lead capture automation"
+        matched_service_features = (best_card.get("features") or "Tailored digital workflow and lead capture automation").strip().rstrip(".")
         matched_solves = best_card.get("solves_problems") or "operational friction and lead leakage"
 
         primary_observation = verified_gaps[0] if verified_gaps else "Inquiry flow and digital presence lack modern conversion optimization."
@@ -327,9 +330,10 @@ class FitGateEngine:
             f"Implementing {matched_service_name} addresses {matched_solves}."
         )
 
+        modules_prefix = "" if "core modules include:" in matched_service_features.lower() else "Core modules include: "
         what_they_need = (
             f"{matched_service_name}: {matched_service_wedge}. "
-            f"Core modules include: {matched_service_features}."
+            f"{modules_prefix}{matched_service_features}."
         )
 
         disc_hook = (
