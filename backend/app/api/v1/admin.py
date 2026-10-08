@@ -83,11 +83,29 @@ async def get_system_health(
     except Exception as e:
         components["ollama"] = ComponentHealth(status="down", details={"error": str(e)})
 
-    oc_open = check_port("127.0.0.1", 18789, timeout=1.0)
-    if oc_open:
-        components["openclaw"] = ComponentHealth(status="healthy", details={"endpoint": settings.OPENCLAW_GATEWAY_URL})
+    gw_url = settings.OPENCLAW_GATEWAY_URL or ""
+    if gw_url.startswith("http://") or gw_url.startswith("https://"):
+        t0_oc = time.time()
+        try:
+            async with httpx.AsyncClient(timeout=3.0, verify=False) as client:
+                resp_oc = await client.get(gw_url)
+                latency_oc = round((time.time() - t0_oc) * 1000, 2)
+                if resp_oc.status_code in (200, 301, 302, 401, 403, 404):
+                    components["openclaw"] = ComponentHealth(
+                        status="healthy",
+                        latency_ms=latency_oc,
+                        details={"endpoint": gw_url, "status_code": resp_oc.status_code}
+                    )
+                else:
+                    components["openclaw"] = ComponentHealth(status="degraded", details={"status_code": resp_oc.status_code, "endpoint": gw_url})
+        except Exception as e:
+            components["openclaw"] = ComponentHealth(status="down", details={"error": str(e), "endpoint": gw_url})
     else:
-        components["openclaw"] = ComponentHealth(status="down", details={"error": "Port 18789 closed or unreachable"})
+        oc_open = check_port("127.0.0.1", 18789, timeout=1.0)
+        if oc_open:
+            components["openclaw"] = ComponentHealth(status="healthy", details={"endpoint": "127.0.0.1:18789"})
+        else:
+            components["openclaw"] = ComponentHealth(status="down", details={"error": "Port 18789 closed or unreachable"})
 
     return SystemHealthResponse(
         status="healthy" if overall_healthy else "degraded",
