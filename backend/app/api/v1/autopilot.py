@@ -195,9 +195,7 @@ async def dispatch_outreach_queue(
     ready_leads = res.scalars().all()
 
     dispatched = 0
-    smtp_host = os.getenv("SMTP_HOST")
-    smtp_user = os.getenv("SMTP_USER")
-    is_live = bool(smtp_host and smtp_user)
+    is_live = await OutreachEngine.is_smtp_configured(db=db)
 
     for lead in ready_leads:
         biz = lead.business
@@ -220,7 +218,8 @@ async def dispatch_outreach_queue(
             recipient_email=recipient,
             subject=subject,
             body=body,
-            dry_run=not is_live
+            dry_run=not is_live,
+            db=db
         )
 
         if success:

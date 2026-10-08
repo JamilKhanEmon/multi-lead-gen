@@ -1122,6 +1122,51 @@ export async function updateUser(
   return res.json();
 }
 
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<{ status: string; message: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/auth/change-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to change password");
+  }
+  return res.json();
+}
+
+export async function adminResetPassword(
+  userId: string,
+  newPassword: string
+): Promise<{ status: string; message: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/auth/users/${userId}/reset-password`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      new_password: newPassword,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to reset user password");
+  }
+  return res.json();
+}
+
 export async function updateMemberPermissions(
   userId: string,
   permissions_json: DashboardPermissions

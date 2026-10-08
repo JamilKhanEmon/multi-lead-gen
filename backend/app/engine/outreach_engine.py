@@ -280,6 +280,71 @@ class OutreachEngine:
         return is_ok
 
     @classmethod
+    async def get_active_inboxes(cls, db: Optional[Any] = None) -> List[Dict[str, Any]]:
+        """
+        Dynamically fetches active SMTP inboxes configured in the Admin database.
+        Filters out inboxes that have reached their daily limit.
+        Falls back to .env configuration if no database inboxes are found.
+        """
+        from app.models.email_template import SMTPInbox
+        from sqlalchemy import select
+
+        raw_inboxes = []
+        try:
+            if db is not None:
+                stmt = select(SMTPInbox).where(SMTPInbox.is_active == True)
+                res = await db.execute(stmt)
+                raw_inboxes = res.scalars().all()
+            else:
+                from app.db.session import AsyncSessionLocal
+                async with AsyncSessionLocal() as session:
+                    stmt = select(SMTPInbox).where(SMTPInbox.is_active == True)
+                    res = await session.execute(stmt)
+                    raw_inboxes = res.scalars().all()
+        except Exception as e:
+            logger.error(f"Error fetching active SMTP inboxes from DB: {e}")
+
+        available_inboxes = []
+        for ib in raw_inboxes:
+            sent_today = cls.INBOX_STATS.get(str(ib.id), 0)
+            if sent_today < ib.daily_limit:
+                available_inboxes.append({
+                    "id": str(ib.id),
+                    "host": ib.host,
+                    "port": ib.port,
+                    "user": ib.username,
+                    "password": ib.password,
+                    "from_email": ib.from_email,
+                    "from_name": ib.from_name,
+                    "daily_limit": ib.daily_limit
+                })
+
+        # If all hit daily limit, fallback to active ones
+        if not available_inboxes and raw_inboxes:
+            for ib in raw_inboxes:
+                available_inboxes.append({
+                    "id": str(ib.id),
+                    "host": ib.host,
+                    "port": ib.port,
+                    "user": ib.username,
+                    "password": ib.password,
+                    "from_email": ib.from_email,
+                    "from_name": ib.from_name,
+                    "daily_limit": ib.daily_limit
+                })
+
+        # Backward compatibility fallback
+        if not available_inboxes:
+            available_inboxes = cls.get_active_smtp_inboxes()
+
+        return available_inboxes
+
+    @classmethod
+    async def is_smtp_configured(cls, db: Optional[Any] = None) -> bool:
+        inboxes = await cls.get_active_inboxes(db=db)
+        return len(inboxes) > 0
+
+    @classmethod
     def get_active_smtp_inboxes(cls) -> List[Dict[str, Any]]:
         inboxes = []
         base_host = os.getenv("SMTP_HOST")
@@ -329,17 +394,18 @@ class OutreachEngine:
         recipient_email: str,
         subject: str,
         body: str,
-        dry_run: bool = False
+        dry_run: bool = False,
+        db: Optional[Any] = None
     ) -> Tuple[bool, str]:
-        inboxes = cls.get_active_smtp_inboxes()
+        inboxes = await cls.get_active_inboxes(db=db)
 
         if dry_run or not inboxes:
             logger.info(f"[OUTREACH SIMULATOR] Dispatching to {recipient_email} | Subject: '{subject}' | (Simulated 200 OK)")
             await asyncio.sleep(0.5)
             return True, "Simulated delivery successful (Dry-Run Mode)"
 
-        cls._inbox_index = (cls._inbox_index + 1) % len(inboxes)
-        selected_inbox = inboxes[cls._inbox_index]
+        # Randomly choose one active inbox from available inboxes for load balancing
+        selected_inbox = random.choice(inboxes)
 
         smtp_host = selected_inbox["host"]
         smtp_port = selected_inbox["port"]
@@ -348,7 +414,7 @@ class OutreachEngine:
         from_email = selected_inbox["from_email"]
         from_name = selected_inbox["from_name"]
 
-        inbox_id = selected_inbox["id"]
+        inbox_id = str(selected_inbox["id"])
         cls.INBOX_STATS[inbox_id] = cls.INBOX_STATS.get(inbox_id, 0) + 1
 
         loop = asyncio.get_running_loop()

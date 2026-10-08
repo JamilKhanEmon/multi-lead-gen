@@ -80,7 +80,7 @@ class AutopilotRunner:
         p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
         p_res = await db.execute(p_stmt)
         active_personas = [
-            {"name": p.name, "title": p.title, "company": p.company}
+            {"name": p.name, "title": p.title, "company": p.company, "raw_content": p.render_signature()}
             for p in p_res.scalars().all()
         ]
 
@@ -387,7 +387,8 @@ class AutopilotRunner:
                                 recipient_email=resolved_email,
                                 subject=subject,
                                 body=body,
-                                dry_run=False
+                                dry_run=False,
+                                db=db
                             )
                             if success:
                                 lead.outreach_status = "SENT"

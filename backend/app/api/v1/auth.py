@@ -13,6 +13,8 @@ from app.schemas.auth import (
     UserCreate,
     UserUpdate,
     UserPermissionsUpdate,
+    ChangePasswordRequest,
+    AdminResetPasswordRequest,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -45,21 +47,10 @@ async def ensure_default_accounts(db: AsyncSession):
             await db.commit()
             logger.info(f"Initialized default superadmin account: {admin_email}")
         else:
-            needs_commit = False
-            try:
-                if not verify_password(admin_password, existing.hashed_password):
-                    existing.hashed_password = get_password_hash(admin_password)
-                    needs_commit = True
-            except Exception:
-                existing.hashed_password = get_password_hash(admin_password)
-                needs_commit = True
-
+            # Account exists: never overwrite the database password, preserving user/admin changes
             if existing.role != "super_admin":
                 existing.role = "super_admin"
                 existing.permissions_json = {"all": True}
-                needs_commit = True
-
-            if needs_commit:
                 await db.commit()
     except Exception as e:
         await db.rollback()
@@ -108,6 +99,28 @@ async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_profile(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.post("/change-password")
+async def change_password(
+    data: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not data.new_password or len(data.new_password.strip()) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters long",
+        )
+
+    if not verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    current_user.hashed_password = get_password_hash(data.new_password.strip())
+    await db.commit()
+    return {"status": "SUCCESS", "message": "Password updated successfully"}
 
 @router.get("/users", response_model=List[UserResponse])
 async def list_users(
@@ -255,6 +268,41 @@ async def update_user(
     await db.commit()
     await db.refresh(target)
     return target
+
+@router.post("/users/{user_id}/reset-password")
+async def admin_reset_password(
+    user_id: uuid.UUID,
+    data: AdminResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    if not data.new_password or len(data.new_password.strip()) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters long",
+        )
+
+    stmt = select(User).where(User.id == user_id)
+    res = await db.execute(stmt)
+    target = res.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="User account not found")
+
+    if target.role == "super_admin" and admin.role != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Security Violation: Only Super Administrators can reset Super Admin passwords.",
+        )
+
+    if target.role == "admin" and admin.role != "super_admin" and target.id != admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Only Super Administrators can reset other Admin passwords.",
+        )
+
+    target.hashed_password = get_password_hash(data.new_password.strip())
+    await db.commit()
+    return {"status": "SUCCESS", "message": f"Password reset successfully for {target.email}"}
 
 @router.patch("/users/{user_id}/permissions", response_model=UserResponse)
 async def update_member_permissions(

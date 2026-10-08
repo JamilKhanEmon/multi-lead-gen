@@ -59,6 +59,7 @@ import {
   createUser,
   updateUser,
   deleteUser,
+  adminResetPassword,
   updateMemberPermissions,
   fetchEmailTemplate,
   updateEmailTemplate,
@@ -295,6 +296,15 @@ https://leadgen.local`,
   const [editPermissions, setEditPermissions] = useState<DashboardPermissions>({});
   const [editSubmitting, setEditSubmitting] = useState(false);
 
+  // Admin Reset User Password state
+  const [resetUser, setResetUser] = useState<AuthUser | null>(null);
+  const [resetPasswordVal, setResetPasswordVal] = useState("");
+  const [resetPasswordConfirm, setResetPasswordConfirm] = useState("");
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
+  const [resetPasswordSuccess, setResetPasswordSuccess] = useState<string | null>(null);
+  const [resetPasswordSubmitting, setResetPasswordSubmitting] = useState(false);
+  const [showResetPassEye, setShowResetPassEye] = useState(false);
+
   const [template, setTemplate] = useState<EmailTemplate | null>(null);
   const [tplLoading, setTplLoading] = useState(false);
   const [tplSaving, setTplSaving] = useState(false);
@@ -510,6 +520,44 @@ https://leadgen.local`,
       setUserActionError(err.message || "Failed to update permissions");
     } finally {
       setEditSubmitting(false);
+    }
+  };
+
+  const handleOpenResetPassword = (u: AuthUser) => {
+    setResetUser(u);
+    setResetPasswordVal("");
+    setResetPasswordConfirm("");
+    setResetPasswordError(null);
+    setResetPasswordSuccess(null);
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetUser) return;
+    setResetPasswordError(null);
+    setResetPasswordSuccess(null);
+
+    if (resetPasswordVal.length < 6) {
+      setResetPasswordError("Password must be at least 6 characters long.");
+      return;
+    }
+    if (resetPasswordVal !== resetPasswordConfirm) {
+      setResetPasswordError("New password and confirmation do not match.");
+      return;
+    }
+
+    setResetPasswordSubmitting(true);
+    try {
+      await adminResetPassword(resetUser.id, resetPasswordVal);
+      setResetPasswordSuccess(`Password successfully updated for ${resetUser.email}!`);
+      setTimeout(() => {
+        setResetUser(null);
+        setResetPasswordSuccess(null);
+      }, 1500);
+    } catch (err: any) {
+      setResetPasswordError(err.message || "Failed to reset password");
+    } finally {
+      setResetPasswordSubmitting(false);
     }
   };
 
@@ -1082,6 +1130,7 @@ https://leadgen.local`,
                       const isTargetAdmin = u.role === "admin";
                       const canDelete = isSuperAdmin ? u.id !== currentUser.id : !isTargetSuper && !isTargetAdmin && u.id !== currentUser.id;
                       const canEditPerms = isSuperAdmin || (!isTargetSuper && !isTargetAdmin);
+                      const canResetPass = isSuperAdmin || (!isTargetSuper && !isTargetAdmin);
 
                       return (
                         <tr key={u.id} className="hover:bg-slate-800/40 transition">
@@ -1199,6 +1248,18 @@ https://leadgen.local`,
                                 >
                                   <Lock className="w-3 h-3" /> Locked
                                 </span>
+                              )}
+
+                              {canResetPass && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenResetPassword(u)}
+                                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 border border-slate-700 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
+                                  title={`Reset password for ${u.email}`}
+                                >
+                                  <Key className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>Reset Pass</span>
+                                </button>
                               )}
 
                               {canDelete ? (
@@ -1678,6 +1739,104 @@ https://leadgen.local`,
                 {editSubmitting ? "Saving..." : "Save Permissions"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {resetUser && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+                  <Key className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Reset User Password</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    {resetUser.full_name} ({resetUser.email})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResetUser(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {resetPasswordError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{resetPasswordError}</span>
+              </div>
+            )}
+
+            {resetPasswordSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0" />
+                <span>{resetPasswordSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  New Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showResetPassEye ? "text" : "password"}
+                    required
+                    minLength={6}
+                    value={resetPasswordVal}
+                    onChange={(e) => setResetPasswordVal(e.target.value)}
+                    placeholder="Enter new password (min. 6 chars)"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 pr-9 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPassEye(!showResetPassEye)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                  >
+                    {showResetPassEye ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={resetPasswordConfirm}
+                  onChange={(e) => setResetPasswordConfirm(e.target.value)}
+                  placeholder="Repeat new password"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setResetUser(null)}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetPasswordSubmitting}
+                  className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer shadow-lg shadow-amber-500/20"
+                >
+                  {resetPasswordSubmitting ? "Resetting..." : "Confirm & Reset Password"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

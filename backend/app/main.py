@@ -72,12 +72,9 @@ async def autonomous_outreach_scheduler():
             delay = random.uniform(240, 480)
             await asyncio.sleep(delay)
 
-            smtp_host = os.getenv("SMTP_HOST")
-            smtp_user = os.getenv("SMTP_USER")
-            if not smtp_host or not smtp_user:
-                continue
-
             async with AsyncSessionLocal() as session:
+                if not await OutreachEngine.is_smtp_configured(db=session):
+                    continue
                 stmt = (
                     select(Lead)
                     .options(selectinload(Lead.business))
@@ -91,7 +88,7 @@ async def autonomous_outreach_scheduler():
                 p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
                 p_res = await session.execute(p_stmt)
                 active_personas = [
-                    {"name": p.name, "title": p.title, "company": p.company}
+                    {"name": p.name, "title": p.title, "company": p.company, "raw_content": p.render_signature()}
                     for p in p_res.scalars().all()
                 ]
 
@@ -138,7 +135,8 @@ async def autonomous_outreach_scheduler():
                         recipient_email=recipient,
                         subject=subject,
                         body=body,
-                        dry_run=False
+                        dry_run=False,
+                        db=session
                     )
                     if success:
                         lead.outreach_status = "SENT"
