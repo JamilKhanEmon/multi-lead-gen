@@ -319,12 +319,13 @@ class LiveResearchEngine:
                     })'''
                 )
                 await browser.close()
+                from app.engine.deduplication import DeduplicationEngine
                 for l in results:
                     if not l or not l.startswith("http"):
                         continue
                     parsed = urllib.parse.urlparse(l)
                     dom = parsed.netloc.lower().replace("www.", "")
-                    if any(bad in dom for bad in ["brave.com", "facebook.com", "linkedin.com", "youtube.com", "wikipedia.org", "yellowpages"]):
+                    if DeduplicationEngine.is_generic_platform(dom) or DeduplicationEngine.is_directory_or_aggregator(l):
                         continue
                     if "." in dom and len(dom) > 4:
                         return dom
@@ -332,6 +333,7 @@ class LiveResearchEngine:
             pass
 
         try:
+            from app.engine.deduplication import DeduplicationEngine
             items = await cls._execute_web_search(f"{business_name} {location} official website")
             for it in (items or []):
                 url = it.get("url", "")
@@ -339,7 +341,7 @@ class LiveResearchEngine:
                     continue
                 parsed = urllib.parse.urlparse(url)
                 dom = parsed.netloc.lower().replace("www.", "")
-                if any(bad in dom for bad in ["duckduckgo.com", "brave.com", "bing.com", "google.com", "facebook.com", "linkedin.com", "youtube.com", "wikipedia.org", "yellowpages"]):
+                if DeduplicationEngine.is_generic_platform(dom) or DeduplicationEngine.is_directory_or_aggregator(url):
                     continue
                 if "." in dom and len(dom) > 4:
                     return dom
@@ -657,6 +659,11 @@ class LiveResearchEngine:
         if not domain or domain in seen_domains:
             return None
 
+        from app.engine.deduplication import DeduplicationEngine
+        if DeduplicationEngine.is_generic_platform(domain) or DeduplicationEngine.is_directory_or_aggregator(actual_url, title):
+            logger.info(f"OpenClaw: Skipping directory/aggregator platform '{domain}' ({actual_url})")
+            return None
+
         if re.search(r'\.(pdf|docx?|pptx?|xlsx?|zip|rar|csv)(\?.*)?$', actual_url, re.I):
             return None
 
@@ -719,7 +726,10 @@ class LiveResearchEngine:
             "top real estate", "real estate company", "real estate developer",
             "properties in", "property in", "apartments for sale"
         ]
-        GENERIC_STOP_WORDS = {"real", "estate", "pdf", "developer", "properties", "property", "company", "ltd", "limited"}
+        GENERIC_STOP_WORDS = {
+            "real", "estate", "pdf", "developer", "properties", "property", "company", "ltd", "limited",
+            "goodfirms", "clutch", "crunchbase", "yellowpages", "bproperty", "bikroy", "justdial", "directory", "listing"
+        }
 
         parts = re.split(r'\||-|—|@|:', raw_title)
         candidate_names = []
@@ -727,7 +737,11 @@ class LiveResearchEngine:
         for p in parts:
             clean = p.strip()
             clean_l = clean.lower()
-            if len(clean) >= 3 and not any(k in clean_l for k in ["best", "top", "ranked", "reviews", "directory", "near me", "list", "guide", "2026", "2025", "home", "official", ".pdf"]):
+            if len(clean) >= 3 and not any(k in clean_l for k in [
+                "best", "top", "ranked", "reviews", "directory", "directories", "listing", "listings",
+                "near me", "list", "guide", "2026", "2025", "home", "official", ".pdf",
+                "goodfirms", "clutch", "crunchbase", "bproperty", "bikroy"
+            ]):
                 if not re.search(r'(https?://|www\.|\.[a-zA-Z]{2,})', clean_l):
                     if not any(tag in clean_l for tag in GENERIC_TAGLINES) and clean_l not in GENERIC_STOP_WORDS:
                         candidate_names.append(clean)
@@ -1228,17 +1242,24 @@ class LiveResearchEngine:
             except Exception:
                 pass
 
+        is_appointment = False
+        try:
+            from app.engine.fit_gate import is_appointment_niche
+            is_appointment = is_appointment_niche("", canonical_name)
+        except Exception:
+            pass
+
         detected_weaknesses = []
         if not mobile_responsive:
             detected_weaknesses.append("Website layout breaks or lacks viewport optimization on mobile devices")
-        if not has_online_booking:
-            detected_weaknesses.append("Missing automated online appointment/quote booking system")
+        if is_appointment and not has_online_booking:
+            detected_weaknesses.append("Missing automated online appointment booking system")
+        elif not has_contact_form:
+            detected_weaknesses.append("Missing direct lead capture/inquiry form")
         if not has_whatsapp:
             detected_weaknesses.append("Missing click-to-WhatsApp instant conversion widget")
         if not has_meta_pixel:
             detected_weaknesses.append("Missing Meta/Google Ads retargeting pixel for visitor recapture")
-        if not has_contact_form:
-            detected_weaknesses.append("Missing direct lead capture/inquiry form")
         if not has_live_chat and not has_ai_chatbot:
             detected_weaknesses.append("Missing 24/7 live chat or AI customer assistant")
         if not has_ssl_security:
@@ -1251,22 +1272,24 @@ class LiveResearchEngine:
             detected_weaknesses.append(f"{broken_links_count} broken link references detected")
 
         weakness_pitch = ""
-        if not mobile_responsive and not has_online_booking:
-            weakness_pitch = "the mobile user experience and the lack of an instant online booking form"
-        elif not has_meta_pixel and not has_whatsapp:
-            weakness_pitch = "visitor retargeting tracking and instant WhatsApp engagement"
-        elif not has_online_booking:
-            weakness_pitch = "automating your online quote & appointment booking flow"
+        if not mobile_responsive:
+            weakness_pitch = "the mobile responsiveness and smartphone client acquisition experience"
+        elif not has_contact_form and not has_whatsapp:
+            weakness_pitch = "direct on-site lead capture and instant WhatsApp client engagement"
+        elif not has_meta_pixel and not has_google_analytics:
+            weakness_pitch = "inbound conversion tracking and digital retargeting pixels"
+        elif is_appointment and not has_online_booking:
+            weakness_pitch = "automating your online client appointment scheduling"
         elif not has_whatsapp:
             weakness_pitch = "adding a direct WhatsApp chat option for rapid mobile client inquiries"
         elif not has_meta_pixel:
-            weakness_pitch = "installing Meta retargeting pixels to re-engage past website visitors"
+            weakness_pitch = "installing retargeting pixels to re-engage past website visitors"
         elif copyright_year and copyright_year < 2024:
-            weakness_pitch = "modernizing your website design to increase trust and inbound conversion rates"
+            weakness_pitch = "modernizing your website design to increase client trust and inbound conversion rates"
         elif detected_weaknesses:
             weakness_pitch = detected_weaknesses[0].lower()
         else:
-            weakness_pitch = "scaling your online visibility and inbound client conversion pipeline"
+            weakness_pitch = "scaling your online visibility and inbound client acquisition pipeline"
 
         logger.info(
             f"LiveResearchEngine: Audited {url} ({visited_pages} pages) -> "

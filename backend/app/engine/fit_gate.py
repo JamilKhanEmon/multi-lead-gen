@@ -115,16 +115,14 @@ class FitGateEngine:
                     if any(w in feat_tokens or w in prob_tokens for w in ["booking", "appointment", "scheduling"]):
                         score += 35.0
 
-            b_type_lower = (business_type or "").lower()
-            if any(k in b_type_lower for k in ["real estate", "property", "builder", "developer"]):
-                if any(w in prob_tokens or w in feat_tokens for w in ["crm", "pipeline", "lead", "inquiry", "buyer"]):
-                    score += 25.0
-            elif any(k in b_type_lower for k in ["factory", "manufacturing", "logistics", "distribution", "wholesale"]):
-                if any(w in prob_tokens or w in feat_tokens for w in ["erp", "inventory", "warehouse", "operations", "billing"]):
-                    score += 25.0
-            elif any(k in b_type_lower for k in ["restaurant", "cafe", "food", "retail", "shop", "store"]):
-                if any(w in prob_tokens or w in feat_tokens for w in ["ordering", "commerce", "menu", "stock", "storefront"]):
-                    score += 25.0
+            # Dynamic semantic relevance between prospect niche and card content
+            prob_overlap = prospect_tokens.intersection(prob_tokens)
+            if prob_overlap:
+                score += min(len(prob_overlap) * 10.0, 30.0)
+
+            feat_overlap = prospect_tokens.intersection(feat_tokens)
+            if feat_overlap:
+                score += min(len(feat_overlap) * 5.0, 20.0)
 
             scored_cards.append({
                 **card,
@@ -156,9 +154,27 @@ class FitGateEngine:
         company_clean = business_name.strip() if business_name else "Candidate Company"
         city_clean = city.strip() if city else "Target Market"
 
-        has_clean_domain = bool(domain and "." in domain and not any(p in domain.lower() for p in [
-            "facebook.com", "instagram.com", "google.com", "maps.google.com"
-        ]))
+        from app.engine.deduplication import DeduplicationEngine
+        if DeduplicationEngine.is_generic_platform(domain) or DeduplicationEngine.is_directory_or_aggregator(domain, company_clean):
+            return {
+                "fit_tier": "DROPPED",
+                "fit_score": 0.0,
+                "passed_gate": False,
+                "why_they_need_us": "Entity is a directory, review platform, or public aggregator, not an operating commercial client.",
+                "what_they_need": "N/A — Aggregator directory excluded from client outreach.",
+                "matched_service": "None (Excluded Directory Platform)",
+                "matched_service_url": "",
+                "matched_service_wedge": "",
+                "matched_service_features": "",
+                "recommended_services": [],
+                "verified_gaps": [],
+                "inferred_opportunities": [],
+                "discovery_call_script": "",
+                "evidence_tags": ["DIRECTORY_AGGREGATOR_DROPPED"],
+                "evidence_signals": [],
+            }
+
+        has_clean_domain = bool(domain and "." in domain and not DeduplicationEngine.is_generic_platform(domain))
         has_phone = bool(phone and len(re.sub(r"\D", "", phone)) >= 7)
         has_email = bool(email and "@" in email and "." in email.split("@")[-1])
 

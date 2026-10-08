@@ -133,8 +133,9 @@ class AutopilotRunner:
                     ]
                     if any(bad in c_dom for bad in EXCLUDED_SITES) or any(bad in c_name_l for bad in EXCLUDED_SITES):
                         continue
-                    if DeduplicationEngine.is_generic_platform(c_dom):
-                        c_dom = ""
+                    if DeduplicationEngine.is_generic_platform(c_dom) or DeduplicationEngine.is_directory_or_aggregator(c_dom, c_name):
+                        logger.info(f"Autopilot: Discarding directory/aggregator candidate '{c_name}' ({c_dom})")
+                        continue
 
                     generic_names = ["companies", "company", "bangladesh", "dhaka", "index", "report", "firm", "firms", "service", "services"]
                     if (c_name_l in generic_names or len(c_name) < 4) and c_dom:
@@ -197,6 +198,29 @@ class AutopilotRunner:
                     b_type = cand.get("business_type") or "commercial"
 
                     if c_dom and audit_res:
+                        page_title = audit_res.get("title") or ""
+                        meta_desc = audit_res.get("meta_description") or ""
+                        heading_txt = audit_res.get("heading") or ""
+
+                        try:
+                            from app.services.ollama_client import OllamaClient
+                            ollama_client = OllamaClient(timeout=8.0)
+                        except Exception:
+                            ollama_client = None
+
+                        is_ind_fit, ind_reason = await DiscoveryOptimizer.verify_industry_fit(
+                            target_industry=target_industry,
+                            business_name=c_name,
+                            domain=c_dom,
+                            page_title=page_title,
+                            meta_description=meta_desc,
+                            heading=heading_txt,
+                            ollama_client=ollama_client,
+                        )
+                        if not is_ind_fit:
+                            logger.info(f"Autopilot: Discarding non-industry entity '{c_name}' ({c_dom}): {ind_reason}")
+                            continue
+
                         if audit_res.get("mobile_overflow") or audit_res.get("mobile_responsive") is False:
                             detected_weaknesses.append("Mobile layout break & horizontal scrolling issue")
                         if audit_res.get("has_online_booking") is False and is_appointment_niche(b_type, c_name):
@@ -306,12 +330,14 @@ class AutopilotRunner:
                         is_qualified = False
                         final_lead_score = gate_eval["fit_score"]
 
+                    lead_primary_gap = " • ".join(gate_eval["verified_gaps"][:2]) if gate_eval.get("verified_gaps") else primary_gap
+
                     lead = Lead(
                         business_id=biz.id,
                         tier=lead_tier,
                         final_score=final_lead_score if not is_dropped else 40.0,
                         is_qualified=is_qualified,
-                        primary_gap_summary=primary_gap,
+                        primary_gap_summary=lead_primary_gap,
                         explanation_json={
                             "source": "openclaw_deep_intelligence",
                             "sub_city": target_city_clean,
