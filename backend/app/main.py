@@ -195,7 +195,7 @@ async def autonomous_campaign_discovery_loop():
                             await AutopilotRunner.run_campaign_batch(
                                 db=session,
                                 campaign=camp,
-                                batch_size=15
+                                batch_size=camp.batch_size or 0
                             )
                         except Exception as ce:
                             logger.error(f"[AUTONOMOUS DISCOVERY DAEMON] Error running '{camp.name}': {ce}")

@@ -56,7 +56,7 @@ async def handle_discover_businesses(
 
     industry = payload.get("industry", "Business").strip()
     location = payload.get("location", "").strip()
-    company_limit = payload.get("company_limit", 20)
+    company_limit = payload.get("company_limit", 0)
 
     logger.info(f"Running business discovery for {industry} in {location}")
 
