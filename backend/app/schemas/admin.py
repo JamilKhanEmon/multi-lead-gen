@@ -64,7 +64,7 @@ class EmailPreviewRequest(BaseModel):
     location: Optional[str] = "Gulshan-2, Dhaka"
     website: Optional[str] = "tropicalhomesltd.com"
     phone: Optional[str] = "+880 1711-223344"
-    primary_gap: Optional[str] = "specifically mobile responsiveness and automated WhatsApp lead booking"
+    primary_gap: Optional[str] = "specifically mobile responsiveness and automated lead capture"
 
 class PersonaSignatureCreate(BaseModel):
     title: str = "Primary Signature"

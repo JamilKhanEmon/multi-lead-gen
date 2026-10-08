@@ -12,6 +12,8 @@ class DiscoveryOptimizer:
         "salon", "barber",
         "cemetery", "graveyard", "place of worship",
         "courier", "bus station",
+        "directory", "directories", "listing", "listings",
+        "goodfirms", "clutch", "crunchbase", "bproperty", "bikroy"
     ]
 
     @classmethod
@@ -116,9 +118,11 @@ class DiscoveryOptimizer:
         if len(name) < 3:
             return False, "Business name is too short"
 
-        GENERIC_PLATFORMS = {"facebook", "facebook.com", "instagram", "google", "meta", "twitter", "linkedin", "youtube", "tiktok", "whatsapp"}
-        if name_lower in GENERIC_PLATFORMS:
+        from app.engine.deduplication import DeduplicationEngine
+        if DeduplicationEngine.is_generic_platform(domain) or DeduplicationEngine.is_generic_platform(name_lower):
             return False, f"Candidate is a generic platform entity ({name}), not an actual business."
+        if DeduplicationEngine.is_directory_or_aggregator(domain, name) or DeduplicationEngine.is_directory_or_aggregator(candidate.get("website") or "", snippet):
+            return False, f"Candidate is a directory/aggregator platform ({domain}), not a direct business."
         if any(bad in name_lower for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "google.com/maps", "twitter.com"]):
             return False, f"Candidate name is a social media / platform URL: '{name}'"
 
@@ -169,11 +173,46 @@ class DiscoveryOptimizer:
         heading_l = (heading or "").lower()
         full_text = f"{business_name_l} {domain_l} {page_title_l} {meta_desc_l} {heading_l}"
 
+        from app.engine.deduplication import DeduplicationEngine
+        if DeduplicationEngine.is_generic_platform(domain) or DeduplicationEngine.is_directory_or_aggregator(domain, business_name):
+            return False, f"Entity is an aggregator or directory platform: '{domain}'"
+
+        if DeduplicationEngine.is_directory_or_aggregator(f"https://{domain}", page_title):
+            return False, f"Page title or domain indicates a directory/aggregator platform: '{page_title}'"
+
         if negative_keywords:
             for neg in negative_keywords:
                 neg_l = neg.lower().strip()
                 if len(neg_l) >= 4 and neg_l in full_text:
                     return False, f"Matched AI negative filter: '{neg}'"
+
+        # Prioritize AI Semantic Verification (Ollama) before heuristic matching
+        if ollama_client and (page_title or meta_description or business_name):
+            try:
+                system_prompt = (
+                    "You are a strict, objective B2B industry classification expert. "
+                    "Analyze the given business name, domain, website title, and meta description. "
+                    "Determine whether this company is genuinely a direct operating business/firm in the target industry, "
+                    "OR if it is a directory, review platform, marketplace, article listicle, job portal, or unrelated business. "
+                    "CRITICAL: If it is a directory, aggregator, review site (like GoodFirms, Clutch, Yelp), or blog, return is_relevant: false. "
+                    "Respond ONLY with a JSON object: {\"is_relevant\": true/false, \"reason\": \"<under 10 words>\"}"
+                )
+                user_prompt = (
+                    f"Target Industry: {target_industry}\n"
+                    f"Business Name: {business_name}\n"
+                    f"Domain: {domain}\n"
+                    f"Website Title: {page_title[:150]}\n"
+                    f"Website Description: {meta_description[:250]}\n"
+                    f"Heading: {heading[:100]}\n"
+                    f"Is this entity a direct commercial company in '{target_industry}' (NOT a directory, aggregator, or review portal)?"
+                )
+                res = await ollama_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+                if isinstance(res, dict) and "is_relevant" in res:
+                    is_rel = bool(res.get("is_relevant"))
+                    reason = res.get("reason", "AI dynamic semantic verification")
+                    return is_rel, reason
+            except Exception as e:
+                logger.debug(f"Dynamic AI semantic verification notice: {e}")
 
         if ind_phrase and len(ind_phrase) >= 4 and ind_phrase in full_text:
             return True, f"Full industry phrase verified: '{ind_phrase}'"
@@ -185,31 +224,6 @@ class DiscoveryOptimizer:
                 pos_l = pos.lower().strip()
                 if len(pos_l) >= 4 and pos_l in full_text:
                     return True, f"Dynamic AI industry keyword matched: '{pos}'"
-
-        if ollama_client and (page_title or meta_description or business_name):
-            try:
-                system_prompt = (
-                    "You are a strict, objective B2B industry classification expert. "
-                    "Analyze the given business name, domain, website title, and meta description. "
-                    "Determine whether this company genuinely belongs to or provides services in the target industry. "
-                    "Respond ONLY with a JSON object: {\"is_relevant\": true/false, \"reason\": \"<under 10 words>\"}"
-                )
-                user_prompt = (
-                    f"Target Industry: {target_industry}\n"
-                    f"Business Name: {business_name}\n"
-                    f"Domain: {domain}\n"
-                    f"Website Title: {page_title[:150]}\n"
-                    f"Website Description: {meta_description[:250]}\n"
-                    f"Heading: {heading[:100]}\n"
-                    f"Does this business legitimately operate in or provide products/services for '{target_industry}'?"
-                )
-                res = await ollama_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
-                if isinstance(res, dict) and "is_relevant" in res:
-                    is_rel = bool(res.get("is_relevant"))
-                    reason = res.get("reason", "AI dynamic semantic verification")
-                    return is_rel, reason
-            except Exception as e:
-                logger.debug(f"Dynamic AI semantic verification notice: {e}")
 
         INDUSTRY_SYNONYMS = {
             "real estate": ["realtor", "realty", "property", "properties", "apartment", "apartments", "housing", "developer", "builders", "flat", "land", "estate", "brokerage", "leasing"],

@@ -109,10 +109,9 @@ async def handle_discover_businesses(
                 logger.info(f"TaskDiscover: Discarding generic platform candidate '{raw_name}'")
                 continue
 
-            if DeduplicationEngine.is_generic_platform(raw_domain):
-                logger.info(f"TaskDiscover: Stripping generic platform website '{raw_domain}' from '{raw_name}'")
-                raw_domain = None
-                comp["website"] = None
+            if DeduplicationEngine.is_generic_platform(raw_domain) or DeduplicationEngine.is_directory_or_aggregator(raw_domain, raw_name):
+                logger.info(f"TaskDiscover: Discarding directory/aggregator platform candidate '{raw_name}' ({raw_domain})")
+                continue
 
             is_valid, reason = DiscoveryOptimizer.validate_candidate(comp, val_plan)
             if not is_valid:
@@ -758,12 +757,14 @@ async def _execute_research_and_qualify(
             explanation["recommended_services"] = gate_res.get("recommended_services", [])
             explanation["matched_service_url"] = gate_res.get("matched_service_url", "")
 
+        lead_primary_gap = " • ".join(gate_res["verified_gaps"][:2]) if gate_res.get("verified_gaps") else gap_summary
+
         if lead:
             lead.run_id = valid_run_id
             lead.tier = tier
             lead.final_score = final_score
             lead.is_qualified = is_qualified
-            lead.primary_gap_summary = gap_summary
+            lead.primary_gap_summary = lead_primary_gap
             lead.explanation_json = explanation
             lead.fit_tier = gate_res["fit_tier"]
             lead.why_they_need_us = gate_res["why_they_need_us"]
@@ -780,7 +781,7 @@ async def _execute_research_and_qualify(
                 tier=tier,
                 final_score=final_score,
                 is_qualified=is_qualified,
-                primary_gap_summary=gap_summary,
+                primary_gap_summary=lead_primary_gap,
                 explanation_json=explanation,
                 outreach_status=initial_outreach,
                 fit_tier=gate_res["fit_tier"],
