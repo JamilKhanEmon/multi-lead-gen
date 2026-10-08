@@ -253,10 +253,15 @@ class AutopilotRunner:
                     else:
                         primary_gap = "Solvable local search ranking weakness & mobile conversion gap"
 
-                    # STRICT REQUIREMENT: Only ingest leads that have a verified/actionable email
-                    if not resolved_email or "@" not in resolved_email:
-                        logger.info(f"[AUTOPILOT STRICT FILTER] Skipping '{c_name}' — no actionable email found.")
-                        continue
+                    has_email = bool(resolved_email and "@" in resolved_email)
+                    if has_email:
+                        outreach_status = "READY_FOR_OUTREACH"
+                        email_status = "VALID"
+                        verify_note = "Valid email address verified for autonomous outreach"
+                    else:
+                        outreach_status = "NO_EMAIL"
+                        email_status = "NOT_FOUND"
+                        verify_note = "No public email address found — queued for review"
 
                     metadata_payload = {
                         "source": "autopilot_deep_intelligence",
@@ -287,12 +292,9 @@ class AutopilotRunner:
                         logger.info(f"[AUTOPILOT STRICT FILTER] Dropping rejected candidate '{c_name}' (Fit: {fit_tier}). Not adding to CRM.")
                         continue
 
-                    lead_tier = "Strong Potential" if fit_tier == "HOT" else "Review Needed"
+                    lead_tier = "Strong Potential" if (fit_tier == "HOT" and has_email) else "Review Needed"
                     final_lead_score = gate_eval["fit_score"]
                     is_qualified = True
-                    outreach_status = "READY_FOR_OUTREACH"
-                    email_status = "VALID"
-                    verify_note = "Valid email address verified for autonomous outreach"
 
                     why_they_need_us = gate_eval["why_they_need_us"]
                     what_they_need = gate_eval["what_they_need"]
@@ -305,7 +307,7 @@ class AutopilotRunner:
                         canonical_name=c_name,
                         domain=c_dom if c_dom else None,
                         phone=c_phone if c_phone else None,
-                        email=resolved_email,
+                        email=resolved_email if has_email else None,
                         contact_person=cand.get("contact_person") or "Executive / Director",
                         address=cand.get("address") or f"{target_city_clean}, {campaign.country}",
                         business_type=b_type,
@@ -323,8 +325,6 @@ class AutopilotRunner:
                         longitude=cand.get("longitude")
                     )
                     db.add(loc)
-
-                    has_email = True
 
                     lead = Lead(
                         business_id=biz.id,

@@ -118,8 +118,8 @@ async def handle_discover_businesses(
                 logger.info(f"TaskDiscover: Rejecting candidate '{raw_name}': {reason}")
                 continue
 
-            if not raw_domain and not comp.get("email"):
-                logger.info(f"TaskDiscover: Discarding candidate '{raw_name}' due to missing domain and email.")
+            if not raw_domain and not raw_phone and not comp.get("email") and not comp.get("address"):
+                logger.info(f"TaskDiscover: Discarding ghost candidate '{raw_name}' due to zero contact channels and no address.")
                 continue
 
             norm_domain = DeduplicationEngine.normalize_domain(raw_domain)
@@ -712,10 +712,10 @@ async def _execute_research_and_qualify(
         has_email = bool(biz_obj and biz_obj.email)
         target_outreach_status = "READY_FOR_OUTREACH" if auto_mail else "HOLD"
 
-        if not is_industry_fit or tier == "Rejected" or not has_email:
+        if not is_industry_fit or tier == "Rejected":
             logger.info(
                 f"TaskResearch: Discarding unqualified business '{business_name}' "
-                f"(Industry fit: {is_industry_fit}, Tier: {tier}, Has Email: {has_email}, Reason: {fit_reason}). Not adding to leads."
+                f"(Industry fit: {is_industry_fit}, Tier: {tier}, Reason: {fit_reason}). Not adding to leads."
             )
             if valid_run_id:
                 stmt_run = select(ResearchRun).where(ResearchRun.id == valid_run_id)
@@ -727,7 +727,7 @@ async def _execute_research_and_qualify(
                     if processed >= run.discovered_count and run.discovered_count > 0:
                         run.status = "COMPLETED"
             await session.commit()
-            return {"status": "REJECTED", "business_id": str(business_id), "reason": fit_reason if not is_industry_fit else "No verified email or rejected"}
+            return {"status": "REJECTED", "business_id": str(business_id), "reason": fit_reason}
 
         use_kb = payload.get("use_company_kb", True)
         kb_dict = await FitGateEngine.fetch_active_kb_dict(session) if use_kb else None

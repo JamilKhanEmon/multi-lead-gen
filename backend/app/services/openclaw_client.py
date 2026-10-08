@@ -162,9 +162,8 @@ class LiveResearchEngine:
                             website = enriched["website"]
                             domain = enriched.get("domain")
 
-                    # STRICT FILTER: Discard any candidate without a website/domain or direct email
-                    if not website and not domain and not email:
-                        logger.debug(f"Discarding candidate '{p_name}' (No website, domain, or email for digital outreach).")
+                    if not website and not domain and not phone and not email and not p.get("address") and lat is None:
+                        logger.debug(f"Discarding ghost candidate '{p_name}' (No contact channel and no address).")
                         continue
 
                     if domain:
