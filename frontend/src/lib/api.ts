@@ -1099,6 +1099,7 @@ export async function createUser(data: {
 export async function updateUser(
   userId: string,
   data: Partial<{
+    email: string;
     full_name: string;
     role: string;
     is_active: boolean;
@@ -1120,6 +1121,36 @@ export async function updateUser(
     throw new Error(err.detail || "Failed to update user account");
   }
   return res.json();
+}
+
+export async function changeEmail(
+  newEmail: string,
+  password: string
+): Promise<{ status: string; message: string; email: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/auth/change-email`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      new_email: newEmail,
+      password: password,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to change email address");
+  }
+  const data = await res.json();
+  const storedUser = getStoredUser();
+  if (storedUser) {
+    storedUser.email = data.email;
+    localStorage.setItem("leadgen_user", JSON.stringify(storedUser));
+    window.dispatchEvent(new Event("auth_change"));
+  }
+  return data;
 }
 
 export async function changePassword(
