@@ -5,33 +5,27 @@ from typing import Dict, Any, Optional, Tuple, List
 from urllib.parse import urlparse
 from app.core.logging import logger
 
-SERVICE_CATALOG = {
-    "web_dev": {
-        "name": "Web Design & Development (Site in 7 Days)",
-        "wedge": "High-Converting Mobile Landing Page / Website Revamp",
-        "description": "Custom modern responsive website with instant WhatsApp & lead capture forms.",
-    },
-    "crm_lead": {
-        "name": "Custom CRM & Lead Capture Pipeline",
-        "wedge": "Automated Lead Capture & Inquiry Notification System",
-        "description": "On-site buyer inquiry capture, automated WhatsApp/SMS notifications, and team sales tracking.",
-    },
-    "erp_management": {
-        "name": "Custom Enterprise ERP (Inventory, Accounts & Operations)",
-        "wedge": "Lightweight Cloud Billing & Daily Operations Tracker",
-        "description": "End-to-end ERP customized for Real Estate, Hospitals, Schools, Restaurants, or Supply Chain.",
-    },
-    "digital_marketing": {
-        "name": "Digital Marketing & SMS Outreach Wedge",
-        "wedge": "Targeted SMS Blast & Local Google SEO Audit",
-        "description": "Targeted local SEO, SMS campaigns, and Meta conversion tracking setup.",
-    },
-    "ecommerce_portal": {
-        "name": "E-Commerce & Digital Ordering System",
-        "wedge": "Online Product Showcase with Direct WhatsApp Ordering",
-        "description": "Full e-commerce platform with automated payment gateway, delivery tracking, and stock sync.",
-    }
+DEFAULT_GENERIC_CATALOG: List[Dict[str, Any]] = []
+
+
+APPOINTMENT_KEYWORDS = {
+    "clinic", "dentist", "dental", "salon", "spa", "parlor", "parlour", 
+    "barber", "hospital", "doctor", "physiotherapy", "diagnostic", 
+    "consultant", "therapy", "chiro", "optom", "veterin", "appointment",
+    "aesthetic", "wellness", "counseling"
 }
+
+def is_appointment_niche(b_type: str, b_name: str = "") -> bool:
+    text = f"{b_type or ''} {b_name or ''}".lower()
+    return any(kw in text for kw in APPOINTMENT_KEYWORDS)
+
+def tokenize_text(text: str) -> set:
+    if not text:
+        return set()
+    cleaned = re.sub(r"[^\w\s]", " ", text.lower())
+    words = cleaned.split()
+    stopwords = {"and", "or", "the", "in", "of", "for", "with", "a", "an", "to", "on", "at", "by", "is", "custom"}
+    return {w for w in words if len(w) > 2 and w not in stopwords}
 
 class FitGateEngine:
 
@@ -66,8 +60,82 @@ class FitGateEngine:
         norm = re.sub(r"[^\w\s]", " ", norm)
         return re.sub(r"\s+", " ", norm).strip()
 
-    @staticmethod
+    @classmethod
+    def match_service_cards(
+        cls,
+        candidate_cards: List[Dict[str, Any]],
+        business_type: str,
+        business_name: str,
+        detected_gap_tags: List[str],
+        has_domain: bool,
+    ) -> List[Dict[str, Any]]:
+        if not candidate_cards:
+            candidate_cards = DEFAULT_GENERIC_CATALOG
+
+        prospect_tokens = tokenize_text(f"{business_type} {business_name}")
+        scored_cards = []
+
+        for card in candidate_cards:
+            if not isinstance(card, dict):
+                continue
+            card_name = card.get("name") or card.get("key") or "Business Solution"
+            card_industries = card.get("target_industries") or ""
+            card_problems = card.get("solves_problems") or ""
+            card_features = card.get("features") or ""
+            card_wedge = card.get("wedge") or ""
+
+            ind_tokens = tokenize_text(card_industries)
+            prob_tokens = tokenize_text(card_problems)
+            feat_tokens = tokenize_text(f"{card_features} {card_name} {card_wedge}")
+
+            score = 10.0
+
+            industry_overlap = prospect_tokens.intersection(ind_tokens)
+            if industry_overlap:
+                score += 35.0 + min(len(industry_overlap) * 5.0, 20.0)
+
+            if not has_domain:
+                if any(w in feat_tokens or w in prob_tokens for w in ["web", "website", "landing", "online", "presence"]):
+                    score += 40.0
+            else:
+                if "NOT_MOBILE_RESPONSIVE" in detected_gap_tags:
+                    if any(w in feat_tokens or w in prob_tokens for w in ["mobile", "responsive", "revamp", "design"]):
+                        score += 30.0
+
+                if "NO_LEAD_FORM" in detected_gap_tags or "NO_WHATSAPP" in detected_gap_tags:
+                    if any(w in feat_tokens or w in prob_tokens for w in ["crm", "lead", "capture", "inquiry", "pipeline", "whatsapp"]):
+                        score += 30.0
+
+                if "NO_TRACKING" in detected_gap_tags or "NO_ANALYTICS" in detected_gap_tags:
+                    if any(w in feat_tokens or w in prob_tokens for w in ["marketing", "pixel", "analytics", "tracking", "seo"]):
+                        score += 30.0
+
+                if "NO_ONLINE_BOOKING" in detected_gap_tags:
+                    if any(w in feat_tokens or w in prob_tokens for w in ["booking", "appointment", "scheduling"]):
+                        score += 35.0
+
+            b_type_lower = (business_type or "").lower()
+            if any(k in b_type_lower for k in ["real estate", "property", "builder", "developer"]):
+                if any(w in prob_tokens or w in feat_tokens for w in ["crm", "pipeline", "lead", "inquiry", "buyer"]):
+                    score += 25.0
+            elif any(k in b_type_lower for k in ["factory", "manufacturing", "logistics", "distribution", "wholesale"]):
+                if any(w in prob_tokens or w in feat_tokens for w in ["erp", "inventory", "warehouse", "operations", "billing"]):
+                    score += 25.0
+            elif any(k in b_type_lower for k in ["restaurant", "cafe", "food", "retail", "shop", "store"]):
+                if any(w in prob_tokens or w in feat_tokens for w in ["ordering", "commerce", "menu", "stock", "storefront"]):
+                    score += 25.0
+
+            scored_cards.append({
+                **card,
+                "_match_score": score,
+            })
+
+        scored_cards.sort(key=lambda c: c.get("_match_score", 0), reverse=True)
+        return scored_cards
+
+    @classmethod
     def evaluate_candidate(
+        cls,
         business_name: str,
         domain: Optional[str],
         phone: Optional[str],
@@ -85,13 +153,13 @@ class FitGateEngine:
         metadata_json = metadata_json or {}
         b_type = (business_type or "").lower()
         company_clean = business_name.strip() if business_name else "Candidate Company"
-        city_clean = city.strip() if city else "Dhaka"
+        city_clean = city.strip() if city else "Target Market"
 
         has_clean_domain = bool(domain and "." in domain and not any(p in domain.lower() for p in [
             "facebook.com", "instagram.com", "google.com", "maps.google.com"
         ]))
         has_phone = bool(phone and len(re.sub(r"\D", "", phone)) >= 7)
-        has_email = bool(email and "@" in email)
+        has_email = bool(email and "@" in email and "." in email.split("@")[-1])
 
         mobile_responsive = audit_res.get("mobile_responsive")
         has_contact_form = audit_res.get("has_contact_form")
@@ -101,167 +169,215 @@ class FitGateEngine:
         has_pixel = audit_res.get("has_meta_pixel")
         has_analytics = audit_res.get("has_google_analytics")
 
-        evidence_signals: List[str] = []
+        verified_gaps: List[str] = []
+        inferred_opportunities: List[str] = []
         evidence_tags: List[str] = []
+        evidence_signals: List[str] = []
+
+        is_appointment_biz = is_appointment_niche(b_type, company_clean)
 
         if not has_clean_domain:
-            evidence_signals.append("Zero official website — relies exclusively on third-party map listing or social pages without an independent domain.")
+            verified_gaps.append("Zero official website: operates exclusively via third-party directory or map listing without an independent domain.")
+            inferred_opportunities.append("Absence of an official branded domain suggests warm search inquiries may leak to competitor websites with dedicated landing pages.")
             evidence_tags.append("NO_WEBSITE")
+            evidence_signals.append("Zero official domain detected")
         else:
-            if mobile_responsive is False:
-                evidence_signals.append("Official website is not mobile-responsive (layout breaks on smartphones, leaking mobile search traffic).")
+            if mobile_responsive is False or audit_res.get("mobile_overflow") is True:
+                verified_gaps.append("Public website layout breaks on mobile viewports with horizontal scrolling.")
+                inferred_opportunities.append("Mobile layout friction suggests smartphone visitors may experience difficulty navigating services and may bounce prematurely.")
                 evidence_tags.append("NOT_MOBILE_RESPONSIVE")
+                evidence_signals.append("Mobile layout break / horizontal scrolling detected")
 
             if has_contact_form is False and not has_online_booking:
-                evidence_signals.append("Website has no direct inquiry or lead capture form — visitors cannot submit requests directly on-site.")
+                verified_gaps.append("Public website lacks a direct on-site lead capture or inquiry form.")
+                inferred_opportunities.append("Absence of direct inquiry capture suggests prospects browsing after office hours may not have an immediate channel to submit inquiries.")
                 evidence_tags.append("NO_LEAD_FORM")
+                evidence_signals.append("No direct on-site inquiry form found")
+
+            if has_whatsapp is False:
+                verified_gaps.append("No click-to-WhatsApp contact widget or direct messaging integration detected.")
+                inferred_opportunities.append("Lack of instant WhatsApp messaging suggests high-intent mobile users may encounter contact friction.")
+                evidence_tags.append("NO_WHATSAPP")
+                evidence_signals.append("No click-to-WhatsApp widget found")
 
             if broken_links_count > 0:
-                evidence_signals.append(f"Website contains {broken_links_count} dead/broken links causing customer trust and SEO drop.")
+                verified_gaps.append(f"Website contains {broken_links_count} broken/dead hyperlinks (404 errors).")
+                inferred_opportunities.append("Broken navigation links may undermine brand credibility and negatively impact search engine indexation.")
                 evidence_tags.append("BROKEN_LINKS")
+                evidence_signals.append(f"{broken_links_count} broken links detected")
 
             if has_pixel is False and has_analytics is False:
-                evidence_signals.append("No conversion tracking detected (Missing Google Analytics & Meta Pixel) — marketing budget is unmeasured.")
+                verified_gaps.append("Zero conversion tracking scripts detected (No Google Analytics or Meta Pixel).")
+                inferred_opportunities.append("Missing conversion tracking suggests advertising investments and visitor retargeting cannot be quantitatively measured.")
+                evidence_tags.append("NO_TRACKING")
+                evidence_signals.append("Missing Google Analytics and Meta Pixel")
+            elif has_pixel is False:
+                verified_gaps.append("No Meta (Facebook/Instagram) retargeting pixel detected.")
+                inferred_opportunities.append("Missing Meta Pixel suggests social ad campaigns cannot retarget past website visitors.")
+                evidence_tags.append("NO_PIXEL")
+                evidence_signals.append("Missing Meta retargeting pixel")
+            elif has_analytics is False:
+                verified_gaps.append("No Google Analytics (GA4) visitor tracking detected.")
+                inferred_opportunities.append("Missing analytics suggests inbound search traffic and visitor retention cannot be analyzed.")
                 evidence_tags.append("NO_ANALYTICS")
+                evidence_signals.append("Missing Google Analytics tracking")
+
+            if is_appointment_biz and has_online_booking is False:
+                verified_gaps.append("No automated appointment scheduling system found on public website.")
+                inferred_opportunities.append("Absence of automated booking suggests staff time may be absorbed by manual phone coordination and appointment scheduling.")
+                evidence_tags.append("NO_ONLINE_BOOKING")
+                evidence_signals.append("No online appointment booking system found")
 
         for w in detected_weaknesses:
-            w_str = str(w)
-            if w_str not in evidence_signals:
+            w_str = str(w).strip()
+            if w_str and w_str not in evidence_signals:
                 evidence_signals.append(w_str)
 
         is_healthy_modern_site = (
             has_clean_domain
             and mobile_responsive is not False
             and (has_contact_form is True or has_online_booking is True)
-            and len(evidence_signals) == 0
+            and len(verified_gaps) == 0
         )
 
         if is_healthy_modern_site:
             return {
                 "fit_tier": "DROPPED",
-                "fit_score": 2.0,
+                "fit_score": 5.0,
                 "passed_gate": False,
-                "why_they_need_us": "Healthy modern website with active lead capture and no observable operational bottlenecks.",
+                "why_they_need_us": "Healthy modern digital presence with active lead capture and no observable operational bottlenecks.",
                 "what_they_need": "N/A — Company currently operates a modern digital setup.",
                 "matched_service": "None (Dropped to avoid cold pitching satisfied client)",
+                "matched_service_url": "",
+                "matched_service_wedge": "",
+                "matched_service_features": "",
+                "recommended_services": [],
+                "verified_gaps": [],
+                "inferred_opportunities": [],
                 "discovery_call_script": "",
-                "evidence_tags": ["HEALTHY_SITE_DROPPED"]
+                "evidence_tags": ["HEALTHY_SITE_DROPPED"],
+                "evidence_signals": [],
             }
 
-        if not has_clean_domain:
-            matched_svc_key = "web_dev"
-            why_they_need_us = (
-                f"{company_clean} does not have an official website or branded web presence. "
-                f"Prospective clients searching Google in {city_clean} cannot find an authoritative page, "
-                f"causing warm inquiries to leak to competitor websites."
-            )
-            what_they_need = "Modern corporate website launched in 7 days with automated WhatsApp & direct lead capture forms."
-            disc_question = "How are you currently capturing Google search visitors looking for your services in your area?"
-            disc_hook = f"I noticed {company_clean} doesn't have an official website yet and relies solely on third-party listings."
-
-        elif any(t in evidence_tags for t in ["NO_LEAD_FORM", "NOT_MOBILE_RESPONSIVE"]):
-            matched_svc_key = "crm_lead"
-            why_they_need_us = (
-                f"Website has no interactive lead capture or instant booking mechanism. "
-                f"Mobile visitors cannot easily submit inquiries, leading to high bounce rates and lost prospects."
-            )
-            what_they_need = "High-converting lead funnel with instant WhatsApp inquiry button & CRM pipeline to track prospect follow-ups."
-            disc_question = "When potential clients land on your website, what percentage of them convert into direct phone or WhatsApp inquiries?"
-            disc_hook = f"I was reviewing your website and noticed there's no immediate lead capture form for visitors on mobile."
-
-        elif any(kw in b_type for kw in ["restaurant", "food", "cafe", "dining", "retail", "shop", "store"]):
-            matched_svc_key = "ecommerce_portal" if "store" in b_type or "retail" in b_type else "erp_management"
-            why_they_need_us = (
-                f"Orders and client interactions are handled manually over the phone without automated digital ordering, table booking, or stock sync."
-            )
-            what_they_need = "Digital management system with real-time order tracking, WhatsApp notifications, and automated billing."
-            disc_question = "How are you currently managing daily order tracking, inventory updates, and repeat customer notifications?"
-            disc_hook = f"I noticed that orders and customer bookings are still being taken manually over phone calls."
-
-        elif any(kw in b_type for kw in ["real estate", "hospital", "school", "clinic", "developer", "property"]):
-            matched_svc_key = "erp_management"
-            why_they_need_us = (
-                f"High-ticket inquiry volume requires structured sales pipeline tracking; without automated CRM/ERP, sales reps lose follow-ups."
-            )
-            what_they_need = "Vertical Industry ERP / CRM tailored for client management, automated payment schedules, and sales rep activity tracking."
-            disc_question = "How is your sales team currently logging prospect follow-ups and ensuring no warm buyer inquiry slips through the cracks?"
-            disc_hook = f"I saw your active property/service offerings in {city_clean} and noticed the inquiry flow could be automated directly into a sales pipeline."
-
-        else:
-            matched_svc_key = "digital_marketing"
-            why_they_need_us = (
-                f"Digital presence lacks modern conversion tracking (Google Analytics / Meta Pixel) and structured local SEO hooks."
-            )
-            what_they_need = "Conversion-focused SEO overhaul, automated SMS inquiry notifications, and digital marketing wedge."
-            disc_question = "Are you currently tracking where your best customer inquiries are originating from each week?"
-            disc_hook = f"I noticed your online presence has a clear growth opportunity regarding local search conversion tracking."
-
-        catalog = SERVICE_CATALOG
+        candidate_cards = DEFAULT_GENERIC_CATALOG
         if use_company_kb and company_kb and company_kb.get("services_json"):
             kb_services = company_kb.get("services_json")
-            if isinstance(kb_services, list):
-                custom_cat = {}
-                for s in kb_services:
-                    if isinstance(s, dict) and s.get("key"):
-                        custom_cat[s["key"]] = {
-                            "name": s.get("name", "Custom Digital Solution"),
-                            "wedge": s.get("wedge", "Custom Audit & Automation Wedge"),
-                            "description": s.get("description", ""),
-                        }
-                if custom_cat:
-                    catalog = {**SERVICE_CATALOG, **custom_cat}
+            if isinstance(kb_services, list) and len(kb_services) > 0:
+                candidate_cards = kb_services
 
-        svc_info = catalog.get(matched_svc_key, catalog.get("web_dev", SERVICE_CATALOG["web_dev"]))
-        matched_service = svc_info["name"]
+        ranked_cards = cls.match_service_cards(
+            candidate_cards=candidate_cards,
+            business_type=b_type,
+            business_name=company_clean,
+            detected_gap_tags=evidence_tags,
+            has_domain=has_clean_domain,
+        )
 
-        score = 0.0
-        if has_email:
-            score += 3.0
-        if has_clean_domain:
-            score += 2.0
+        best_card = ranked_cards[0] if ranked_cards else {}
+        matched_service_name = best_card.get("name") or "Custom Digital Solution"
+        matched_service_url = best_card.get("url") or ""
+        matched_service_wedge = best_card.get("wedge") or "Specialized Automation & Growth Audit"
+        matched_service_features = best_card.get("features") or "Tailored digital workflow and lead capture automation"
+        matched_solves = best_card.get("solves_problems") or "operational friction and lead leakage"
+
+        primary_observation = verified_gaps[0] if verified_gaps else "Inquiry flow and digital presence lack modern conversion optimization."
+        primary_implication = inferred_opportunities[0] if inferred_opportunities else f"This suggests {company_clean} may be missing warm prospective client inquiries."
+
+        why_they_need_us = (
+            f"Public audit indicates: {primary_observation} {primary_implication} "
+            f"Implementing {matched_service_name} addresses {matched_solves}."
+        )
+
+        what_they_need = (
+            f"{matched_service_name}: {matched_service_wedge}. "
+            f"Core modules include: {matched_service_features}."
+        )
+
+        disc_hook = (
+            f"I was reviewing {company_clean}'s online presence in {city_clean} and noted: {primary_observation}"
+        )
+        disc_question = (
+            f"When prospective clients search for your services in {city_clean}, how does your team ensure inbound inquiries are instantly captured and tracked?"
+        )
+
+        agency_name = (company_kb.get("company_name") or "").strip() if (use_company_kb and company_kb) else ""
+        if agency_name:
+            pitch_line = f"At {agency_name}, our {matched_service_name} specifically provides {matched_service_wedge}. Would you be open to a 5-minute preview of the custom audit report prepared for {company_clean}?"
         else:
-            score += 1.0
-        if len(evidence_signals) > 0:
-            score += 3.0
+            pitch_line = f"Our team specializes in resolving this with {matched_service_name} ({matched_service_wedge}). Would you be open to a 5-minute preview of the custom audit report prepared for {company_clean}?"
+
+        call_script = (
+            f"1. OPENING EVIDENCE:\n"
+            f"   \"Hello, is this {company_clean}? {disc_hook}\"\n\n"
+            f"2. DISCOVERY QUESTION (Wait for their answer):\n"
+            f"   \"{disc_question}\"\n\n"
+            f"3. VALUE PITCH ({matched_service_name}):\n"
+            f"   \"{pitch_line}\""
+        )
+
+        # Calibrated 0-100 Score
+        # 1. Verified Gaps (0 - 30 pts)
+        gap_count = len(verified_gaps)
+        if gap_count >= 3:
+            gaps_score = 30.0
+        elif gap_count == 2:
+            gaps_score = 24.0
+        elif gap_count == 1:
+            gaps_score = 16.0
+        else:
+            gaps_score = 5.0
+
+        # 2. Business Fit & Card Match (0 - 25 pts)
+        match_raw = best_card.get("_match_score", 10.0)
+        fit_score_component = min(25.0, round(match_raw * 0.35, 1))
+
+        # 3. Contactability (0 - 25 pts)
+        contact_score = 0.0
+        if has_email:
+            contact_score += 15.0
         if has_phone:
-            score += 1.0
+            contact_score += 10.0
+
+        # 4. Digital Presence / Market Signals (0 - 15 pts)
+        presence_score = 10.0 if has_clean_domain else 4.0
         if city_clean:
-            score += 1.0
-        if len(evidence_signals) >= 2:
-            score += 2.0
+            presence_score += 5.0
+        presence_score = min(15.0, presence_score)
 
-        score = min(12.0, score)
+        # 5. Confidence (0 - 5 pts)
+        conf_score = 5.0 if (has_phone or has_email) and not audit_res.get("fetch_error") else 2.0
 
-        if score >= 8.0 and (has_email or has_phone):
+        total_score = gaps_score + fit_score_component + contact_score + presence_score + conf_score
+
+        # Strict Calibration Rule: without verified email, cap score at 74.0
+        if not has_email:
+            total_score = min(74.0, total_score)
+
+        total_score = round(min(98.0, max(10.0, total_score)), 1)
+
+        # Calibrated Tier
+        if total_score >= 80.0 and has_email:
             fit_tier = "HOT"
-        elif score >= 5.0:
+        elif total_score >= 50.0:
             fit_tier = "WARM"
         else:
             fit_tier = "COLD"
 
-        if use_company_kb and company_kb and company_kb.get("company_name"):
-            agency_name = company_kb.get("company_name").strip()
-            wedge_offer = svc_info.get("wedge", "specialized audit report")
-            pitch_line = f"At {agency_name}, we specialize in solving this with our {wedge_offer}. Would you be open to a 5-minute preview of the custom audit report we prepared for {company_clean}?"
-        else:
-            pitch_line = f"We specialize in solving this with modern digital automation and conversion optimization. Would you be open to a 5-minute preview of the custom audit report prepared for {company_clean}?"
-
-        call_script = (
-            f"1. OPENING EVIDENCE:\n"
-            f"   \"Hello, is this {company_clean}? I was reviewing your online presence in {city_clean} and {disc_hook}\"\n\n"
-            f"2. DISCOVERY QUESTION (Wait for their answer):\n"
-            f"   \"{disc_question}\"\n\n"
-            f"3. VALUE PITCH ({matched_service}):\n"
-            f"   \"{pitch_line}\""
-        )
+        rec_names = [c.get("name") for c in ranked_cards[:3] if c.get("name")]
 
         return {
             "fit_tier": fit_tier,
-            "fit_score": score,
+            "fit_score": total_score,
             "passed_gate": True,
             "why_they_need_us": why_they_need_us,
             "what_they_need": what_they_need,
-            "matched_service": matched_service,
+            "matched_service": matched_service_name,
+            "matched_service_url": matched_service_url,
+            "matched_service_wedge": matched_service_wedge,
+            "matched_service_features": matched_service_features,
+            "recommended_services": rec_names,
+            "verified_gaps": verified_gaps,
+            "inferred_opportunities": inferred_opportunities,
             "discovery_call_script": call_script,
             "evidence_tags": evidence_tags,
             "evidence_signals": evidence_signals,

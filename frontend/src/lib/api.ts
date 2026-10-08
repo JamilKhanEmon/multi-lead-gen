@@ -1648,7 +1648,11 @@ export async function simulateLeadReply(leadId: string, replyText: string): Prom
 export interface ServiceCatalogItem {
   key: string;
   name: string;
+  url?: string;
+  target_industries?: string;
   wedge: string;
+  features?: string;
+  solves_problems?: string;
   description: string;
 }
 

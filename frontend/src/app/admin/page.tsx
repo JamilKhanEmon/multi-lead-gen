@@ -181,13 +181,17 @@ export default function AdminPortalPage() {
   };
 
   const handleAddService = () => {
-    const newKey = `custom_service_${Date.now()}`;
+    const newKey = `service_${Date.now()}`;
     setKbServices((prev) => [
       ...prev,
       {
         key: newKey,
-        name: "New Solution / Software Offering",
+        name: "New Software / Service Solution",
+        url: "",
+        target_industries: "",
         wedge: "Free Initial Gap Audit & Workflow Demo",
+        features: "",
+        solves_problems: "",
         description: "Specialized service offering for businesses needing operational automation.",
       },
     ]);
@@ -2329,7 +2333,7 @@ https://leadgen.local`,
                   type="text"
                   value={kbCompanyName}
                   onChange={(e) => setKbCompanyName(e.target.value)}
-                  placeholder="e.g. Enterprise Solutions / NiBiz Soft"
+                  placeholder="e.g. Modern Digital Solutions / Global Software"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                 />
               </div>
@@ -2450,40 +2454,96 @@ https://leadgen.local`,
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
-                        Service Offering Name
+                        Service / Software Name
                       </label>
                       <input
                         type="text"
                         value={svc.name}
                         onChange={(e) => handleUpdateServiceField(idx, "name", e.target.value)}
-                        placeholder="e.g. Web Design & Development (Site in 7 Days)"
+                        placeholder="e.g. Real Estate Management Software / ERP"
                         className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                       />
                     </div>
 
                     <div>
                       <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
-                        Value Wedge Offer (Lead Hook)
+                        Landing Page / Direct URL
+                      </label>
+                      <input
+                        type="url"
+                        value={svc.url || ""}
+                        onChange={(e) => handleUpdateServiceField(idx, "url", e.target.value)}
+                        placeholder="e.g. https://yourcompany.com/real-estate-software/"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-sky-400 placeholder-slate-600 focus:outline-none focus:border-purple-500 transition font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
+                        Target Industries & Business Types
+                      </label>
+                      <input
+                        type="text"
+                        value={svc.target_industries || ""}
+                        onChange={(e) => handleUpdateServiceField(idx, "target_industries", e.target.value)}
+                        placeholder="e.g. Real Estate, Builders, Housing Agents, Construction"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-amber-300 placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
+                        Value Wedge Offer (Free Demo / Hook)
                       </label>
                       <input
                         type="text"
                         value={svc.wedge}
                         onChange={(e) => handleUpdateServiceField(idx, "wedge", e.target.value)}
-                        placeholder="e.g. High-Converting Mobile Landing Page / Website Revamp"
+                        placeholder="e.g. Free 5-Minute Live Demo of Real Estate CRM & Installment Flow"
                         className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
+                        Core Features & Modules
+                      </label>
+                      <input
+                        type="text"
+                        value={svc.features || ""}
+                        onChange={(e) => handleUpdateServiceField(idx, "features", e.target.value)}
+                        placeholder="e.g. Lead Management, Installment Schedules, Property Syndication, SMS Alerts"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
+                        Problems Solved (Triggers)
+                      </label>
+                      <input
+                        type="text"
+                        value={svc.solves_problems || ""}
+                        onChange={(e) => handleUpdateServiceField(idx, "solves_problems", e.target.value)}
+                        placeholder="e.g. Manual buyer follow-up leakage, installment confusion, untracked stock"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-rose-300 placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                       />
                     </div>
                   </div>
 
                   <div>
                     <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
-                      Service Scope / Description
+                      Service Scope / Summary Description
                     </label>
                     <input
                       type="text"
                       value={svc.description}
                       onChange={(e) => handleUpdateServiceField(idx, "description", e.target.value)}
-                      placeholder="e.g. Custom modern responsive website with instant WhatsApp & lead capture forms."
+                      placeholder="e.g. Complete vertical software solution with automated workflows."
                       className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                     />
                   </div>

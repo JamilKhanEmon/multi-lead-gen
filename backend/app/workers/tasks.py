@@ -20,7 +20,7 @@ from app.engine.evidence_engine import EvidenceEngine
 from app.engine.service_matcher import ServiceMatcher
 from app.engine.qualification_engine import QualificationEngine
 from app.engine.discovery_optimizer import DiscoveryOptimizer
-from app.engine.fit_gate import FitGateEngine
+from app.engine.fit_gate import FitGateEngine, is_appointment_niche
 import redis.asyncio as aioredis
 
 async def publish_progress_event(event_type: str, data: Dict[str, Any]):
@@ -405,7 +405,7 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    if website_data.get("has_online_booking") is False:
+    if website_data.get("has_online_booking") is False and is_appointment_niche(business_type, business_name):
         detected_pids.append(44)
         evidence_records.append({
             "parameter_id": 44,
@@ -499,6 +499,19 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
+    if website_data.get("has_google_analytics") is False and website_data.get("is_accessible"):
+        detected_pids.append(47)
+        evidence_records.append({
+            "parameter_id": 47,
+            "source_url": f"https://{domain}" if domain else gsearch_url,
+            "source_type": "website",
+            "evidence_text": "No Google Analytics (GA4) visitor tracking detected in public website source code.",
+            "status": "STRONG",
+            "classification": "OBSERVABLE",
+            "confidence": 0.90,
+            "recency_weight": 100,
+        })
+
     if not domain or website_data.get("is_accessible") is False:
         detected_pids.append(34)
         evidence_records.append({
@@ -578,6 +591,8 @@ async def _execute_research_and_qualify(
         (website_data.get("extracted_phone") or payload.get("phone"))
         or (website_data.get("extracted_email") or payload.get("email"))
     )
+    has_email = bool(website_data.get("extracted_email") or payload.get("email"))
+
     passed_gates, gate_failures = QualificationEngine.evaluate_gates(
         max_evidence_level=evidence_level,
         max_recency=max_recency,
@@ -593,12 +608,12 @@ async def _execute_research_and_qualify(
 
     eq_score = avg_confidence * 100.0
     pr_score = 85.0 if is_relevant else 0.0
-    rep_score = min(100.0, len(evidence_records) * 35.0)
+    rep_score = min(100.0, len(evidence_records) * 25.0)
     rec_score = float(max_recency)
-    bi_score = 75.0 if (relevant_detected and is_industry_fit) else 0.0
+    bi_score = 70.0 if (relevant_detected and is_industry_fit) else 0.0
     sf_score = best_service_fit if is_industry_fit else 0.0
 
-    final_score = QualificationEngine.calculate_score(
+    raw_calc_score = QualificationEngine.calculate_score(
         evidence_quality=eq_score,
         problem_relevance=pr_score,
         problem_repetition=rep_score,
@@ -607,7 +622,13 @@ async def _execute_research_and_qualify(
         service_fit=sf_score,
     )
 
-    tier = QualificationEngine.assign_tier(final_score, passed_gates, has_direct_contact=has_contact)
+    # Calibrated score: without verified email, cap at 74.0 and cannot reach Strong Potential
+    if not has_email:
+        final_score = min(74.0, raw_calc_score)
+    else:
+        final_score = raw_calc_score
+
+    tier = QualificationEngine.assign_tier(final_score, passed_gates, has_direct_contact=has_email)
     is_qualified = tier in ("Strong Potential", "Review Needed")
     logger.info(f"Qualified {business_name}: score={final_score}, tier={tier}, passed_gates={passed_gates}, failures={gate_failures}")
 
@@ -725,6 +746,17 @@ async def _execute_research_and_qualify(
             company_kb=kb_dict,
             use_company_kb=use_kb,
         )
+
+        if gate_res.get("fit_tier") == "DROPPED":
+            is_qualified = False
+            tier = "Rejected"
+            final_score = 5.0
+
+        if isinstance(explanation, dict):
+            explanation["verified_gaps"] = gate_res.get("verified_gaps", [])
+            explanation["inferred_opportunities"] = gate_res.get("inferred_opportunities", [])
+            explanation["recommended_services"] = gate_res.get("recommended_services", [])
+            explanation["matched_service_url"] = gate_res.get("matched_service_url", "")
 
         if lead:
             lead.run_id = valid_run_id

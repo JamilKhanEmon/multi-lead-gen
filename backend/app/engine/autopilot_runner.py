@@ -15,7 +15,7 @@ from app.engine.email_verifier import EmailVerifier
 from app.engine.outreach_engine import OutreachEngine
 from app.services.openclaw_client import LiveResearchEngine
 from app.engine.deduplication import DeduplicationEngine
-from app.engine.fit_gate import FitGateEngine
+from app.engine.fit_gate import FitGateEngine, is_appointment_niche
 
 class AutopilotRunner:
 
@@ -194,10 +194,12 @@ class AutopilotRunner:
                     if not resolved_email and c_dom and not DeduplicationEngine.is_generic_platform(c_dom):
                         resolved_email = f"info@{c_dom}"
 
+                    b_type = cand.get("business_type") or "commercial"
+
                     if c_dom and audit_res:
                         if audit_res.get("mobile_overflow") or audit_res.get("mobile_responsive") is False:
                             detected_weaknesses.append("Mobile layout break & horizontal scrolling issue")
-                        if audit_res.get("has_online_booking") is False:
+                        if audit_res.get("has_online_booking") is False and is_appointment_niche(b_type, c_name):
                             detected_weaknesses.append("Missing automated online booking & appointment system")
                         if audit_res.get("has_whatsapp") is False:
                             detected_weaknesses.append("Missing instant click-to-WhatsApp conversion channel")
@@ -221,11 +223,10 @@ class AutopilotRunner:
                     if detected_weaknesses:
                         primary_gap = " • ".join(detected_weaknesses[:3])
                     elif not c_dom:
-                        primary_gap = "Missing official corporate website — operates exclusively via map directory listing without online booking"
+                        primary_gap = "Missing official corporate website — operates exclusively via map directory listing"
                     else:
                         primary_gap = "Solvable local search ranking weakness & mobile conversion gap"
 
-                    b_type = cand.get("business_type") or "commercial"
                     biz = Business(
                         canonical_name=c_name,
                         domain=c_dom if c_dom else None,
@@ -266,15 +267,6 @@ class AutopilotRunner:
                         email_status = "NOT_FOUND"
                         verify_note = "No public email address found"
 
-                    calc_score = 70.0
-                    if has_email:
-                        calc_score += 10.0
-                    if c_phone:
-                        calc_score += 5.0
-                    if detected_weaknesses:
-                        calc_score += 10.0
-                    final_lead_score = min(98.0, calc_score)
-
                     gate_eval = FitGateEngine.evaluate_candidate(
                         business_name=c_name,
                         domain=c_dom,
@@ -300,9 +292,19 @@ class AutopilotRunner:
                         outreach_status = "FILTERED_HEALTHY"
                         lead_tier = "Rejected"
                         is_qualified = False
-                    else:
-                        lead_tier = "Strong Potential" if has_email else "Review Needed"
+                        final_lead_score = 5.0
+                    elif fit_tier == "HOT" and has_email:
+                        lead_tier = "Strong Potential"
                         is_qualified = True
+                        final_lead_score = gate_eval["fit_score"]
+                    elif fit_tier in ("HOT", "WARM"):
+                        lead_tier = "Review Needed"
+                        is_qualified = True
+                        final_lead_score = gate_eval["fit_score"]
+                    else:
+                        lead_tier = "Rejected"
+                        is_qualified = False
+                        final_lead_score = gate_eval["fit_score"]
 
                     lead = Lead(
                         business_id=biz.id,
@@ -314,6 +316,10 @@ class AutopilotRunner:
                             "source": "openclaw_deep_intelligence",
                             "sub_city": target_city_clean,
                             "audited_domain": c_dom,
+                            "verified_gaps": gate_eval.get("verified_gaps", []),
+                            "inferred_opportunities": gate_eval.get("inferred_opportunities", []),
+                            "recommended_services": gate_eval.get("recommended_services", []),
+                            "matched_service_url": gate_eval.get("matched_service_url", ""),
                             "audit_summary": {
                                 "mobile_responsive": audit_res.get("mobile_responsive"),
                                 "mobile_overflow": audit_res.get("mobile_overflow"),

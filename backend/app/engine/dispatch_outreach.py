@@ -72,6 +72,9 @@ async def dispatch_pending_outreach(force_live: bool = False):
                     "website": getattr(biz, "domain", ""),
                     "industry": getattr(biz, "business_type", ""),
                     "primary_gap": lead.primary_gap_summary,
+                    "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
+                    "what_they_need": getattr(lead, "what_they_need", None) or "Modern Lead Funnel & CRM",
+                    "matched_service": getattr(lead, "matched_service", None) or "Custom Digital Solution",
                     "personas": active_personas,
                     "custom_template": active_tpl
                 }
