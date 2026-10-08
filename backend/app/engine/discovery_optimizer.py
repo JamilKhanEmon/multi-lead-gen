@@ -76,11 +76,17 @@ class DiscoveryOptimizer:
         sub_city: str = "",
     ) -> Dict[str, Any]:
         ind_lower = industry.lower().strip()
-        loc_parts = [p for p in [sub_city, city, country] if p]
+        loc_parts = []
+        for p in [sub_city, city, country]:
+            p_clean = p.strip()
+            if p_clean and not any(p_clean.lower() == existing.lower() for existing in loc_parts):
+                loc_parts.append(p_clean)
         loc_str = ", ".join(loc_parts) if loc_parts else (location.strip() or f"{city} {country}".strip() or "local")
 
-        city_target = f"{city} {country}".strip() or loc_str
-        sub_target = f"{sub_city} {city}".strip() if sub_city else loc_str
+        city_target = f"{city} {country}".strip() if city.lower() != country.lower() else city.strip()
+        if not city_target:
+            city_target = loc_str
+        sub_target = f"{sub_city} {city}".strip() if (sub_city and sub_city.lower() != city.lower()) else (sub_city or city_target)
 
         queries = [
             f"{industry} {sub_target} official website",

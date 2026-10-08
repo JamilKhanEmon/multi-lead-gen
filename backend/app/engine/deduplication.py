@@ -35,6 +35,7 @@ GENERIC_PLATFORM_DOMAINS = {
     # Real Estate & Classified Listing Portals (Aggregators, not direct developers)
     "bproperty.com", "bikroy.com", "bdstall.com", "daraz.com.bd", "daraz.com", "chaldal.com",
     "zillow.com", "realtor.com", "redfin.com", "trulia.com", "magicbricks.com", "99acres.com", "housing.com",
+    "addressbazar.com", "infoisinfo.com.bd", "infoisinfo.com", "bdtradeinfo.com", "bd-directory.com", "yellowpages.com.bd", "bangladeshyellowpages.com",
     # Media & Article Hubs
     "medium.com", "quora.com", "forbes.com", "bloomberg.com", "businessinsider.com", "techcrunch.com",
     "prothomalo.com", "thedailystar.net", "dhakatribune.com", "bdnews24.com"

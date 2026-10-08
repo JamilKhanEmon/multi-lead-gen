@@ -807,11 +807,18 @@ async def purge_database_data(
 
     target = req.target.lower().strip()
 
-    if target == "rejected_leads":
-        stmt = delete(Lead).where(Lead.tier == "Rejected")
+    if target in ("rejected_leads", "no_email_leads"):
+        from sqlalchemy import or_
+        stmt = delete(Lead).where(
+            or_(
+                Lead.tier == "Rejected",
+                Lead.outreach_status == "NO_EMAIL",
+                Lead.email_status == "NOT_FOUND"
+            )
+        )
         res = await db.execute(stmt)
         await db.commit()
-        return {"status": "SUCCESS", "message": f"Purged {res.rowcount} rejected leads."}
+        return {"status": "SUCCESS", "message": f"Purged {res.rowcount} rejected & no-email leads."}
 
     elif target == "search_runs":
         await db.execute(delete(ResearchJob))
