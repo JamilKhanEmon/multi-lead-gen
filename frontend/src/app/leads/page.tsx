@@ -227,21 +227,17 @@ export default function LeadsPipelinePage() {
   };
 
   const counts = useMemo(() => {
-    const valid = leads.filter((l) => Boolean(l.email && l.email.trim() && l.tier !== "Rejected"));
-    const total = valid.length;
-    const reviewNeeded = valid.filter(isNeedsReview).length;
-    const readyForMail = valid.filter(isReadyForMail).length;
-    const sentMail = valid.filter(isSentMail).length;
-    const hotDeals = valid.filter(isHotDeal).length;
-    const noEmail = 0;
+    const total = leads.length;
+    const reviewNeeded = leads.filter(isNeedsReview).length;
+    const readyForMail = leads.filter(isReadyForMail).length;
+    const sentMail = leads.filter(isSentMail).length;
+    const hotDeals = leads.filter(isHotDeal).length;
+    const noEmail = leads.filter(isNoEmailLead).length;
     return { total, reviewNeeded, readyForMail, sentMail, hotDeals, noEmail };
   }, [leads]);
 
   const filtered = useMemo(() => {
     return leads.filter((lead) => {
-      if (!lead.email || !lead.email.trim() || lead.tier === "Rejected") {
-        return false;
-      }
       const bizName = (lead.business_name || "").toLowerCase().trim();
       if (GENERIC_PLATFORMS.some((p) => bizName.includes(p)) || bizName === "facebook" || bizName === "instagram") {
         return false;
@@ -466,13 +462,13 @@ export default function LeadsPipelinePage() {
               <span className="font-mono text-sky-400 font-bold bg-sky-500/10 border border-sky-500/30 px-2 py-0.5 rounded-full">
                 {activeRunningRun.discovered_count > 0
                   ? `${Math.min(
-                      99,
-                      Math.round(
-                        ((activeRunningRun.qualified_count + activeRunningRun.rejected_count) /
-                          activeRunningRun.discovered_count) *
-                          100
-                      )
-                    )}% Completed`
+                    99,
+                    Math.round(
+                      ((activeRunningRun.qualified_count + activeRunningRun.rejected_count) /
+                        activeRunningRun.discovered_count) *
+                      100
+                    )
+                  )}% Completed`
                   : "Discovering Entities..."}
               </span>
               <button
@@ -495,18 +491,17 @@ export default function LeadsPipelinePage() {
             <div
               className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full transition-all duration-500 shadow-sm shadow-sky-500/50"
               style={{
-                width: `${
-                  activeRunningRun.discovered_count > 0
+                width: `${activeRunningRun.discovered_count > 0
                     ? Math.min(
-                        99,
-                        Math.round(
-                          ((activeRunningRun.qualified_count + activeRunningRun.rejected_count) /
-                            activeRunningRun.discovered_count) *
-                            100
-                        )
+                      99,
+                      Math.round(
+                        ((activeRunningRun.qualified_count + activeRunningRun.rejected_count) /
+                          activeRunningRun.discovered_count) *
+                        100
                       )
+                    )
                     : 20
-                }%`,
+                  }%`,
               }}
             />
           </div>
@@ -565,11 +560,10 @@ export default function LeadsPipelinePage() {
         <button
           type="button"
           onClick={() => setPipelineStage("ALL")}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer ${
-            pipelineStage === "ALL"
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer ${pipelineStage === "ALL"
               ? "bg-amber-500/10 border-amber-500/40 shadow-lg ring-1 ring-amber-500/30"
               : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
-          }`}
+            }`}
         >
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span>1. All Leads</span>
@@ -582,11 +576,10 @@ export default function LeadsPipelinePage() {
         <button
           type="button"
           onClick={() => setPipelineStage("REVIEW")}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer ${
-            pipelineStage === "REVIEW"
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer ${pipelineStage === "REVIEW"
               ? "bg-amber-500/15 border-amber-500/50 shadow-lg ring-1 ring-amber-500/30"
               : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
-          }`}
+            }`}
         >
           <div className="flex items-center justify-between text-xs text-amber-300">
             <span>2. Needs Review</span>
@@ -599,11 +592,10 @@ export default function LeadsPipelinePage() {
         <button
           type="button"
           onClick={() => setPipelineStage("READY")}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer ${
-            pipelineStage === "READY"
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer ${pipelineStage === "READY"
               ? "bg-sky-500/10 border-sky-500/40 shadow-lg ring-1 ring-sky-500/30"
               : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
-          }`}
+            }`}
         >
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span>3. Ready for Mail</span>
@@ -616,11 +608,10 @@ export default function LeadsPipelinePage() {
         <button
           type="button"
           onClick={() => setPipelineStage("SENT")}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer ${
-            pipelineStage === "SENT"
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer ${pipelineStage === "SENT"
               ? "bg-indigo-500/10 border-indigo-500/40 shadow-lg ring-1 ring-indigo-500/30"
               : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
-          }`}
+            }`}
         >
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span>4. Sent & Followup</span>
@@ -633,11 +624,10 @@ export default function LeadsPipelinePage() {
         <button
           type="button"
           onClick={() => setPipelineStage("HOT_DEALS")}
-          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer ${
-            pipelineStage === "HOT_DEALS"
+          className={`p-3.5 rounded-2xl border text-left transition cursor-pointer ${pipelineStage === "HOT_DEALS"
               ? "bg-rose-500/10 border-rose-500/40 shadow-lg ring-1 ring-rose-500/30"
               : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
-          }`}
+            }`}
         >
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span>5. Hot Deals CRM</span>
@@ -654,61 +644,55 @@ export default function LeadsPipelinePage() {
           <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-950/80 border border-slate-800 overflow-x-auto">
             <button
               onClick={() => setPipelineStage("ALL")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-                pipelineStage === "ALL"
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer ${pipelineStage === "ALL"
                   ? "bg-slate-800 text-white shadow-sm"
                   : "text-slate-400 hover:text-slate-200"
-              }`}
+                }`}
             >
               All Discovered ({counts.total})
             </button>
             <button
               onClick={() => setPipelineStage("REVIEW")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
-                pipelineStage === "REVIEW"
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${pipelineStage === "REVIEW"
                   ? "bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold"
                   : "text-slate-400 hover:text-slate-200"
-              }`}
+                }`}
             >
               <ShieldCheck className="w-3.5 h-3.5 text-amber-400" /> Human Review Queue ({counts.reviewNeeded})
             </button>
             <button
               onClick={() => setPipelineStage("READY")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
-                pipelineStage === "READY"
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${pipelineStage === "READY"
                   ? "bg-sky-500/20 text-sky-300 border border-sky-500/30 font-bold"
                   : "text-slate-400 hover:text-slate-200"
-              }`}
+                }`}
             >
               <Zap className="w-3.5 h-3.5 text-sky-400 fill-sky-400" /> Ready for Mail ({counts.readyForMail})
             </button>
             <button
               onClick={() => setPipelineStage("SENT")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
-                pipelineStage === "SENT"
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${pipelineStage === "SENT"
                   ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold"
                   : "text-slate-400 hover:text-slate-200"
-              }`}
+                }`}
             >
               <Send className="w-3.5 h-3.5 text-indigo-400" /> Sent Mail Tracker ({counts.sentMail})
             </button>
             <button
               onClick={() => setPipelineStage("HOT_DEALS")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
-                pipelineStage === "HOT_DEALS"
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${pipelineStage === "HOT_DEALS"
                   ? "bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold"
                   : "text-slate-400 hover:text-slate-200"
-              }`}
+                }`}
             >
               <Flame className="w-3.5 h-3.5 text-rose-400 fill-rose-400" /> Hot Deals CRM ({counts.hotDeals})
             </button>
             <button
               onClick={() => setPipelineStage("NO_EMAIL")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
-                pipelineStage === "NO_EMAIL"
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${pipelineStage === "NO_EMAIL"
                   ? "bg-slate-800 text-white shadow-sm font-bold"
                   : "text-slate-400 hover:text-slate-200"
-              }`}
+                }`}
             >
               <Phone className="w-3.5 h-3.5 text-slate-400" /> Phone Only ({counts.noEmail})
             </button>
@@ -762,9 +746,8 @@ export default function LeadsPipelinePage() {
                 <button
                   key={t}
                   onClick={() => setActiveTier(t)}
-                  className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                    activeTier === t ? "bg-slate-800 text-white font-medium" : "text-slate-400 hover:text-slate-200"
-                  }`}
+                  className={`px-2 py-0.5 rounded transition cursor-pointer ${activeTier === t ? "bg-slate-800 text-white font-medium" : "text-slate-400 hover:text-slate-200"
+                    }`}
                 >
                   {t === "ALL" ? "All Tiers" : t}
                 </button>
@@ -782,15 +765,14 @@ export default function LeadsPipelinePage() {
                 <button
                   key={fg.id}
                   onClick={() => setFitTierFilter(fg.id)}
-                  className={`px-2 py-0.5 rounded transition cursor-pointer font-medium ${
-                    fitTierFilter === fg.id
+                  className={`px-2 py-0.5 rounded transition cursor-pointer font-medium ${fitTierFilter === fg.id
                       ? fg.id === "HOT"
                         ? "bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30"
                         : fg.id === "WARM"
-                        ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30"
-                        : "bg-slate-800 text-white font-bold"
+                          ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30"
+                          : "bg-slate-800 text-white font-bold"
                       : "text-slate-400 hover:text-slate-200"
-                  }`}
+                    }`}
                 >
                   {fg.label}
                 </button>
@@ -800,25 +782,22 @@ export default function LeadsPipelinePage() {
             <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px]">
               <button
                 onClick={() => setWebsiteFilter("ALL")}
-                className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                  websiteFilter === "ALL" ? "bg-slate-800 text-white font-medium" : "text-slate-400 hover:text-slate-200"
-                }`}
+                className={`px-2 py-0.5 rounded transition cursor-pointer ${websiteFilter === "ALL" ? "bg-slate-800 text-white font-medium" : "text-slate-400 hover:text-slate-200"
+                  }`}
               >
                 All Sites
               </button>
               <button
                 onClick={() => setWebsiteFilter("WITH_WEBSITE")}
-                className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                  websiteFilter === "WITH_WEBSITE" ? "bg-emerald-500/20 text-emerald-300 font-medium" : "text-slate-400 hover:text-slate-200"
-                }`}
+                className={`px-2 py-0.5 rounded transition cursor-pointer ${websiteFilter === "WITH_WEBSITE" ? "bg-emerald-500/20 text-emerald-300 font-medium" : "text-slate-400 hover:text-slate-200"
+                  }`}
               >
                 With Website
               </button>
               <button
                 onClick={() => setWebsiteFilter("NO_WEBSITE")}
-                className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                  websiteFilter === "NO_WEBSITE" ? "bg-rose-500/20 text-rose-300 font-medium" : "text-slate-400 hover:text-slate-200"
-                }`}
+                className={`px-2 py-0.5 rounded transition cursor-pointer ${websiteFilter === "NO_WEBSITE" ? "bg-rose-500/20 text-rose-300 font-medium" : "text-slate-400 hover:text-slate-200"
+                  }`}
               >
                 No Website
               </button>
@@ -1130,27 +1109,25 @@ export default function LeadsPipelinePage() {
                           </div>
                           <div className="flex items-center gap-1 flex-wrap">
                             <span
-                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                                lead.tier === "Strong Potential"
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${lead.tier === "Strong Potential"
                                   ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                                   : lead.tier === "Review Needed"
-                                  ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                                  : "bg-rose-500/10 text-rose-400 border-rose-500/30"
-                              }`}
+                                    ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                                    : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                                }`}
                             >
                               {lead.tier}
                             </span>
 
                             <span
-                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
-                                lead.fit_tier === "HOT"
+                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${lead.fit_tier === "HOT"
                                   ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
                                   : lead.fit_tier === "WARM"
-                                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                                  : lead.fit_tier === "DROPPED"
-                                  ? "bg-slate-800 text-slate-400 border-slate-700"
-                                  : "bg-sky-500/20 text-sky-300 border-sky-500/40"
-                              }`}
+                                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                    : lead.fit_tier === "DROPPED"
+                                      ? "bg-slate-800 text-slate-400 border-slate-700"
+                                      : "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                                }`}
                             >
                               {lead.fit_tier === "HOT" ? "🔥 HOT" : lead.fit_tier === "WARM" ? "⚡ WARM" : lead.fit_tier === "DROPPED" ? "⛔ DROPPED" : `${lead.fit_tier || "HOT"}`}
                             </span>
