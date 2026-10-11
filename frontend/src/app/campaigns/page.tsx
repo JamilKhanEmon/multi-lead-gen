@@ -490,7 +490,7 @@ export default function MetaCampaignsPage() {
       setActiveCampaign((prev) => (prev ? { ...prev, status: res.status } : null));
       await loadCampaigns();
     } catch (err: any) {
-      alert("Failed to toggle status: " + err.message);
+      setFeedbackMsg({ type: "error", text: "Failed to toggle status: " + err.message });
     }
   };
 
