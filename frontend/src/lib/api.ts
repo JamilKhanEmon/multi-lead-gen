@@ -2056,3 +2056,45 @@ export async function simulateChatMessage(payload: {
   if (!res.ok) throw new Error("Simulation failed");
   return res.json();
 }
+
+export interface ReplyEntry {
+  id: string;
+  lead_id: string | null;
+  company_name: string;
+  contact_person: string | null;
+  client_email: string;
+  campaign_subject: string;
+  reply_text: string;
+  reply_snippet: string;
+  ai_label: "HOT_LEAD" | "NEUTRAL" | "REJECTED" | string;
+  deal_status: string | null;
+  outreach_status: string | null;
+  replied_at: string | null;
+  step: number;
+}
+
+export async function fetchReplies(filter?: "hot" | "neutral" | "rejected"): Promise<ReplyEntry[]> {
+  try {
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const url = filter
+      ? `${API_BASE}/autopilot/replies?filter=${filter}`
+      : `${API_BASE}/autopilot/replies`;
+    const res = await fetch(url, { cache: "no-store", headers });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch (err) {
+    console.warn("fetchReplies error:", err);
+    return [];
+  }
+}
+
+export async function triggerInboxSync(): Promise<{ status: string; processed_count: number; message: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/autopilot/inbox/sync`, { method: "POST", headers });
+  if (!res.ok) throw new Error("Inbox sync failed");
+  return res.json();
+}

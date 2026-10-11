@@ -437,12 +437,12 @@ async def simulate_incoming_reply(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    sentiment, explanation = OutreachEngine.classify_reply_sentiment(data.reply_text)
+    label, explanation = await OutreachEngine.classify_reply_sentiment(data.reply_text)
 
-    if sentiment == "POSITIVE":
+    if label == "HOT_LEAD":
         lead.deal_status = "HOT_LEAD"
         lead.outreach_status = "REPLIED_HOT"
-    elif sentiment == "NEGATIVE":
+    elif label == "REJECTED":
         lead.deal_status = "CLOSED_LOST"
         lead.outreach_status = "DISCARDED"
     else:
@@ -454,9 +454,9 @@ async def simulate_incoming_reply(
         recipient_email=lead.business.email or "client@example.com",
         subject=f"Re: Outreach Response - {lead.business.canonical_name}",
         body_snippet=data.reply_text[:300],
-        status=f"REPLIED_{sentiment}",
+        status=f"REPLIED_{label}",
         reply_content=data.reply_text,
-        reply_sentiment=sentiment,
+        reply_sentiment=label,
         sent_at=datetime.now(timezone.utc)
     )
     db.add(log)
@@ -464,7 +464,7 @@ async def simulate_incoming_reply(
 
     return {
         "lead_id": str(lead.id),
-        "sentiment": sentiment,
+        "label": label,
         "explanation": explanation,
         "new_deal_status": lead.deal_status,
         "new_outreach_status": lead.outreach_status
@@ -491,3 +491,63 @@ async def trigger_inbox_sync(
         "processed_count": count,
         "message": f"Inbox scan completed across {len(all_creds)} connected inbox(es). Processed {count} new client reply(ies)."
     }
+
+
+@router.get("/replies")
+async def get_replies_intelligence(
+    filter: Optional[str] = None,  # hot | neutral | rejected
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns all classified email replies from the EmailOutreachLog table.
+    Each entry includes lead info, campaign context, reply text, and AI verdict.
+    filter: 'hot' | 'neutral' | 'rejected' | None (returns all)
+    """
+    check_autopilot_permission(current_user, "can_access_autopilot")
+
+    sentiment_map = {
+        "hot": "HOT_LEAD",
+        "neutral": "NEUTRAL",
+        "rejected": "REJECTED",
+    }
+
+    stmt = (
+        select(EmailOutreachLog)
+        .options(
+            selectinload(EmailOutreachLog.lead).selectinload(Lead.business)
+        )
+        .where(EmailOutreachLog.reply_content.is_not(None))
+        .order_by(desc(EmailOutreachLog.sent_at))
+        .limit(limit)
+    )
+
+    if filter and filter.lower() in sentiment_map:
+        target_sentiment = sentiment_map[filter.lower()]
+        stmt = stmt.where(EmailOutreachLog.reply_sentiment == target_sentiment)
+
+    res = await db.execute(stmt)
+    logs = res.scalars().all()
+
+    results = []
+    for log in logs:
+        lead = log.lead
+        biz = lead.business if lead else None
+        results.append({
+            "id": str(log.id),
+            "lead_id": str(log.lead_id) if log.lead_id else None,
+            "company_name": biz.canonical_name if biz else "Unknown",
+            "contact_person": biz.contact_person if biz else None,
+            "client_email": log.recipient_email,
+            "campaign_subject": log.subject,
+            "reply_text": log.reply_content,
+            "reply_snippet": (log.reply_content or "")[:200],
+            "ai_label": log.reply_sentiment,
+            "deal_status": lead.deal_status if lead else None,
+            "outreach_status": lead.outreach_status if lead else None,
+            "replied_at": log.sent_at.isoformat() if log.sent_at else None,
+            "step": log.step,
+        })
+
+    return results

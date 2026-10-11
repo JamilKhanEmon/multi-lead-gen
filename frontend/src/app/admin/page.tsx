@@ -2125,6 +2125,16 @@ export default function AdminPortalPage() {
                   <span>Autonomous Outreach (Super Admin Only)</span>
                 </div>
               )}
+              {hasPermission(currentUser, "can_access_autopilot", false) && (
+                <Link
+                  href="/replies"
+                  className="w-full py-2 px-4 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 hover:border-orange-400/50 text-orange-300 font-semibold text-xs flex items-center justify-center gap-2 transition"
+                >
+                  <span>📬</span>
+                  <span>Reply Intelligence</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              )}
             </div>
           </div>
 

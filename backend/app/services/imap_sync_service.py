@@ -231,81 +231,83 @@ class IMAPInboxSyncService:
                 sender_email = msg["from_email"].lower()
                 reply_text = msg["body"]
 
-            # Match with Lead by email address
-            stmt = (
-                select(Lead)
-                .options(selectinload(Lead.business))
-                .join(Lead.business)
-                .where(
-                    or_(
-                        Lead.business.has(email=sender_email),
-                        Lead.business.has(email=sender_email.strip())
+                # ── Match reply with a Lead by sender email ────────────────────
+                stmt = (
+                    select(Lead)
+                    .options(selectinload(Lead.business))
+                    .join(Lead.business)
+                    .where(
+                        or_(
+                            Lead.business.has(email=sender_email),
+                            Lead.business.has(email=sender_email.strip())
+                        )
                     )
                 )
-            )
-            res = await session.execute(stmt)
-            matched_lead = res.scalar_one_or_none()
+                res = await session.execute(stmt)
+                matched_lead = res.scalar_one_or_none()
 
-            # Also check EmailOutreachLog if not matched directly
-            if not matched_lead:
-                log_stmt = (
-                    select(EmailOutreachLog)
-                    .options(selectinload(EmailOutreachLog.lead).selectinload(Lead.business))
-                    .where(EmailOutreachLog.recipient_email.ilike(sender_email))
-                    .order_by(EmailOutreachLog.created_at.desc())
+                # Also check EmailOutreachLog if not matched directly
+                if not matched_lead:
+                    log_stmt = (
+                        select(EmailOutreachLog)
+                        .options(selectinload(EmailOutreachLog.lead).selectinload(Lead.business))
+                        .where(EmailOutreachLog.recipient_email.ilike(sender_email))
+                        .order_by(EmailOutreachLog.created_at.desc())
+                    )
+                    log_res = await session.execute(log_stmt)
+                    matched_log = log_res.scalars().first()
+                    if matched_log and matched_log.lead:
+                        matched_lead = matched_log.lead
+
+                if not matched_lead:
+                    logger.debug(f"[IMAP SYNC] No lead matched for sender: {sender_email}")
+                    continue
+
+                # Prevent duplicate processing of the same exact reply
+                if matched_lead.outreach_notes and reply_text[:60] in matched_lead.outreach_notes:
+                    continue
+
+                # ── OpenClaw LLM Classification ────────────────────────────────
+                label, explanation = await OutreachEngine.classify_reply_sentiment(reply_text)
+
+                # ── Update Lead Status based on LLM verdict ───────────────────
+                if label == "HOT_LEAD":
+                    matched_lead.deal_status = "HOT_LEAD"
+                    matched_lead.outreach_status = "REPLIED_HOT"
+                elif label == "REJECTED":
+                    matched_lead.deal_status = "CLOSED_LOST"
+                    matched_lead.outreach_status = "DISCARDED"
+                else:  # NEUTRAL
+                    matched_lead.outreach_status = "REPLIED_NEUTRAL"
+
+                # Save reply snapshot to outreach notes
+                now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                note_entry = (
+                    f"\n[{now_iso}] INCOMING EMAIL REPLY ({label}):\n"
+                    f"Subject: {msg['subject']}\n"
+                    f"{reply_text[:500]}\n"
+                    f"AI Classification: {explanation}\n"
                 )
-                log_res = await session.execute(log_stmt)
-                matched_log = log_res.scalars().first()
-                if matched_log and matched_log.lead:
-                    matched_lead = matched_log.lead
+                matched_lead.outreach_notes = (matched_lead.outreach_notes or "") + note_entry
 
-            if not matched_lead:
-                continue
-
-            sentiment, explanation = OutreachEngine.classify_reply_sentiment(reply_text)
-
-            # Prevent duplicate processing of the same exact reply
-            if matched_lead.outreach_notes and reply_text[:60] in matched_lead.outreach_notes:
-                continue
-
-            # Update Lead Status
-            if sentiment == "POSITIVE":
-                matched_lead.deal_status = "HOT_LEAD"
-                matched_lead.outreach_status = "REPLIED_HOT"
-            elif sentiment == "NEGATIVE":
-                matched_lead.deal_status = "CLOSED_LOST"
-                matched_lead.outreach_status = "DISCARDED"
-            else:
-                matched_lead.outreach_status = "REPLIED_NEUTRAL"
-
-            # Save reply snapshot to outreach notes
-            now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-            note_entry = (
-                f"\n[{now_iso}] INCOMING EMAIL REPLY ({sentiment}):\n"
-                f"Subject: {msg['subject']}\n"
-                f"{reply_text[:500]}\n"
-                f"Classification: {explanation}\n"
-            )
-            matched_lead.outreach_notes = (matched_lead.outreach_notes or "") + note_entry
-
-            # Log into EmailOutreachLog
-            reply_log = EmailOutreachLog(
-                lead_id=matched_lead.id,
-                step=matched_lead.followup_step or 1,
-                recipient_email=sender_email,
-                subject=f"Re: {msg['subject']}",
-                body_snippet=reply_text[:300],
-                status="REPLIED",
-                reply_content=reply_text,
-                reply_sentiment=sentiment,
-                sent_at=datetime.now(timezone.utc)
-            )
-            session.add(reply_log)
-            processed_count += 1
-            logger.info(
-                f"[IMAP INBOX SYNC] Matched reply from {sender_email} -> {matched_lead.business.canonical_name} "
-                f"[{sentiment}]. Promoted to: {matched_lead.deal_status}"
-            )
+                # Log into EmailOutreachLog
+                reply_log = EmailOutreachLog(
+                    lead_id=matched_lead.id,
+                    step=matched_lead.followup_step or 1,
+                    recipient_email=sender_email,
+                    subject=f"Re: {msg['subject']}",
+                    body_snippet=reply_text[:300],
+                    status="REPLIED",
+                    reply_content=reply_text,
+                    reply_sentiment=label,
+                    sent_at=datetime.now(timezone.utc)
+                )
+                session.add(reply_log)
+                processed_count += 1
+                logger.info(
+                    f"[IMAP INBOX SYNC] Matched reply from {sender_email} -> "
+                    f"{matched_lead.business.canonical_name} [{label}]: {explanation}"
+                )
 
         if processed_count > 0:
             await session.commit()
