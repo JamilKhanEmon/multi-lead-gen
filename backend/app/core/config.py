@@ -64,8 +64,6 @@ class Settings(BaseSettings):
         default=None,
         description="Optional override for OpenClaw active LLM model (defaults to active agent in OpenClaw)",
     )
-    OPENROUTER_API_KEY: Optional[str] = Field(default=None, description="OpenRouter API Key for Cloud LLM reasoning")
-    GEMINI_API_KEY: Optional[str] = Field(default=None, description="Google Gemini API Key for autonomous cloud LLM reasoning")
 
     WORKER_CONCURRENCY: int = Field(default=2, ge=1, le=4)
     RESEARCH_TIMEOUT_SECONDS: int = Field(default=120, ge=30, le=600)

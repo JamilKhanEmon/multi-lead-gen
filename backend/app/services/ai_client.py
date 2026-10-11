@@ -12,12 +12,11 @@ class AIClientError(Exception):
 
 class AIClient:
     """
-    Cloud AI & Deterministic Reasoning Client.
-    All local LLM engines and local models have been completely removed.
-    Inference routes to:
-      1. OpenClaw Cloud AI Gateway (if OPENCLAW_GATEWAY_URL is configured)
-      2. Google Gemini API (if GOOGLE_API_KEY is configured)
-      3. Deterministic Semantic Reasoning Engine (Instant, zero external/local dependency)
+    OpenClaw Autonomous AI & Deterministic Reasoning Client.
+    All external third-party API-key models have been completely removed.
+    Inference routes strictly to:
+      1. OpenClaw Autonomous AI Gateway (WebSocket Protocol 4 & HTTP REST)
+      2. Deterministic Semantic Reasoning Engine (Instant fallback, zero external dependencies)
     """
 
     def __init__(
@@ -102,62 +101,8 @@ class AIClient:
             except Exception as gw_err:
                 logger.debug(f"OpenClaw HTTP endpoint notice ({base_url}): {gw_err}")
 
-        # 3. OpenRouter Dynamic Inference (Configured via OPENCLAW_MODEL or OPENROUTER_MODEL)
-        openrouter_key = os.getenv("OPENROUTER_API_KEY")
-        if openrouter_key:
-            model_to_use = os.getenv("OPENCLAW_MODEL") or os.getenv("OPENROUTER_MODEL") or "auto"
-            try:
-                async with httpx.AsyncClient(timeout=20.0) as or_client:
-                    or_resp = await or_client.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {openrouter_key}",
-                            "Content-Type": "application/json",
-                            "HTTP-Referer": "https://leadgen.local",
-                            "X-Title": "LeadGen AI",
-                        },
-                        json={
-                            "model": model_to_use,
-                            "messages": messages,
-                            "temperature": 0.1,
-                            "response_format": {"type": "json_object"},
-                        }
-                    )
-                    if or_resp.status_code == 200:
-                        content = or_resp.json().get("choices", [{}])[0].get("message", {}).get("content", "{}")
-                        match = re.search(r"\{.*\}", content, re.DOTALL)
-                        if match:
-                            parsed = json.loads(match.group(0))
-                            parsed["_source"] = "OPENCLAW"
-                            return parsed
-            except Exception as or_err:
-                logger.debug(f"OpenRouter inference notice: {or_err}")
-
-        # 4. Google Gemini Cloud API (if configured)
-        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if gemini_key:
-            try:
-                g_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
-                async with httpx.AsyncClient(timeout=15.0) as g_client:
-                    g_resp = await g_client.post(
-                        g_url,
-                        json={
-                            "contents": [{"parts": [{"text": f"{system_prompt}\n\nTask:\n{user_prompt}\n\nReturn JSON only."}]}],
-                            "generationConfig": {"response_mime_type": "application/json"}
-                        }
-                    )
-                    if g_resp.status_code == 200:
-                        g_text = g_resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "{}")
-                        match = re.search(r"\{.*\}", g_text, re.DOTALL)
-                        if match:
-                            parsed = json.loads(match.group(0))
-                            parsed["_source"] = "OPENCLAW"
-                            return parsed
-            except Exception as g_err:
-                logger.debug(f"Gemini API inference notice: {g_err}")
-
-        # 5. Deterministic Semantic Reasoning Engine Fallback (Instant, Zero External Dependency)
-        logger.info("Using deterministic semantic reasoning engine.")
+        # 3. Deterministic Semantic Reasoning Engine Fallback (Instant, Zero External Dependency)
+        logger.info("Using deterministic semantic reasoning engine fallback.")
         mock_fallback = MockAIClient()
         res = await mock_fallback.analyze(system_prompt, user_prompt, image_paths, response_schema)
         if isinstance(res, dict):
