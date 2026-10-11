@@ -56,7 +56,63 @@ class AIClient:
         messages.append(user_message)
         t0 = time.time()
 
-        # 1. OpenClaw Cloud Gateway
+        # 1. OpenClaw Protocol 4 WebSocket Gateway (Local or Remote Daemon)
+        ws_res = await self._query_openclaw_ws(system_prompt, user_prompt)
+        if ws_res:
+            elapsed_ms = round((time.time() - t0) * 1000, 2)
+            logger.info(f"OpenClaw Protocol 4 (GLM 5.3 Flash) completed in {elapsed_ms}ms")
+            return ws_res
+
+        # 2. OpenRouter Direct Inference (Powering OpenClaw's GLM 5.3 Flash)
+        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        if openrouter_key:
+            try:
+                async with httpx.AsyncClient(timeout=20.0) as or_client:
+                    or_resp = await or_client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {openrouter_key}",
+                            "Content-Type": "application/json",
+                            "HTTP-Referer": "https://leadgen.local",
+                            "X-Title": "LeadGen AI",
+                        },
+                        json={
+                            "model": "z-ai/glm-5.3-flash",
+                            "messages": messages,
+                            "temperature": 0.1,
+                            "response_format": {"type": "json_object"},
+                        }
+                    )
+                    if or_resp.status_code == 200:
+                        content = or_resp.json().get("choices", [{}])[0].get("message", {}).get("content", "{}")
+                        match = re.search(r"\{.*\}", content, re.DOTALL)
+                        if match:
+                            return json.loads(match.group(0))
+            except Exception as or_err:
+                logger.debug(f"OpenRouter inference notice: {or_err}")
+
+        # 3. Google Gemini Cloud API (if configured)
+        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if gemini_key:
+            try:
+                g_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
+                async with httpx.AsyncClient(timeout=15.0) as g_client:
+                    g_resp = await g_client.post(
+                        g_url,
+                        json={
+                            "contents": [{"parts": [{"text": f"{system_prompt}\n\nTask:\n{user_prompt}\n\nReturn JSON only."}]}],
+                            "generationConfig": {"response_mime_type": "application/json"}
+                        }
+                    )
+                    if g_resp.status_code == 200:
+                        g_text = g_resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "{}")
+                        match = re.search(r"\{.*\}", g_text, re.DOTALL)
+                        if match:
+                            return json.loads(match.group(0))
+            except Exception as g_err:
+                logger.debug(f"Gemini API inference notice: {g_err}")
+
+        # 4. OpenClaw Cloud Gateway HTTP (Legacy fallback)
         if settings.OPENCLAW_GATEWAY_URL and not any(loc in settings.OPENCLAW_GATEWAY_URL for loc in ["127.0.0.1", "localhost"]):
             gw_base = settings.OPENCLAW_GATEWAY_URL.replace("ws://", "http://").replace("wss://", "https://").rstrip("/")
             gw_url = f"{gw_base}/v1/chat/completions"
@@ -77,29 +133,84 @@ class AIClient:
             }
             if not image_paths:
                 try:
-                    async with httpx.AsyncClient(timeout=25.0) as gw_client:
+                    async with httpx.AsyncClient(timeout=10.0) as gw_client:
                         gw_resp = await gw_client.post(gw_url, json=gw_payload, headers=gw_headers)
                         if gw_resp.status_code == 200:
-                            gw_data = gw_resp.json()
-                            content = gw_data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-                            elapsed_ms = round((time.time() - t0) * 1000, 2)
-                            logger.info(f"OpenClaw Cloud AI reasoning completed in {elapsed_ms}ms")
-                            try:
-                                return json.loads(content)
-                            except json.JSONDecodeError:
-                                import re
-                                clean_c = re.sub(r"^```(?:json)?\s*", "", content.strip())
-                                clean_c = re.sub(r"\s*```$", "", clean_c)
-                                return json.loads(clean_c)
-                        else:
-                            logger.warning(f"OpenClaw Cloud Gateway returned status {gw_resp.status_code}")
+                            content = gw_resp.json().get("choices", [{}])[0].get("message", {}).get("content", "{}")
+                            clean_c = re.sub(r"^```(?:json)?\s*", "", content.strip())
+                            clean_c = re.sub(r"\s*```$", "", clean_c)
+                            return json.loads(clean_c)
                 except Exception as gw_err:
-                    logger.debug(f"OpenClaw Cloud Gateway reasoning notice: {gw_err}")
+                    logger.debug(f"OpenClaw Cloud Gateway notice: {gw_err}")
 
-        # 2. Deterministic Semantic Reasoning Engine Fallback (Zero external model needed)
+        # 5. Deterministic Semantic Reasoning Engine Fallback (Instant, Zero External Dependency)
         logger.info("Using deterministic semantic reasoning engine.")
         mock_fallback = MockAIClient()
         return await mock_fallback.analyze(system_prompt, user_prompt, image_paths, response_schema)
+
+    async def _query_openclaw_ws(self, system_prompt: str, user_prompt: str) -> Optional[Dict[str, Any]]:
+        """
+        Connects directly to OpenClaw Protocol 4 WebSocket (e.g. ws://127.0.0.1:18789)
+        to run inference using the active agent (Z.ai GLM 5.3 Flash).
+        """
+        import uuid
+        import re
+        gw_url = settings.OPENCLAW_GATEWAY_URL or "ws://127.0.0.1:18789"
+        if not gw_url.startswith("ws://") and not gw_url.startswith("wss://"):
+            gw_url = "ws://" + gw_url.replace("http://", "").replace("https://", "")
+
+        token = settings.OPENCLAW_GATEWAY_TOKEN or ""
+
+        try:
+            import websockets
+            async with websockets.connect(gw_url, close_timeout=3.0) as ws:
+                # 1. Receive initial challenge
+                try:
+                    await asyncio.wait_for(ws.recv(), timeout=2.0)
+                except Exception:
+                    pass
+
+                # 2. Handshake Protocol 4
+                connect_req = {
+                    "type": "req",
+                    "id": str(uuid.uuid4()),
+                    "method": "connect",
+                    "params": {
+                        "minProtocol": 1,
+                        "maxProtocol": 4,
+                        "client": {"name": "leadgen-analyzer", "version": "1.0.0"},
+                        "role": "operator",
+                        "scopes": ["agent:run", "chat"],
+                        "auth": {"token": token}
+                    }
+                }
+                await ws.send(json.dumps(connect_req))
+                await asyncio.wait_for(ws.recv(), timeout=3.0)
+
+                # 3. Request Agent Run
+                combined = f"{system_prompt}\n\nInput to analyze:\n{user_prompt}\n\nFormat: Return JSON object with 'label' and 'reason'."
+                agent_req = {
+                    "type": "req",
+                    "id": str(uuid.uuid4()),
+                    "method": "agent.run",
+                    "params": {
+                        "agent": "main",
+                        "prompt": combined
+                    }
+                }
+                await ws.send(json.dumps(agent_req))
+
+                # 4. Receive message and parse JSON
+                for _ in range(5):
+                    raw = await asyncio.wait_for(ws.recv(), timeout=12.0)
+                    data = json.loads(raw)
+                    text = str(data.get("result", {}).get("content") or data.get("content") or data.get("result") or "")
+                    match = re.search(r"\{[^{}]*\"label\"[^{}]*\}", text, re.DOTALL)
+                    if match:
+                        return json.loads(match.group(0))
+        except Exception as err:
+            logger.debug(f"OpenClaw WebSocket Protocol 4 notice: {err}")
+            return None
 
 class MockAIClient:
 
