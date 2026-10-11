@@ -235,7 +235,7 @@ async def dispatch_outreach_queue(
                 step=1,
                 recipient_email=recipient,
                 subject=subject,
-                body_snippet=body[:300],
+                body_snippet=body,
                 status="SENT",
                 sent_at=datetime.now(timezone.utc)
             )
@@ -674,13 +674,12 @@ async def send_manual_reply(
     # Log the manual reply in EmailOutreachLog
     # Find lead by email for logging
     from sqlalchemy import select as sa_select
-    from app.models.autopilot import EmailOutreachLog as EOL
-    log = EOL(
+    log = EmailOutreachLog(
         lead_id=None,
         step=0,
         recipient_email=data.to_email,
         subject=data.subject,
-        body_snippet=data.body[:300],
+        body_snippet=data.body,
         status="MANUAL_REPLY_SENT",
         sent_at=datetime.now(timezone.utc)
     )
@@ -704,14 +703,19 @@ async def get_email_thread(
     """
     check_autopilot_permission(current_user, "can_access_autopilot")
 
+    clean_email = client_email.strip().lower()
+
     stmt = (
         select(EmailOutreachLog)
         .options(selectinload(EmailOutreachLog.lead).selectinload(Lead.business))
-        .where(EmailOutreachLog.recipient_email.ilike(client_email.strip()))
+        .where(EmailOutreachLog.recipient_email.ilike(clean_email))
         .order_by(EmailOutreachLog.sent_at.asc())
     )
     res = await db.execute(stmt)
     logs = res.scalars().all()
+
+    active_personas = None
+    active_tpl = None
 
     thread = []
     for log in logs:
@@ -731,12 +735,68 @@ async def get_email_thread(
             })
         else:
             # Email WE sent
+            body_text = log.body_snippet or ""
+
+            # If body was truncated to <= 320 chars, reconstruct the full rendered email
+            if len(body_text) <= 320:
+                try:
+                    lead_obj = log.lead
+                    if not lead_obj:
+                        from app.models.business import Business
+                        l_stmt = (
+                            select(Lead)
+                            .join(Business, Lead.business_id == Business.id)
+                            .options(selectinload(Lead.business))
+                            .where(Business.email.ilike(clean_email))
+                            .limit(1)
+                        )
+                        l_res = await db.execute(l_stmt)
+                        lead_obj = l_res.scalar_one_or_none()
+
+                    if lead_obj and lead_obj.business:
+                        biz = lead_obj.business
+                        if active_personas is None:
+                            from app.models.email_template import PersonaSignature, EmailTemplate
+                            p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
+                            p_res = await db.execute(p_stmt)
+                            active_personas = [
+                                {"name": p.name, "title": p.title, "company": p.company, "raw_content": p.render_signature()}
+                                for p in p_res.scalars().all()
+                            ]
+                            t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
+                            t_res = await db.execute(t_stmt)
+                            active_tpl = t_res.scalar_one_or_none()
+
+                        from app.engine.outreach_engine import OutreachEngine
+                        _, full_rendered = OutreachEngine.render_email(
+                            step=log.step or 1,
+                            lead_data={
+                                "company_name": biz.canonical_name,
+                                "contact_person": biz.contact_person or "Executive",
+                                "city": biz.address or "",
+                                "website": getattr(biz, "domain", ""),
+                                "industry": getattr(biz, "business_type", ""),
+                                "primary_gap": lead_obj.primary_gap_summary,
+                                "why_they_need_us": getattr(lead_obj, "why_they_need_us", None) or lead_obj.primary_gap_summary,
+                                "what_they_need": getattr(lead_obj, "what_they_need", None) or "Modern Lead Funnel & CRM",
+                                "matched_service": getattr(lead_obj, "matched_service", None) or "Custom Digital Solution",
+                                "personas": active_personas,
+                                "custom_template": active_tpl
+                            }
+                        )
+                        if full_rendered and len(full_rendered) > len(body_text):
+                            body_text = full_rendered
+                            log.body_snippet = full_rendered
+                            await db.commit()
+                except Exception as render_err:
+                    logger.warning(f"Failed reconstructing email body for {clean_email}: {render_err}")
+
             thread.append({
                 "direction": "outbound",
                 "to": log.recipient_email,
                 "subject": log.subject,
-                "body": log.body_snippet,
-                "snippet": log.body_snippet,
+                "body": body_text,
+                "snippet": body_text[:200],
                 "sent_at": log.sent_at.isoformat() if log.sent_at else None,
                 "status": log.status,
                 "step": log.step,

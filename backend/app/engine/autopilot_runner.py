@@ -438,7 +438,7 @@ class AutopilotRunner:
                                     step=1,
                                     recipient_email=resolved_email,
                                     subject=subject,
-                                    body_snippet=body[:300],
+                                    body_snippet=body,
                                     status="SENT",
                                     sent_at=datetime.now(timezone.utc)
                                 )
