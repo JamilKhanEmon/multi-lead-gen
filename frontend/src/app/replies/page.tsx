@@ -66,6 +66,18 @@ function ReplyCard({ reply, tab }: { reply: ReplyEntry; tab: TabType }) {
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.badge}`}>
             {reply.ai_label?.replace("_", " ")}
           </span>
+          {reply.analyzed_by && (
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border flex items-center gap-1 ${
+                reply.analyzed_by === "OPENCLAW"
+                  ? "bg-purple-500/15 text-purple-300 border-purple-500/30 shadow-sm shadow-purple-500/10"
+                  : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30 shadow-sm shadow-emerald-500/10"
+              }`}
+              title={reply.analyzed_by === "OPENCLAW" ? "Classified by OpenClaw AI Agent" : "Classified by Deterministic Rule Engine"}
+            >
+              {reply.analyzed_by === "OPENCLAW" ? "⚡ OpenClaw AI" : "🛡️ Rule Logic"}
+            </span>
+          )}
           <span className="text-xs text-slate-500">{timeAgo(reply.replied_at)}</span>
           <span className="text-slate-500 text-sm transition-transform duration-200 group-hover:text-slate-300" style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
         </div>
@@ -109,6 +121,12 @@ function ReplyCard({ reply, tab }: { reply: ReplyEntry; tab: TabType }) {
           <div className="bg-slate-800/40 rounded-lg p-2">
             <p className="text-xs text-slate-500">Outreach Status</p>
             <p className="text-xs text-slate-200 font-medium">{reply.outreach_status || "—"}</p>
+          </div>
+          <div className="bg-slate-800/40 rounded-lg p-2">
+            <p className="text-xs text-slate-500">Analysis Engine</p>
+            <p className="text-xs text-slate-200 font-medium">
+              {reply.analyzed_by === "OPENCLAW" ? "⚡ OpenClaw AI" : "🛡️ Deterministic Rule Logic"}
+            </p>
           </div>
           <div className="bg-slate-800/40 rounded-lg p-2">
             <p className="text-xs text-slate-500">Replied At</p>

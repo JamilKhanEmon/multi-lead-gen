@@ -2067,6 +2067,7 @@ export interface ReplyEntry {
   reply_text: string;
   reply_snippet: string;
   ai_label: "HOT_LEAD" | "NEUTRAL" | "REJECTED" | string;
+  analyzed_by?: "OPENCLAW" | "RULE_LOGIC" | string;
   deal_status: string | null;
   outreach_status: string | null;
   replied_at: string | null;
@@ -2173,6 +2174,7 @@ export interface ThreadMessage {
   snippet: string;
   sent_at: string | null;
   ai_label?: string;
+  analyzed_by?: "OPENCLAW" | "RULE_LOGIC" | string;
   status?: string;
   step: number;
   company_name?: string;

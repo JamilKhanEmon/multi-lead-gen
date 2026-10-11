@@ -9,6 +9,24 @@ from typing import Dict, Any, Optional, Tuple, List
 
 from app.core.logging import logger
 
+class ClassificationResult(tuple):
+    """
+    Tuple subclass (label, reason) that also exposes .source ('OPENCLAW' | 'RULE_LOGIC').
+    Maintains 100% backward compatibility with 2-element tuple unpacking:
+      label, reason = await OutreachEngine.classify_reply_sentiment(...)
+    while allowing callers to read res.source for dashboard display.
+    """
+    label: str
+    reason: str
+    source: str
+
+    def __new__(cls, label: str, reason: str, source: str = "OPENCLAW"):
+        instance = super().__new__(cls, (label, reason))
+        instance.label = label
+        instance.reason = reason
+        instance.source = source
+        return instance
+
 class OutreachEngine:
 
     INBOX_STATS = {}
@@ -487,54 +505,96 @@ class OutreachEngine:
         return await loop.run_in_executor(None, _send)
 
     @classmethod
-    async def classify_reply_sentiment(cls, reply_text: str) -> Tuple[str, str]:
+    async def classify_reply_sentiment(cls, reply_text: str) -> ClassificationResult:
         """
-        LLM-powered reply intent classifier via OpenClaw Cloud AI Gateway.
-        Returns (label, reason) where label is one of:
-          HOT_LEAD   — prospect is interested, wants to talk/know pricing/schedule
-          NEUTRAL    — non-committal, thinking, asking a generic question
-          REJECTED   — explicitly not interested, wants to unsubscribe / stop emails
+        Reply intent classifier with dual-engine intelligence:
+          1. Tries OpenClaw AI first (GLM 5.3 Flash / active agent via WebSocket).
+          2. If OpenClaw is offline or fails, falls back instantly to deterministic Rule Logic.
+        Returns a ClassificationResult exposing label, reason, and source ('OPENCLAW' | 'RULE_LOGIC').
         """
         if not reply_text or not reply_text.strip():
-            return "NEUTRAL", "Empty reply — no content to classify"
+            return ClassificationResult("NEUTRAL", "Empty reply — no content to classify", "RULE_LOGIC")
 
-        from app.services.ai_client import AIClient
+        clean = reply_text.strip().lower()
 
-        system_prompt = (
-            "You are an expert B2B sales reply analyzer. "
-            "Your job is to read a reply to a cold outreach email and classify the prospect's intent.\n\n"
-            "Classification rules:\n"
-            "- HOT_LEAD: The prospect shows genuine interest. They ask about pricing, want a call/demo, "
-            "ask for more details, say yes/sure/sounds good, or want to schedule something.\n"
-            "- NEUTRAL: The prospect is neither clearly interested nor rejecting. "
-            "They say 'maybe later', 'let me think', ask a vague question, or give a non-committal response.\n"
-            "- REJECTED: The prospect clearly does not want further contact. "
-            "They say not interested, unsubscribe, stop, wrong person, leave me alone, spam, or similar.\n\n"
-            "Important: Understand full context, not just keywords. Sarcasm, politeness, and ambiguity should be handled intelligently.\n\n"
-            "Respond ONLY with a valid JSON object in this exact format:\n"
-            '{"label": "HOT_LEAD" | "NEUTRAL" | "REJECTED", "reason": "one concise sentence explaining why"}'
-        )
-
-        user_prompt = (
-            f"Classify the intent of this cold email reply:\n\n"
-            f"---\n{reply_text.strip()[:1500]}\n---"
-        )
-
+        # ── 1. Try OpenClaw AI Deep Reasoning First ───────────────────────────
         try:
-            ai = AIClient(timeout=20.0)
+            from app.services.ai_client import AIClient
+
+            system_prompt = (
+                "You are an expert B2B sales reply analyzer. "
+                "Your job is to read a reply to a cold outreach email and classify the prospect's intent.\n\n"
+                "Classification rules:\n"
+                "- HOT_LEAD: The prospect shows genuine interest. They ask about pricing, want a call/demo, "
+                "ask for more details, say yes/sure/sounds good, or want to schedule something.\n"
+                "- NEUTRAL: The prospect is neither clearly interested nor rejecting. "
+                "They say 'maybe later', 'let me think', ask a generic question, or give a non-committal response.\n"
+                "- REJECTED: The prospect clearly does not want further contact. "
+                "They say not interested, no needed, unsubscribe, stop, wrong person, leave me alone, spam, or similar.\n\n"
+                "Important: Understand full context, not just keywords. Sarcasm, politeness, and ambiguity should be handled intelligently.\n\n"
+                "Respond ONLY with a valid JSON object in this exact format:\n"
+                '{"label": "HOT_LEAD" | "NEUTRAL" | "REJECTED", "reason": "one concise sentence explaining why"}'
+            )
+
+            user_prompt = (
+                f"Classify the intent of this cold email reply:\n\n"
+                f"---\n{reply_text.strip()[:1500]}\n---"
+            )
+
+            ai = AIClient(timeout=12.0)
             result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
 
-            label = str(result.get("label", "")).strip().upper()
-            reason = str(result.get("reason", "AI classification")).strip()
-
-            if label not in ("HOT_LEAD", "NEUTRAL", "REJECTED"):
-                logger.warning(f"[LLM Classifier] Unexpected label '{label}' — defaulting to NEUTRAL")
-                label = "NEUTRAL"
-
-            logger.info(f"[LLM Classifier] Result: {label} | Reason: {reason}")
-            return label, reason
+            if isinstance(result, dict) and result.get("label"):
+                source = result.get("_source", "OPENCLAW")
+                # If it was actually evaluated by OpenClaw / Cloud LLM
+                if source != "RULE_LOGIC":
+                    label = str(result.get("label", "")).strip().upper()
+                    reason = str(result.get("reason", "OpenClaw AI classification")).strip()
+                    if label in ("HOT_LEAD", "NEUTRAL", "REJECTED"):
+                        logger.info(f"[OpenClaw AI Classifier] Result: {label} | Reason: {reason} (Engine: {source})")
+                        return ClassificationResult(label, reason, "OPENCLAW")
 
         except Exception as e:
-            logger.error(f"[LLM Classifier] OpenClaw call failed: {e}")
-            # Safe default — treat as NEUTRAL so outreach is not accidentally stopped
-            return "NEUTRAL", f"Classification unavailable (AI error): {str(e)[:120]}"
+            logger.warning(f"[Reply Classifier] OpenClaw AI unreachable or failed ({e}). Falling back to Rule Logic.")
+
+        # ── 2. Fallback: High-Precision Semantic Pattern Matching & Rule Logic ──
+        try:
+            logger.info("[Reply Classifier] Executing Deterministic Rule Logic Engine.")
+
+            # Check for explicit rejections
+            rejection_indicators = [
+                "no needed", "not needed", "no need", "dont need", "don't need", "doesn't need", "does not need",
+                "not interested", "no thanks", "no thank you", "no, thanks", "no, thank you",
+                "unsubscribe", "remove me", "take me off", "stop emailing", "please stop",
+                "do not contact", "dont contact", "don't contact", "leave me alone",
+                "never email", "wrong person", "wrong email", "not looking", "not required",
+                "not for us", "we already have", "we have a vendor", "we have someone",
+                "opt out", "spam", "please remove", "cease and desist"
+            ]
+            for indicator in rejection_indicators:
+                if indicator in clean:
+                    logger.info(f"[Rule Logic Classifier] Matched REJECTED on: '{indicator}'")
+                    return ClassificationResult("REJECTED", f"Prospect explicitly declined ('{indicator}')", "RULE_LOGIC")
+
+            # Check for explicit positive interest
+            hot_indicators = [
+                "great, i want to talk", "i want to talk", "want to talk", "call me",
+                "let's talk", "lets talk", "let's chat", "lets chat",
+                "interested", "schedule a call", "schedule a demo", "send pricing",
+                "how much", "what is the price", "what is the cost",
+                "send details", "send more info", "tell me more", "share details",
+                "sounds good", "yes please", "yes, please", "sure, send", "book a demo",
+                "send a proposal", "send quote", "free to talk", "available for a call",
+                "let's connect", "lets connect"
+            ]
+            for indicator in hot_indicators:
+                if indicator in clean:
+                    logger.info(f"[Rule Logic Classifier] Matched HOT_LEAD on: '{indicator}'")
+                    return ClassificationResult("HOT_LEAD", f"Prospect showed clear interest ('{indicator}')", "RULE_LOGIC")
+
+            return ClassificationResult("NEUTRAL", "Prospect reply is neutral / non-committal", "RULE_LOGIC")
+
+        except Exception as fallback_err:
+            logger.error(f"[Reply Classifier] Rule engine fail-safe triggered: {fallback_err}")
+            # Ultimate safeguard: treat as NEUTRAL so email is safely preserved in inbox
+            return ClassificationResult("NEUTRAL", "Safe default: Review manually in inbox", "RULE_LOGIC")
