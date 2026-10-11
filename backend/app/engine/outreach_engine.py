@@ -533,7 +533,7 @@ class OutreachEngine:
     async def classify_reply_sentiment(cls, reply_text: str) -> ClassificationResult:
         """
         Reply intent classifier with dual-engine intelligence:
-          1. Tries OpenClaw AI first (GLM 5.3 Flash / active agent via WebSocket).
+          1. Tries OpenClaw AI first (OpenClaw's active LLM agent via WebSocket / API).
           2. If OpenClaw is offline or fails, falls back instantly to deterministic Rule Logic.
         Returns a ClassificationResult exposing label, reason, and source ('OPENCLAW' | 'RULE_LOGIC').
         """
