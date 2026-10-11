@@ -551,3 +551,41 @@ async def get_replies_intelligence(
         })
 
     return results
+
+
+@router.get("/inbox/messages")
+async def get_inbox_messages(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Fetches raw emails from ALL configured IMAP accounts.
+    Returns a unified inbox view sorted by date (newest first).
+    Used by the Mail Client Dashboard (/inbox page).
+    """
+    check_autopilot_permission(current_user, "can_access_autopilot")
+    from app.services.imap_sync_service import IMAPInboxSyncService
+
+    all_creds = await IMAPInboxSyncService.get_all_imap_credentials(session=db)
+    if not all_creds:
+        return {
+            "status": "warning",
+            "accounts": [],
+            "messages": [],
+            "message": "No IMAP inboxes configured. Add SMTP accounts in Admin Settings."
+        }
+
+    messages = await IMAPInboxSyncService.fetch_all_inbox_messages(
+        session=db,
+        limit_per_account=min(limit, 100)
+    )
+
+    account_emails = [c.get("from_email") or c.get("user", "") for c in all_creds]
+
+    return {
+        "status": "ok",
+        "accounts": account_emails,
+        "total": len(messages),
+        "messages": messages
+    }

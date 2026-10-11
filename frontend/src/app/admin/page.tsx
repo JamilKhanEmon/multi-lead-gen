@@ -2135,6 +2135,16 @@ export default function AdminPortalPage() {
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               )}
+              {hasPermission(currentUser, "can_access_autopilot", false) && (
+                <Link
+                  href="/inbox"
+                  className="w-full py-2 px-4 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 hover:border-sky-400/50 text-sky-300 font-semibold text-xs flex items-center justify-center gap-2 transition"
+                >
+                  <span>✉️</span>
+                  <span>Inbox Dashboard</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              )}
             </div>
           </div>
 

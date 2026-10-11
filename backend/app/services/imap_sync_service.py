@@ -147,6 +147,127 @@ class IMAPInboxSyncService:
         return "\n".join(clean_lines).strip()
 
     @classmethod
+    def _parse_date(cls, msg: email.message.Message) -> Optional[str]:
+        """Parse email date header into ISO string."""
+        date_str = msg.get("Date", "")
+        if not date_str:
+            return None
+        try:
+            from email.utils import parsedate_to_datetime
+            dt = parsedate_to_datetime(date_str)
+            return dt.astimezone(timezone.utc).isoformat()
+        except Exception:
+            return None
+
+    @classmethod
+    def fetch_raw_messages(cls, creds: Dict[str, Any], limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Fetches up to `limit` most recent messages from the IMAP inbox.
+        Returns full message metadata including date, read status, and account info.
+        """
+        messages_out = []
+        mail = None
+        try:
+            mail = imaplib.IMAP4_SSL(creds["host"], creds["port"], timeout=20)
+            mail.login(creds["user"], creds["password"])
+            mail.select("INBOX")
+
+            status, data = mail.search(None, "ALL")
+            all_ids = data[0].split() if status == "OK" and data[0] else []
+            # Get most recent `limit` emails
+            fetch_ids = all_ids[-limit:] if len(all_ids) > limit else all_ids
+            fetch_ids = list(reversed(fetch_ids))  # newest first
+
+            # Fetch UNSEEN ids for read/unread marking
+            status2, unseen_data = mail.search(None, "UNSEEN")
+            unseen_ids = set(unseen_data[0].split()) if status2 == "OK" and unseen_data[0] else set()
+
+            for m_id in fetch_ids:
+                try:
+                    res, msg_data = mail.fetch(m_id, "(RFC822)")
+                    if res != "OK":
+                        continue
+                    for response_part in msg_data:
+                        if isinstance(response_part, tuple):
+                            raw_email = response_part[1]
+                            msg = email.message_from_bytes(raw_email)
+
+                            subject = cls._clean_header(msg.get("Subject")) or "(No Subject)"
+                            from_raw = cls._clean_header(msg.get("From"))
+                            from_email = cls._extract_email_address(from_raw)
+                            to_raw = cls._clean_header(msg.get("To", ""))
+                            message_id = cls._clean_header(msg.get("Message-ID"))
+                            in_reply_to = cls._clean_header(msg.get("In-Reply-To"))
+                            date_iso = cls._parse_date(msg)
+                            body = cls._extract_body_text(msg)
+                            is_unread = m_id in unseen_ids
+
+                            messages_out.append({
+                                "id": message_id or str(m_id),
+                                "imap_seq": m_id.decode() if isinstance(m_id, bytes) else str(m_id),
+                                "account_email": creds.get("from_email") or creds.get("user", ""),
+                                "account_id": creds.get("id", ""),
+                                "from_email": from_email,
+                                "from_raw": from_raw,
+                                "to": to_raw,
+                                "subject": subject,
+                                "body": body,
+                                "snippet": body[:200] if body else "",
+                                "date": date_iso,
+                                "is_unread": is_unread,
+                                "in_reply_to": in_reply_to,
+                                "message_id": message_id,
+                                "is_reply": bool(in_reply_to),
+                            })
+                except Exception as parse_err:
+                    logger.warning(f"Error parsing message {m_id}: {parse_err}")
+
+            mail.close()
+            mail.logout()
+        except Exception as e:
+            logger.error(f"IMAP fetch_raw_messages error for {creds.get('user')}: {e}")
+            if mail:
+                try:
+                    mail.logout()
+                except Exception:
+                    pass
+
+        return messages_out
+
+    @classmethod
+    async def fetch_all_inbox_messages(
+        cls,
+        session: Optional[AsyncSession] = None,
+        limit_per_account: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Aggregates emails from ALL configured IMAP accounts.
+        Returns combined list sorted by date (newest first).
+        """
+        all_creds = await cls.get_all_imap_credentials(session=session)
+        if not all_creds:
+            return []
+
+        loop = asyncio.get_running_loop()
+        all_messages: List[Dict[str, Any]] = []
+
+        for creds in all_creds:
+            try:
+                msgs = await loop.run_in_executor(
+                    None, lambda c=creds: cls.fetch_raw_messages(c, limit=limit_per_account)
+                )
+                all_messages.extend(msgs)
+            except Exception as e:
+                logger.warning(f"Failed to fetch from account {creds.get('user')}: {e}")
+
+        # Sort all messages by date (newest first)
+        def sort_key(m: Dict[str, Any]) -> str:
+            return m.get("date") or "1970-01-01T00:00:00+00:00"
+
+        all_messages.sort(key=sort_key, reverse=True)
+        return all_messages
+
+    @classmethod
     def check_inbox_sync(cls, creds: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Synchronous IMAP fetch executed inside a thread executor.

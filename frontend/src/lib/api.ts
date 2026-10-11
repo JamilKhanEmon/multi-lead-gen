@@ -2098,3 +2098,43 @@ export async function triggerInboxSync(): Promise<{ status: string; processed_co
   if (!res.ok) throw new Error("Inbox sync failed");
   return res.json();
 }
+
+export interface InboxMessage {
+  id: string;
+  imap_seq: string;
+  account_email: string;
+  account_id: string;
+  from_email: string;
+  from_raw: string;
+  to: string;
+  subject: string;
+  body: string;
+  snippet: string;
+  date: string | null;
+  is_unread: boolean;
+  in_reply_to: string;
+  message_id: string;
+  is_reply: boolean;
+}
+
+export async function fetchInboxMessages(limit = 50): Promise<{
+  status: string;
+  accounts: string[];
+  total: number;
+  messages: InboxMessage[];
+}> {
+  try {
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/autopilot/inbox/messages?limit=${limit}`, {
+      cache: "no-store",
+      headers,
+    });
+    if (!res.ok) return { status: "error", accounts: [], total: 0, messages: [] };
+    return await res.json();
+  } catch (err) {
+    console.warn("fetchInboxMessages error:", err);
+    return { status: "error", accounts: [], total: 0, messages: [] };
+  }
+}
