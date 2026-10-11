@@ -217,7 +217,12 @@ export default function LeadsPipelinePage() {
   };
 
   const isSentMail = (l: Lead) => {
-    return l.outreach_status === "SENT" || l.outreach_status === "FOLLOWUP_SENT";
+    return (
+      l.outreach_status === "SENT" ||
+      l.outreach_status === "FOLLOWUP_SENT" ||
+      Boolean(l.followup_step && l.followup_step > 0) ||
+      Boolean(l.last_contacted_at)
+    );
   };
 
   const isHotDeal = (l: Lead) => {
@@ -229,7 +234,9 @@ export default function LeadsPipelinePage() {
       hasEmailForOutreach(l) &&
       !isNeedsReview(l) &&
       !isHotDeal(l) &&
-      !isSentMail(l)
+      !isSentMail(l) &&
+      (!l.followup_step || l.followup_step === 0) &&
+      !l.last_contacted_at
     );
   };
 
