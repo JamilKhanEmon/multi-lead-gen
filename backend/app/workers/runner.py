@@ -8,7 +8,7 @@ import redis.asyncio as aioredis
 from app.core.config import settings
 from app.core.logging import logger
 from app.services.openclaw_client import OpenClawClient
-from app.services.ollama_client import OllamaClient
+from app.services.ai_client import AIClient
 from app.workers.tasks import handle_discover_businesses, handle_research_and_qualify
 
 BACKOFF_STEPS = [2, 4, 8, 16, 32]
@@ -18,7 +18,7 @@ class WorkerRunner:
     def __init__(self):
         self.running = True
         self.openclaw_client = OpenClawClient()
-        self.ollama_client = OllamaClient()
+        self.ai_client = AIClient()
 
     def stop(self):
         logger.info("Worker runner received stop signal. Finishing active task...")
@@ -65,7 +65,7 @@ class WorkerRunner:
                     if task_type == "discover_businesses":
                         await handle_discover_businesses(task_data, self.openclaw_client)
                     elif task_type in ("research_and_qualify", "website_research"):
-                        await handle_research_and_qualify(task_data, self.openclaw_client, self.ollama_client)
+                        await handle_research_and_qualify(task_data, self.openclaw_client, self.ai_client)
                     else:
                         logger.warning(f"Unrecognized task type: {task_type}")
 

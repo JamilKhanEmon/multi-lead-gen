@@ -11,6 +11,8 @@ from .webhooks import router as webhooks_router
 from .campaigns import router as campaigns_router
 from .voice_agent import router as voice_agent_router
 from .autopilot import router as autopilot_router
+from .conversations import router as conversations_router
+from .meta_webhook import router as meta_webhook_router
 
 api_v1_router = APIRouter()
 
@@ -26,4 +28,6 @@ api_v1_router.include_router(webhooks_router)
 api_v1_router.include_router(campaigns_router)
 api_v1_router.include_router(voice_agent_router)
 api_v1_router.include_router(autopilot_router)
+api_v1_router.include_router(conversations_router)
+api_v1_router.include_router(meta_webhook_router)
 

@@ -1,7 +1,9 @@
 import uuid
+import base64
 from typing import List, Dict, Any, Optional
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Response
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import desc, update
@@ -9,7 +11,7 @@ from sqlalchemy import desc, update
 from app.db.session import get_db
 from app.api.deps import get_current_user
 from app.models.audit import User
-from app.models.voice_agent import VoiceKnowledgeBase, VoiceCallQueueItem, VoiceCallLog
+from app.models.voice_agent import VoiceKnowledgeBase, VoiceCallQueueItem, VoiceCallLog, DEFAULT_COUNTRY_LANGUAGE_MAP
 from app.models.lead import Lead
 from app.schemas.voice_agent import (
     VoiceKnowledgeBaseCreate,
@@ -24,6 +26,7 @@ from app.schemas.voice_agent import (
     VoiceCallLogResponse,
 )
 from app.services.voice_agent_service import VoiceAgentService
+from app.services.elevenlabs_service import ElevenLabsService, PREMADE_VOICES
 from app.core.logging import logger
 
 router = APIRouter(prefix="/voice-agent", tags=["B2B Voice Calling Agent"])
@@ -40,12 +43,12 @@ async def get_active_knowledge_base(
     if not kb:
         kb = VoiceKnowledgeBase(
             name="Sales Assistant",
-            company_name="",
-            agent_persona_name="",
-            service_name="",
-            service_description="",
-            core_offer="",
-            first_message="Hello {{client_name}}, this is {{agent_persona_name}} from {{my_company}}. I'm reaching out regarding {{company_name}}'s operational line audit.",
+            company_name="Global Enterprise Solutions",
+            agent_persona_name="Alex",
+            service_name="Client Acquisition & Conversion Systems",
+            service_description="Automated buyer lead qualification and operational gap fixing.",
+            core_offer="100% Risk-Free 14-Day Pilot Implementation",
+            first_message="Hello {{client_name}}, this is {{agent_persona_name}} from {{my_company}}. I'm reaching out regarding {{company_name}}'s digital presence and website audit.",
             system_prompt="""You are an elite, consultative B2B Sales Executive.
 Goal: Mention the exact flaw/problem identified at {{company_name}}: "{{exact_problem}}".
 Rule: Keep EVERY response under 18 words (maximum 8 seconds of speech).
@@ -56,11 +59,9 @@ When a time is agreed, confirm the slot and state that the meeting link is being
             office_hours_start="10:00",
             office_hours_end="18:00",
             is_active=True,
-            objections_json=[
-                {"trigger": "busy", "counter": "I understand! That's why I only need 10 minutes on Zoom. Does tomorrow 11 AM work?"},
-                {"trigger": "price", "counter": "Our initial trial is 100% risk-free with zero upfront cost. Can we review it tomorrow at 3 PM?"},
-                {"trigger": "already have", "counter": "Understood! Most clients use us as a complementary audit layer with zero downtime. Can I show you a 5-minute comparison?"}
-            ]
+            voice_provider="elevenlabs",
+            elevenlabs_voice_id="21m00Tcm4TlvDq8ikWAM",
+            country_language_map=DEFAULT_COUNTRY_LANGUAGE_MAP,
         )
         db.add(kb)
         await db.commit()
@@ -69,7 +70,7 @@ When a time is agreed, confirm the slot and state that the meeting link is being
 
 @router.post("/kb", response_model=VoiceKnowledgeBaseResponse)
 async def save_or_update_knowledge_base(
-    payload: VoiceKnowledgeBaseCreate,
+    payload: VoiceKnowledgeBaseUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -81,56 +82,130 @@ async def save_or_update_knowledge_base(
         kb = VoiceKnowledgeBase()
         db.add(kb)
 
-    kb.name = payload.name
-    kb.company_name = payload.company_name
-    kb.agent_persona_name = payload.agent_persona_name
-    kb.service_name = payload.service_name
-    kb.service_description = payload.service_description
-    kb.core_offer = payload.core_offer
-    kb.first_message = payload.first_message
-    kb.system_prompt = payload.system_prompt
-    kb.meeting_platform = payload.meeting_platform
-    kb.office_hours_start = payload.office_hours_start
-    kb.office_hours_end = payload.office_hours_end
-    kb.is_active = payload.is_active
-    kb.objections_json = payload.objections_json
+    for field, val in payload.model_dump(exclude_unset=True).items():
+        setattr(kb, field, val)
 
     await db.commit()
     await db.refresh(kb)
     return kb.to_dict()
 
-@router.delete("/kb/{kb_id}")
-async def delete_knowledge_base(
-    kb_id: str,
+@router.get("/voices")
+async def list_available_voices(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.id == uuid.UUID(kb_id))
+    """List available ElevenLabs voices including premade and user-cloned voices."""
+    stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
     res = await db.execute(stmt)
-    kb = res.scalar_one_or_none()
+    kb = res.scalars().first()
+
+    api_key = kb.elevenlabs_api_key if kb else None
+    voices = await ElevenLabsService.list_voices(explicit_key=api_key)
+
+    # Prepend cloned voice if exists
+    if kb and kb.cloned_voice_id:
+        cloned_entry = {
+            "voice_id": kb.cloned_voice_id,
+            "name": f"⭐ Your Cloned Voice ({kb.cloned_voice_name or 'Personal'})",
+            "category": "cloned",
+            "labels": {"accent": "Custom Clone", "gender": "Custom", "use_case": "Personal Sales Voice"},
+            "preview_url": kb.cloned_voice_sample_url or None,
+        }
+        voices = [cloned_entry] + [v for v in voices if v.get("voice_id") != kb.cloned_voice_id]
+
+    return voices
+
+@router.post("/clone-voice")
+async def clone_user_voice(
+    voice_name: str = Form("My Cloned Sales Voice"),
+    audio_file: Optional[UploadFile] = File(None),
+    audio_base64: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload audio or recorded browser sample to clone personal voice via ElevenLabs."""
+    stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
+    res = await db.execute(stmt)
+    kb = res.scalars().first()
     if not kb:
-        raise HTTPException(status_code=404, detail="Knowledge base not found")
-    await db.delete(kb)
-    await db.commit()
-    return {"success": True, "deleted_id": kb_id}
+        kb = VoiceKnowledgeBase()
+        db.add(kb)
+
+    raw_bytes = b""
+    filename = "voice_sample.mp3"
+
+    if audio_file:
+        raw_bytes = await audio_file.read()
+        filename = audio_file.filename or "sample.mp3"
+    elif audio_base64:
+        clean_b64 = audio_base64.split(",")[-1]
+        raw_bytes = base64.b64decode(clean_b64)
+        filename = "browser_recording.webm"
+    else:
+        raise HTTPException(status_code=400, detail="Please upload an audio file or record your voice sample.")
+
+    try:
+        clone_result = await ElevenLabsService.clone_voice(
+            voice_name=voice_name,
+            audio_bytes=raw_bytes,
+            filename=filename,
+            explicit_key=kb.elevenlabs_api_key,
+        )
+
+        kb.cloned_voice_id = clone_result.get("voice_id")
+        kb.cloned_voice_name = voice_name
+        kb.elevenlabs_voice_id = clone_result.get("voice_id")
+        await db.commit()
+        await db.refresh(kb)
+
+        return {
+            "success": True,
+            "voice_id": kb.cloned_voice_id,
+            "voice_name": voice_name,
+            "message": f"Successfully cloned '{voice_name}'! Your AI agent will now call prospects in your exact voice.",
+        }
+    except Exception as e:
+        logger.error(f"Voice cloning error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/sync-card1-leads")
+async def sync_leads_from_card_1(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Sync verified phone numbers from Card 1 into the Ready for Call Queue."""
+    count = await VoiceAgentService.sync_leads_from_card_1(db)
+    return {
+        "success": True,
+        "synced_count": count,
+        "message": f"Synced {count} verified leads from Card 1 into the Ready for Call Queue."
+    }
 
 @router.get("/queue", response_model=List[VoiceCallQueueItemResponse])
 async def list_call_queue(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    country_filter: Optional[str] = Query(None, alias="country"),
+    search: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    stmt = select(VoiceCallQueueItem).order_by(VoiceCallQueueItem.created_at.desc())
-    res = await db.execute(stmt)
-    items = res.scalars().all()
+    query = select(VoiceCallQueueItem)
+    if status_filter and status_filter.upper() != "ALL":
+        query = query.where(VoiceCallQueueItem.status == status_filter.upper())
+    if country_filter and country_filter.upper() != "ALL":
+        query = query.where(VoiceCallQueueItem.country.ilike(f"%{country_filter}%"))
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.where(
+            (VoiceCallQueueItem.company_name.ilike(term)) |
+            (VoiceCallQueueItem.contact_person.ilike(term)) |
+            (VoiceCallQueueItem.phone.ilike(term)) |
+            (VoiceCallQueueItem.exact_problem.ilike(term))
+        )
 
-    dirty = False
-    for item in items:
-        cleaned = VoiceAgentService.sanitize_exact_problem(item.exact_problem, item.company_name)
-        if cleaned != item.exact_problem:
-            item.exact_problem = cleaned
-            dirty = True
-    if dirty:
-        await db.commit()
+    query = query.order_by(desc(VoiceCallQueueItem.created_at))
+    res = await db.execute(query)
+    items = res.scalars().all()
 
     return [item.to_dict() for item in items]
 
@@ -145,6 +220,8 @@ async def add_lead_to_queue(
         contact_title=payload.contact_title,
         company_name=payload.company_name,
         phone=payload.phone,
+        country=payload.country,
+        language=payload.language,
         exact_problem=payload.exact_problem,
         selected_for_call=payload.selected_for_call,
         lead_id=uuid.UUID(payload.lead_id) if payload.lead_id else None,
@@ -169,26 +246,8 @@ async def update_queue_item(
     if not item:
         raise HTTPException(status_code=404, detail="Queue item not found")
 
-    if payload.contact_person is not None:
-        item.contact_person = payload.contact_person
-    if payload.contact_title is not None:
-        item.contact_title = payload.contact_title
-    if payload.company_name is not None:
-        item.company_name = payload.company_name
-    if payload.phone is not None:
-        item.phone = payload.phone
-    if payload.exact_problem is not None:
-        item.exact_problem = payload.exact_problem
-    if payload.status is not None:
-        item.status = payload.status
-    if payload.selected_for_call is not None:
-        item.selected_for_call = payload.selected_for_call
-    if payload.meeting_link is not None:
-        item.meeting_link = payload.meeting_link
-    if payload.meeting_time is not None:
-        item.meeting_time = payload.meeting_time
-    if payload.notes is not None:
-        item.notes = payload.notes
+    for field, val in payload.model_dump(exclude_unset=True).items():
+        setattr(item, field, val)
 
     await db.commit()
     await db.refresh(item)
@@ -210,79 +269,40 @@ async def delete_queue_item(
     return {"success": True, "deleted_id": item_id}
 
 @router.post("/queue/batch")
-async def batch_queue_action(
+async def execute_batch_queue_action(
     payload: BatchQueueActionRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if payload.action == "select_all":
-        stmt = update(VoiceCallQueueItem).values(selected_for_call=True)
-        await db.execute(stmt)
+    action = payload.action
+    item_ids = payload.item_ids or []
+
+    if action == "select_all":
+        await db.execute(update(VoiceCallQueueItem).values(selected_for_call=True))
         await db.commit()
-        return {"success": True, "message": "All leads selected for calling"}
+        return {"success": True, "message": "All items selected for call"}
 
-    elif payload.action == "deselect_all":
-        stmt = update(VoiceCallQueueItem).values(selected_for_call=False)
-        await db.execute(stmt)
+    elif action == "deselect_all":
+        await db.execute(update(VoiceCallQueueItem).values(selected_for_call=False))
         await db.commit()
-        return {"success": True, "message": "All leads deselected"}
+        return {"success": True, "message": "All items deselected"}
 
-    elif payload.action == "sync_from_leads":
-        from sqlalchemy.orm import selectinload
-        stmt = select(Lead).options(selectinload(Lead.business)).order_by(desc(Lead.final_score)).limit(50)
-        res = await db.execute(stmt)
-        leads = res.scalars().all()
+    elif action == "delete_selected":
+        if item_ids:
+            for iid in item_ids:
+                stmt = select(VoiceCallQueueItem).where(VoiceCallQueueItem.id == uuid.UUID(iid))
+                res = await db.execute(stmt)
+                item = res.scalar_one_or_none()
+                if item:
+                    await db.delete(item)
+            await db.commit()
+        return {"success": True, "message": "Selected items removed from queue"}
 
-        existing_stmt = select(VoiceCallQueueItem.phone)
-        existing_res = await db.execute(existing_stmt)
-        existing_phones = set(existing_res.scalars().all())
-
-        synced_count = 0
-        for l in leads:
-            b = l.business
-            phone = b.phone if b and b.phone else ""
-            if phone and phone not in existing_phones:
-                company = b.canonical_name if b else "Prospective Enterprise"
-                raw_prob = l.primary_gap_summary or "Manual operational delays and defect bottlenecks"
-                clean_prob = VoiceAgentService.sanitize_exact_problem(raw_prob, company)
-                new_item = VoiceCallQueueItem(
-                    lead_id=l.id,
-                    contact_person=b.contact_person if b and b.contact_person else "Managing Director",
-                    contact_title=b.contact_title if b and b.contact_title else "Executive",
-                    company_name=company,
-                    phone=phone,
-                    exact_problem=clean_prob,
-                    status="READY",
-                    selected_for_call=True,
-                )
-                db.add(new_item)
-                existing_phones.add(phone)
-                synced_count += 1
-
-        await db.commit()
-        return {"success": True, "synced_count": synced_count, "message": f"Successfully synced {synced_count} leads to Sheet View"}
+    elif action == "sync_card1":
+        count = await VoiceAgentService.sync_leads_from_card_1(db)
+        return {"success": True, "synced_count": count, "message": f"Synced {count} leads from Card 1"}
 
     return {"success": False, "message": "Unknown action"}
-
-@router.get("/office-hours")
-async def check_office_hours_status(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
-    res = await db.execute(stmt)
-    kb = res.scalars().first()
-
-    start_t = kb.office_hours_start if kb else "10:00"
-    end_t = kb.office_hours_end if kb else "18:00"
-
-    is_allowed, msg = VoiceAgentService.is_within_office_hours(start_t, end_t)
-    return {
-        "is_within_hours": is_allowed,
-        "message": msg,
-        "office_hours_start": start_t,
-        "office_hours_end": end_t,
-    }
 
 @router.post("/dialogue-turn", response_model=VoiceDialogueTurnResponse)
 async def process_live_dialogue_turn(
@@ -290,6 +310,7 @@ async def process_live_dialogue_turn(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Processes speech turn, uses ElevenLabs Multilingual v2, and handles meeting booking."""
     stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
     res = await db.execute(stmt)
     kb = res.scalars().first()
@@ -310,9 +331,31 @@ async def process_live_dialogue_turn(
         override_client_name=payload.client_name,
         override_company_name=payload.company_name,
         override_exact_problem=payload.exact_problem,
+        override_language=payload.language,
     )
 
     return turn_result
+
+@router.post("/tts")
+async def synthesize_text_audio(
+    text: str = Form(...),
+    voice_id: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate audio stream for arbitrary text using ElevenLabs."""
+    stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
+    res = await db.execute(stmt)
+    kb = res.scalars().first()
+
+    vid = voice_id or (kb.cloned_voice_id if kb and kb.cloned_voice_id else (kb.elevenlabs_voice_id if kb else "21m00Tcm4TlvDq8ikWAM"))
+    key = kb.elevenlabs_api_key if kb else None
+
+    audio = await ElevenLabsService.synthesize_speech(text=text, voice_id=vid, explicit_key=key)
+    if not audio:
+        raise HTTPException(status_code=500, detail="Speech synthesis unavailable")
+
+    return Response(content=audio, media_type="audio/mpeg")
 
 @router.post("/queue/{item_id}/call-complete")
 async def complete_call_and_record(
@@ -321,6 +364,7 @@ async def complete_call_and_record(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Record call outcome, sentiment, transcript, and auto-sync to CRM leads."""
     stmt = select(VoiceCallQueueItem).where(VoiceCallQueueItem.id == uuid.UUID(item_id))
     res = await db.execute(stmt)
     item = res.scalar_one_or_none()
@@ -332,11 +376,12 @@ async def complete_call_and_record(
     meeting_time = payload.get("meeting_time")
     transcript = payload.get("transcript", [])
     duration = int(payload.get("duration_seconds", 45))
-    sentiment = payload.get("sentiment", "INTERESTED")
+    sentiment = payload.get("sentiment", "HOT_INTERESTED" if meeting_booked else "NEUTRAL")
 
     item.status = "MEETING_BOOKED" if meeting_booked else "CALL_DONE"
     item.selected_for_call = False
-    item.last_called_at = datetime.now()
+    item.call_attempts = (item.call_attempts or 0) + 1
+    item.last_called_at = datetime.now(timezone.utc)
     if meeting_link:
         item.meeting_link = meeting_link
     if meeting_time:
@@ -348,6 +393,7 @@ async def complete_call_and_record(
         company_name=item.company_name,
         contact_person=item.contact_person,
         call_duration_seconds=duration,
+        language_used=item.language or "Bengali",
         transcript_json=transcript,
         sentiment=sentiment,
         meeting_booked=meeting_booked,
@@ -355,6 +401,18 @@ async def complete_call_and_record(
         summary=payload.get("summary", f"Call completed. Outcome: {item.status}"),
     )
     db.add(log)
+
+    # Auto-promote to HOT in CRM if meeting was booked or prospect is interested!
+    if (meeting_booked or sentiment == "HOT_INTERESTED") and item.lead_id:
+        lead_stmt = select(Lead).where(Lead.id == item.lead_id)
+        lead_res = await db.execute(lead_stmt)
+        lead_obj = lead_res.scalar_one_or_none()
+        if lead_obj:
+            lead_obj.fit_tier = "HOT"
+            lead_obj.deal_status = "HOT_LEAD"
+            lead_obj.is_qualified = True
+            lead_obj.outreach_notes = f"Phone call confirmed. Meeting booked: {meeting_time or 'Scheduled'} ({meeting_link or ''})"
+
     await db.commit()
     await db.refresh(item)
 
@@ -362,16 +420,21 @@ async def complete_call_and_record(
         "success": True,
         "new_status": item.status,
         "meeting_link": item.meeting_link,
-        "message": f"Lead marked {item.status}. Duplicate protection active."
+        "sentiment": sentiment,
+        "message": f"Lead marked {item.status}. Transcript and sentiment recorded."
     }
 
 @router.get("/logs", response_model=List[VoiceCallLogResponse])
 async def get_call_logs(
+    sentiment_filter: Optional[str] = Query(None, alias="sentiment"),
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    stmt = select(VoiceCallLog).order_by(desc(VoiceCallLog.created_at)).limit(limit)
-    res = await db.execute(stmt)
+    query = select(VoiceCallLog)
+    if sentiment_filter and sentiment_filter.upper() != "ALL":
+        query = query.where(VoiceCallLog.sentiment == sentiment_filter.upper())
+    query = query.order_by(desc(VoiceCallLog.created_at)).limit(limit)
+    res = await db.execute(query)
     logs = res.scalars().all()
     return [l.to_dict() for l in logs]

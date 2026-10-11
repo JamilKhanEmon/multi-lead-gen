@@ -7,7 +7,7 @@ from app.models.campaign import MetaCampaign
 
 @pytest.mark.asyncio
 async def test_meta_intelligence_targeting_and_competitor_synthesis():
-    with patch("app.engine.meta_intelligence.OllamaClient.analyze", new_callable=AsyncMock) as mock_llm:
+    with patch("app.engine.meta_intelligence.AIClient.analyze", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = {
             "recommended_targeting": {
                 "job_titles": ["Managing Director", "QA Manager", "Factory Director"],

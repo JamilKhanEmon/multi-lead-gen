@@ -192,10 +192,12 @@ async def autonomous_campaign_discovery_loop():
                     if should_run:
                         logger.info(f"[AUTONOMOUS DISCOVERY DAEMON] Scheduled run starting for campaign '{camp.name}'...")
                         try:
+                            is_unlimited = getattr(camp, "is_unlimited_leads", False)
+                            lead_cap = 0 if is_unlimited else (getattr(camp, "daily_lead_limit", 0) or 0)
                             await AutopilotRunner.run_campaign_batch(
                                 db=session,
                                 campaign=camp,
-                                batch_size=camp.batch_size or 0
+                                batch_size=lead_cap
                             )
                         except Exception as ce:
                             logger.error(f"[AUTONOMOUS DISCOVERY DAEMON] Error running '{camp.name}': {ce}")
@@ -206,6 +208,27 @@ async def autonomous_campaign_discovery_loop():
         except Exception as err:
             logger.error(f"[AUTONOMOUS DISCOVERY DAEMON] Daemon error: {err}")
             await asyncio.sleep(120)
+
+async def autonomous_imap_sync_loop():
+    from app.services.imap_sync_service import IMAPInboxSyncService
+    from app.db.session import AsyncSessionLocal
+
+    logger.info("Started Autonomous Real-Time Inbound IMAP Email Sync Daemon.")
+    await asyncio.sleep(20)
+
+    while True:
+        try:
+            async with AsyncSessionLocal() as session:
+                processed = await IMAPInboxSyncService.process_incoming_replies(session)
+                if processed > 0:
+                    logger.info(f"[IMAP SYNC] Processed {processed} inbound reply(ies).")
+            poll_interval = getattr(settings, "IMAP_POLL_INTERVAL_SECONDS", 180)
+            await asyncio.sleep(poll_interval)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"[IMAP SYNC DAEMON] Error during sync: {e}. Retrying in 60s...")
+            await asyncio.sleep(60)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -276,10 +299,12 @@ async def lifespan(app: FastAPI):
     listener_task = asyncio.create_task(redis_event_listener())
     outreach_daemon_task = asyncio.create_task(autonomous_outreach_scheduler())
     discovery_daemon_task = asyncio.create_task(autonomous_campaign_discovery_loop())
+    imap_sync_task = asyncio.create_task(autonomous_imap_sync_loop())
     yield
     listener_task.cancel()
     outreach_daemon_task.cancel()
     discovery_daemon_task.cancel()
+    imap_sync_task.cancel()
     logger.info("Shutdown complete.")
 
 app = FastAPI(

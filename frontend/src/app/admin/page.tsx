@@ -49,6 +49,7 @@ import {
   Layers,
   Building2,
   Briefcase,
+  Bot,
 } from "lucide-react";
 import {
   loginUser,
@@ -2135,54 +2136,65 @@ export default function AdminPortalPage() {
                 <div className="w-12 h-12 rounded-xl bg-pink-500/10 border border-pink-500/30 text-pink-400 flex items-center justify-center shadow-md shadow-pink-500/10">
                   <Megaphone className="w-6 h-6" />
                 </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
-                  <Lock className="w-3 h-3 text-amber-400" />
-                  <span>Coming Soon</span>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Module Active</span>
                 </div>
               </div>
 
               <div>
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <span>Meta Ads & Marketing Automation</span>
+                  <span>Meta Ads & Conversational Qualification</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Dedicated strictly to managing Facebook & Instagram marketing campaigns, ad sets, live pixel conversion tracking, and budgets.
+                  Manage Facebook & Instagram 2-step marketing funnels, AI video angles, and live multi-lingual conversational lead qualification chatbots.
                 </p>
               </div>
 
               <div className="pt-3 border-t border-slate-800/80 space-y-2">
                 <div className="text-[11px] font-mono text-pink-400/90 font-semibold uppercase tracking-wider flex items-center justify-between">
-                  <span>META ADS FEATURES:</span>
-                  <span className="text-[10px] font-mono text-amber-400/90 font-normal flex items-center gap-1">
-                    <Lock className="w-2.5 h-2.5 text-amber-400" /> Module Locked
+                  <span>META ADS & CHATBOT FEATURES:</span>
+                  <span className="text-[10px] font-mono text-emerald-400 font-normal flex items-center gap-1">
+                    ✓ Full System Unlocked
                   </span>
                 </div>
                 <ul className="space-y-1.5 text-xs text-slate-400">
                   <li className="flex items-start gap-2">
                     <span className="text-pink-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Multi-Campaign Orchestration:</strong> Create and manage cold traffic, lead form, and conversion campaigns.</span>
+                    <span><strong>Conversational Lead Qualification:</strong> WhatsApp & Messenger AI chatbot qualifies leads in any language worldwide.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-pink-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Target Audience Precision:</strong> Target by geographic coordinates, verified radius, and industry interest.</span>
+                    <span><strong>Zero Hardcoding Architecture:</strong> Dynamically adapts to any business niche, currency, and custom criteria.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-pink-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Live Conversion Tracking:</strong> Direct sync with Meta Marketing API v21.0 and Conversions API (CAPI).</span>
+                    <span><strong>Human Takeover Switch:</strong> Master AI toggle & per-conversation human takeover controls.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-pink-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Dynamic Creative Generator:</strong> AI produces tailored ad copy based on verified solvable gap parameters.</span>
+                    <span><strong>2-Step Funnel Orchestration:</strong> Cold video awareness & WhatsApp retargeting campaigns.</span>
                   </li>
                 </ul>
               </div>
             </div>
 
-            <div className="pt-6">
-              <div className="w-full py-2.5 px-4 rounded-xl bg-slate-850/80 text-amber-300 border border-amber-500/30 font-semibold text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none shadow-inner bg-slate-900">
+            <div className="pt-6 space-y-2">
+              <div
+                title="This feature is temporarily locked. Upcoming updates in progress."
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 font-medium text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none"
+              >
                 <Lock className="w-3.5 h-3.5 text-amber-400" />
-                <span className="font-mono uppercase tracking-wider text-[11px]">Coming Soon</span>
+                <span>Conversational Lead Qualification (AI Chatbot) — Locked</span>
               </div>
+              <Link
+                href="/campaigns"
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-pink-600/20 transition group"
+              >
+                <Megaphone className="w-3.5 h-3.5 text-white" />
+                <span>Launch Meta Ads Funnel</span>
+                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition" />
+              </Link>
             </div>
           </div>
 
@@ -2196,7 +2208,7 @@ export default function AdminPortalPage() {
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
                   <Lock className="w-3 h-3 text-amber-400" />
-                  <span>Coming Soon</span>
+                  <span>Module Locked</span>
                 </div>
               </div>
 
@@ -2205,42 +2217,45 @@ export default function AdminPortalPage() {
                   <span>Autonomous Voice Outreach</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Dedicated strictly to automated phone outreach, natural multi-turn conversations, objection handling, and appointment booking.
+                  ElevenLabs Conversational Voice Agent with Voice Cloning, dynamic country-language adaptation, and Card 1 verified phone number dialing.
                 </p>
               </div>
 
               <div className="pt-3 border-t border-slate-800/80 space-y-2">
                 <div className="text-[11px] font-mono text-emerald-400/90 font-semibold uppercase tracking-wider flex items-center justify-between">
                   <span>VOICE OUTREACH FEATURES:</span>
-                  <span className="text-[10px] font-mono text-amber-400/90 font-normal flex items-center gap-1">
-                    <Lock className="w-2.5 h-2.5 text-amber-400" /> Module Locked
+                  <span className="text-[10px] font-mono text-amber-400 font-normal flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> Coming Soon
                   </span>
                 </div>
                 <ul className="space-y-1.5 text-xs text-slate-400">
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Automated Phone Dialing:</strong> AI voice caller initiates cold outreach to qualified business phone numbers.</span>
+                    <span><strong>Card 1 Real Phone Intake:</strong> Auto-syncs verified phone numbers & solvable website gaps directly to Ready for Call queue.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Multi-Turn Voice Dialogue:</strong> Answers company questions and overcomes pricing/timeline objections dynamically.</span>
+                    <span><strong>ElevenLabs Voice Cloning:</strong> Record or upload 1 minute of audio to call prospects in your exact personal voice.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Meeting Booking:</strong> Direct calendar slot reservation when the decision maker shows positive buying intent.</span>
+                    <span><strong>Multi-Lingual Country Routing:</strong> Automatically speaks Bengali (BD), English (US/UK), Arabic (Middle East), etc.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Call Transcripts & Audio Playback:</strong> Full dialogue transcripts and audio review for every completed call.</span>
+                    <span><strong>Under 1.5-Min Consultative Closing:</strong> Mentions exact website flaw, handles objections, and books Google Meet / Zoom.</span>
                   </li>
                 </ul>
               </div>
             </div>
 
             <div className="pt-6">
-              <div className="w-full py-2.5 px-4 rounded-xl bg-slate-850/80 text-amber-300 border border-amber-500/30 font-semibold text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none shadow-inner bg-slate-900">
+              <div
+                title="Autonomous Voice Outreach is currently locked."
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 font-medium text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none"
+              >
                 <Lock className="w-3.5 h-3.5 text-amber-400" />
-                <span className="font-mono uppercase tracking-wider text-[11px]">Coming Soon</span>
+                <span>Launch Voice Outreach Hub (ElevenLabs AI Agent) — Locked</span>
               </div>
             </div>
           </div>

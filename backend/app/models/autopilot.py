@@ -33,6 +33,21 @@ class AutopilotCampaign(Base, UUIDMixin, TimestampMixin):
 
     created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
+    @property
+    def batch_size(self) -> int:
+        if self.is_unlimited_leads:
+            return 0
+        return self.daily_lead_limit or 0
+
+    @batch_size.setter
+    def batch_size(self, val: int):
+        if val <= 0:
+            self.is_unlimited_leads = True
+            self.daily_lead_limit = 0
+        else:
+            self.is_unlimited_leads = False
+            self.daily_lead_limit = val
+
     outreach_logs: Mapped[List["EmailOutreachLog"]] = relationship("EmailOutreachLog", back_populates="campaign", cascade="all, delete-orphan")
 
 class EmailOutreachLog(Base, UUIDMixin, TimestampMixin):

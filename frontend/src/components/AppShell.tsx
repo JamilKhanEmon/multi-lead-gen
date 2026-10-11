@@ -20,6 +20,8 @@ import {
   AlertCircle,
   X,
   Mail,
+  Bot,
+  MessageSquare,
 } from "lucide-react";
 import { getStoredUser, logoutUser, AuthUser, hasPermission, changePassword, changeEmail } from "@/lib/api";
 
@@ -160,6 +162,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         label: "Module 02: Meta Ads & Marketing",
         icon: Megaphone,
         color: "text-pink-400 bg-pink-500/10 border-pink-500/30",
+      };
+    }
+    if (pathname.startsWith("/conversations")) {
+      return {
+        id: "conversations",
+        label: "Conversational Lead Qualification (AI Chatbot)",
+        icon: Bot,
+        color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30",
       };
     }
     if (pathname.startsWith("/voice-agent")) {

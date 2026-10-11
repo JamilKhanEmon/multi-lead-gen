@@ -1,7 +1,7 @@
 import json
 import re
 from typing import Dict, Any, List, Optional
-from app.services.ollama_client import OllamaClient
+from app.services.ai_client import AIClient
 from app.services.openclaw_client import LiveResearchEngine
 from app.core.logging import logger
 
@@ -16,7 +16,7 @@ class MetaIntelligenceEngine:
         pain_point: Optional[str] = None,
         core_offer: Optional[str] = None,
     ) -> Dict[str, Any]:
-        ollama = OllamaClient()
+        ai = AIClient()
 
         query_prompt = f"""
 You are a top-tier B2B Meta Ads Strategist and Market Intelligence Researcher.
@@ -58,7 +58,7 @@ Provide a JSON object with:
         }
 
         try:
-            expanded = await ollama.analyze(
+            expanded = await ai.analyze(
                 system_prompt="Return ONLY valid JSON with keys: competitor_search_terms, pain_point_queries, recommended_targeting.",
                 user_prompt=query_prompt,
             )
@@ -155,7 +155,7 @@ Provide a JSON object with:
 
         dynamic_positioning = f"Position {service_name} as the high-ROI B2B solution directly eliminating core {industry} operational bottlenecks."
 
-        ollama = OllamaClient()
+        ai = AIClient()
         synth_prompt = f"""
 Analyze these competitor snippets and industry offerings for {service_name} in {industry}:
 Snippets: {json.dumps(web_results)}
@@ -176,7 +176,7 @@ Synthesize actionable competitor intelligence:
 """
 
         try:
-            synth = await ollama.analyze(
+            synth = await ai.analyze(
                 system_prompt="Return ONLY valid JSON matching the requested structure.",
                 user_prompt=synth_prompt,
             )
@@ -207,7 +207,7 @@ Synthesize actionable competitor intelligence:
         core_offer: str,
         competitor_insights: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        ollama = OllamaClient()
+        ai = AIClient()
 
         prompt = f"""
 You are an elite B2B Meta Ads Creative Director.
@@ -261,7 +261,7 @@ POST 2: Retargeting Closer Ad (Objective: Shown ONLY to 50%+ video viewers with 
         }
 
         try:
-            creatives = await ollama.analyze(
+            creatives = await ai.analyze(
                 system_prompt="Return ONLY valid JSON with keys: post1, post2.",
                 user_prompt=prompt,
             )

@@ -62,7 +62,17 @@ class AutopilotRunner:
         campaign: AutopilotCampaign,
         batch_size: int = 0
     ) -> Dict[str, Any]:
-        effective_batch = campaign.batch_size if (campaign.batch_size and campaign.batch_size > 0) else batch_size
+        is_unlimited = getattr(campaign, "is_unlimited_leads", False)
+        if is_unlimited:
+            effective_batch = 0
+        else:
+            daily_limit = getattr(campaign, "daily_lead_limit", None)
+            if daily_limit is not None and daily_limit > 0:
+                effective_batch = daily_limit
+            elif hasattr(campaign, "batch_size") and campaign.batch_size and campaign.batch_size > 0:
+                effective_batch = campaign.batch_size
+            else:
+                effective_batch = batch_size
         sub_cities = campaign.sub_cities or ([campaign.country] if campaign.country else [""])
         if not sub_cities:
             sub_cities = [campaign.country] if campaign.country else [""]
@@ -204,11 +214,8 @@ class AutopilotRunner:
                         meta_desc = audit_res.get("meta_description") or ""
                         heading_txt = audit_res.get("heading") or ""
 
-                        try:
-                            from app.services.ollama_client import OllamaClient
-                            ollama_client = OllamaClient(timeout=8.0)
-                        except Exception:
-                            ollama_client = None
+                        from app.services.ai_client import AIClient
+                        ai_client = AIClient(timeout=8.0)
 
                         is_ind_fit, ind_reason = await DiscoveryOptimizer.verify_industry_fit(
                             target_industry=target_industry,
@@ -217,7 +224,7 @@ class AutopilotRunner:
                             page_title=page_title,
                             meta_description=meta_desc,
                             heading=heading_txt,
-                            ollama_client=ollama_client,
+                            ollama_client=ai_client,
                         )
                         if not is_ind_fit:
                             logger.info(f"Autopilot: Discarding non-industry entity '{c_name}' ({c_dom}): {ind_reason}")

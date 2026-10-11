@@ -150,9 +150,12 @@ async def _bg_run_campaign(campaign_id: uuid.UUID):
         camp = res.scalar_one_or_none()
         if camp:
             try:
-                await AutopilotRunner.run_campaign_batch(db=session, campaign=camp, batch_size=camp.batch_size or 0)
+                is_unlimited = getattr(camp, "is_unlimited_leads", False)
+                lead_cap = 0 if is_unlimited else (getattr(camp, "daily_lead_limit", 0) or 0)
+                await AutopilotRunner.run_campaign_batch(db=session, campaign=camp, batch_size=lead_cap)
             except Exception as e:
-                pass
+                import logging
+                logging.getLogger(__name__).error(f"Error in background campaign run '{camp.name}': {e}")
 
 @router.post("/campaigns/{campaign_id}/run-now")
 async def trigger_campaign_run(
@@ -465,4 +468,26 @@ async def simulate_incoming_reply(
         "explanation": explanation,
         "new_deal_status": lead.deal_status,
         "new_outreach_status": lead.outreach_status
+    }
+
+@router.post("/inbox/sync")
+async def trigger_inbox_sync(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    check_autopilot_permission(current_user, "can_access_autopilot")
+    from app.services.imap_sync_service import IMAPInboxSyncService
+    
+    all_creds = await IMAPInboxSyncService.get_all_imap_credentials(session=db)
+    if not all_creds:
+        return {
+            "status": "warning",
+            "message": "No active inboxes found. Please configure an SMTP Inbox in Admin Settings or set credentials in .env."
+        }
+    
+    count = await IMAPInboxSyncService.process_incoming_replies(db)
+    return {
+        "status": "success",
+        "processed_count": count,
+        "message": f"Inbox scan completed across {len(all_creds)} connected inbox(es). Processed {count} new client reply(ies)."
     }
