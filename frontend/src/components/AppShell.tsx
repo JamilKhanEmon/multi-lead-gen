@@ -24,6 +24,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { getStoredUser, logoutUser, AuthUser, hasPermission, changePassword, changeEmail } from "@/lib/api";
+import NotificationCenter from "@/components/NotificationCenter";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -306,6 +307,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <span className="text-slate-400 text-[11px]">Hostinger OpenClaw</span>
               <span className="text-emerald-400 font-semibold text-[11px]">Active</span>
             </div>
+
+            {/* Real-Time Lead Notification Bell & Live Alerts */}
+            <NotificationCenter />
 
             <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800">
               <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold border ${

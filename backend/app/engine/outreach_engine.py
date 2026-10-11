@@ -344,6 +344,29 @@ class OutreachEngine:
         except Exception as e:
             logger.error(f"Error fetching active SMTP inboxes from DB: {e}")
 
+        # Seed in-memory INBOX_STATS from today's persistent DB logs
+        try:
+            from app.models.autopilot import EmailOutreachLog
+            now_utc = datetime.now(timezone.utc)
+            t_start = datetime(now_utc.year, now_utc.month, now_utc.day, tzinfo=timezone.utc)
+            s_stmt = select(EmailOutreachLog).where(
+                EmailOutreachLog.sent_at >= t_start,
+                EmailOutreachLog.status.in_(["SENT", "MANUAL_REPLY_SENT", "DELIVERED"])
+            )
+            if db is not None:
+                p_logs = (await db.execute(s_stmt)).scalars().all()
+            else:
+                from app.db.session import AsyncSessionLocal
+                async with AsyncSessionLocal() as s_sess:
+                    p_logs = (await s_sess.execute(s_stmt)).scalars().all()
+
+            for ib in raw_inboxes:
+                ib_str = str(ib.id)
+                db_c = sum(1 for l in p_logs if ib_str in (l.error_message or "") or (ib.from_email and ib.from_email.lower() in (l.error_message or "").lower()))
+                cls.INBOX_STATS[ib_str] = max(cls.INBOX_STATS.get(ib_str, 0), db_c)
+        except Exception:
+            pass
+
         available_inboxes = []
         for ib in raw_inboxes:
             sent_today = cls.INBOX_STATS.get(str(ib.id), 0)
@@ -463,8 +486,10 @@ class OutreachEngine:
             if not selected_inbox:
                 selected_inbox = next((ib for ib in inboxes if str(ib.get("from_email")) == str(account_id) or str(ib.get("user")) == str(account_id)), None)
 
-        if not selected_inbox:
-            selected_inbox = random.choice(inboxes)
+        # Sequential Round-Robin sequence to preserve sender reputation across inboxes
+        if not selected_inbox and inboxes:
+            selected_inbox = inboxes[cls._inbox_index % len(inboxes)]
+            cls._inbox_index = (cls._inbox_index + 1) % len(inboxes)
 
         smtp_host = selected_inbox["host"]
         smtp_port = selected_inbox["port"]
