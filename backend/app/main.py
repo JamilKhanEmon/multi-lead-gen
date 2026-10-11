@@ -150,7 +150,7 @@ async def autonomous_outreach_scheduler():
                             step=1,
                             recipient_email=recipient,
                             subject=subject,
-                            body_snippet=body[:300],
+                            body_snippet=body,
                             status="SENT",
                             sent_at=datetime.now(timezone.utc)
                         )

@@ -47,13 +47,13 @@ function ThreadBubble({ msg }: { msg: ThreadMessage }) {
   const out = msg.direction === "outbound";
   return (
     <div className={`flex ${out ? "justify-end" : "justify-start"} mb-4`}>
-      <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+      <div className={`max-w-[88%] rounded-2xl px-5 py-3.5 text-sm leading-relaxed shadow-sm ${
         out
           ? "bg-indigo-600/20 border border-indigo-500/30 text-indigo-100"
-          : "bg-slate-800/60 border border-slate-700/40 text-slate-200"
+          : "bg-slate-800/70 border border-slate-700/50 text-slate-200"
       }`}>
-        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-          <span className={`text-[10px] font-bold uppercase tracking-wider ${out ? "text-indigo-400" : "text-slate-500"}`}>
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <span className={`text-[10px] font-bold uppercase tracking-wider ${out ? "text-indigo-400" : "text-slate-400"}`}>
             {out ? "📤 You" : `📥 ${msg.from || "Client"}`}
           </span>
           {msg.step > 0 && (
@@ -66,10 +66,10 @@ function ThreadBubble({ msg }: { msg: ThreadMessage }) {
               🤖 {msg.ai_label.replace("_", " ")}
             </span>
           )}
-          <span className="text-[9px] text-slate-600 ml-auto">{timeAgo(msg.sent_at)}</span>
+          <span className="text-[9px] text-slate-500 ml-auto">{timeAgo(msg.sent_at)}</span>
         </div>
-        <p className="font-medium text-xs mb-1 opacity-70">{msg.subject}</p>
-        <p className="whitespace-pre-wrap text-xs">{msg.body || msg.snippet || "(no content)"}</p>
+        <p className="font-semibold text-xs mb-2 pb-1.5 border-b border-white/5 opacity-80">{msg.subject}</p>
+        <p className="whitespace-pre-wrap text-xs sm:text-[13px] leading-relaxed text-slate-200/90 font-normal">{msg.body || msg.snippet || "(no content)"}</p>
       </div>
     </div>
   );
