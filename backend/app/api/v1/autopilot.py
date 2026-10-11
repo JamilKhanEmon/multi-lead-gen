@@ -437,12 +437,12 @@ async def simulate_incoming_reply(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    sentiment, explanation = OutreachEngine.classify_reply_sentiment(data.reply_text)
+    label, explanation = await OutreachEngine.classify_reply_sentiment(data.reply_text)
 
-    if sentiment == "POSITIVE":
+    if label == "HOT_LEAD":
         lead.deal_status = "HOT_LEAD"
         lead.outreach_status = "REPLIED_HOT"
-    elif sentiment == "NEGATIVE":
+    elif label == "REJECTED":
         lead.deal_status = "CLOSED_LOST"
         lead.outreach_status = "DISCARDED"
     else:
@@ -454,9 +454,9 @@ async def simulate_incoming_reply(
         recipient_email=lead.business.email or "client@example.com",
         subject=f"Re: Outreach Response - {lead.business.canonical_name}",
         body_snippet=data.reply_text[:300],
-        status=f"REPLIED_{sentiment}",
+        status=f"REPLIED_{label}",
         reply_content=data.reply_text,
-        reply_sentiment=sentiment,
+        reply_sentiment=label,
         sent_at=datetime.now(timezone.utc)
     )
     db.add(log)
@@ -464,7 +464,7 @@ async def simulate_incoming_reply(
 
     return {
         "lead_id": str(lead.id),
-        "sentiment": sentiment,
+        "label": label,
         "explanation": explanation,
         "new_deal_status": lead.deal_status,
         "new_outreach_status": lead.outreach_status
@@ -490,4 +490,261 @@ async def trigger_inbox_sync(
         "status": "success",
         "processed_count": count,
         "message": f"Inbox scan completed across {len(all_creds)} connected inbox(es). Processed {count} new client reply(ies)."
+    }
+
+
+@router.get("/replies")
+async def get_replies_intelligence(
+    filter: Optional[str] = None,  # hot | neutral | rejected
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns all classified email replies from the EmailOutreachLog table.
+    Each entry includes lead info, campaign context, reply text, and AI verdict.
+    filter: 'hot' | 'neutral' | 'rejected' | None (returns all)
+    """
+    check_autopilot_permission(current_user, "can_access_autopilot")
+
+    sentiment_map = {
+        "hot": "HOT_LEAD",
+        "neutral": "NEUTRAL",
+        "rejected": "REJECTED",
+    }
+
+    stmt = (
+        select(EmailOutreachLog)
+        .options(
+            selectinload(EmailOutreachLog.lead).selectinload(Lead.business)
+        )
+        .where(EmailOutreachLog.reply_content.is_not(None))
+        .order_by(desc(EmailOutreachLog.sent_at))
+        .limit(limit)
+    )
+
+    if filter and filter.lower() in sentiment_map:
+        target_sentiment = sentiment_map[filter.lower()]
+        stmt = stmt.where(EmailOutreachLog.reply_sentiment == target_sentiment)
+
+    res = await db.execute(stmt)
+    logs = res.scalars().all()
+
+    results = []
+    for log in logs:
+        lead = log.lead
+        biz = lead.business if lead else None
+        results.append({
+            "id": str(log.id),
+            "lead_id": str(log.lead_id) if log.lead_id else None,
+            "company_name": biz.canonical_name if biz else "Unknown",
+            "contact_person": biz.contact_person if biz else None,
+            "client_email": log.recipient_email,
+            "campaign_subject": log.subject,
+            "reply_text": log.reply_content,
+            "reply_snippet": (log.reply_content or "")[:200],
+            "ai_label": log.reply_sentiment,
+            "deal_status": lead.deal_status if lead else None,
+            "outreach_status": lead.outreach_status if lead else None,
+            "replied_at": log.sent_at.isoformat() if log.sent_at else None,
+            "step": log.step,
+        })
+
+    return results
+
+
+@router.get("/inbox/messages")
+async def get_inbox_messages(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Fetches raw emails from ALL configured IMAP accounts.
+    Returns a unified inbox view sorted by date (newest first).
+    Used by the Mail Client Dashboard (/inbox page).
+    """
+    check_autopilot_permission(current_user, "can_access_autopilot")
+    from app.services.imap_sync_service import IMAPInboxSyncService
+
+    all_creds = await IMAPInboxSyncService.get_all_imap_credentials(session=db)
+    if not all_creds:
+        return {
+            "status": "warning",
+            "accounts": [],
+            "messages": [],
+            "message": "No IMAP inboxes configured. Add SMTP accounts in Admin Settings."
+        }
+
+    messages = await IMAPInboxSyncService.fetch_all_inbox_messages(
+        session=db,
+        limit_per_account=min(limit, 100)
+    )
+
+    account_emails = [c.get("from_email") or c.get("user", "") for c in all_creds]
+
+    return {
+        "status": "ok",
+        "accounts": account_emails,
+        "total": len(messages),
+        "messages": messages
+    }
+
+
+class InboxDeleteRequest(BaseModel):
+    account_id: str = Field(..., description="SMTP inbox account ID from DB")
+    imap_seq: str = Field(..., description="IMAP sequence number of the message")
+
+
+class InboxReplyRequest(BaseModel):
+    to_email: str = Field(..., description="Recipient email address")
+    subject: str = Field(..., description="Reply subject line")
+    body: str = Field(..., description="Reply body text")
+    account_id: Optional[str] = Field(default=None, description="Which SMTP account to send from (optional)")
+
+
+@router.post("/inbox/delete")
+async def delete_inbox_message(
+    data: InboxDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete an email from IMAP inbox by sequence ID."""
+    check_autopilot_permission(current_user, "can_access_autopilot")
+    from app.services.imap_sync_service import IMAPInboxSyncService
+    import imaplib
+
+    all_creds = await IMAPInboxSyncService.get_all_imap_credentials(session=db)
+    creds = next((c for c in all_creds if str(c.get("id")) == str(data.account_id)), None)
+    if not creds:
+        # fallback: use first available
+        creds = all_creds[0] if all_creds else None
+    if not creds:
+        raise HTTPException(status_code=404, detail="No IMAP account found")
+
+    import asyncio
+    loop = asyncio.get_running_loop()
+
+    def _delete():
+        mail = None
+        try:
+            mail = imaplib.IMAP4_SSL(creds["host"], creds["port"], timeout=15)
+            mail.login(creds["user"], creds["password"])
+            mail.select("INBOX")
+            mail.store(data.imap_seq.encode(), "+FLAGS", "\\Deleted")
+            mail.expunge()
+            mail.close()
+            mail.logout()
+            return True
+        except Exception as e:
+            if mail:
+                try:
+                    mail.logout()
+                except Exception:
+                    pass
+            raise e
+
+    try:
+        await loop.run_in_executor(None, _delete)
+        return {"status": "ok", "message": "Email deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete email: {str(e)}")
+
+
+@router.post("/inbox/reply")
+async def send_manual_reply(
+    data: InboxReplyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Send a manual reply email from one of the configured SMTP accounts."""
+    check_autopilot_permission(current_user, "can_access_autopilot")
+
+    success, note = await OutreachEngine.dispatch_smtp_email(
+        recipient_email=data.to_email,
+        subject=data.subject,
+        body=data.body,
+        dry_run=False,
+        db=db
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {note}")
+
+    # Log the manual reply in EmailOutreachLog
+    # Find lead by email for logging
+    from sqlalchemy import select as sa_select
+    from app.models.autopilot import EmailOutreachLog as EOL
+    log = EOL(
+        lead_id=None,
+        step=0,
+        recipient_email=data.to_email,
+        subject=data.subject,
+        body_snippet=data.body[:300],
+        status="MANUAL_REPLY_SENT",
+        sent_at=datetime.now(timezone.utc)
+    )
+    db.add(log)
+    await db.commit()
+
+    return {"status": "ok", "message": f"Reply sent to {data.to_email} successfully", "note": note}
+
+
+@router.get("/inbox/thread")
+async def get_email_thread(
+    client_email: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns the full email thread for a specific client:
+    - Emails WE sent (from EmailOutreachLog)
+    - Replies THEY sent (from EmailOutreachLog where status=REPLIED)
+    Sorted chronologically so you can see the full conversation.
+    """
+    check_autopilot_permission(current_user, "can_access_autopilot")
+
+    stmt = (
+        select(EmailOutreachLog)
+        .options(selectinload(EmailOutreachLog.lead).selectinload(Lead.business))
+        .where(EmailOutreachLog.recipient_email.ilike(client_email.strip()))
+        .order_by(EmailOutreachLog.sent_at.asc())
+    )
+    res = await db.execute(stmt)
+    logs = res.scalars().all()
+
+    thread = []
+    for log in logs:
+        biz_name = log.lead.business.canonical_name if log.lead and log.lead.business else None
+        if log.reply_content:
+            # Client's reply
+            thread.append({
+                "direction": "inbound",
+                "from": log.recipient_email,
+                "subject": log.subject,
+                "body": log.reply_content,
+                "snippet": log.reply_content[:200],
+                "sent_at": log.sent_at.isoformat() if log.sent_at else None,
+                "ai_label": log.reply_sentiment,
+                "step": log.step,
+                "company_name": biz_name,
+            })
+        else:
+            # Email WE sent
+            thread.append({
+                "direction": "outbound",
+                "to": log.recipient_email,
+                "subject": log.subject,
+                "body": log.body_snippet,
+                "snippet": log.body_snippet,
+                "sent_at": log.sent_at.isoformat() if log.sent_at else None,
+                "status": log.status,
+                "step": log.step,
+                "company_name": biz_name,
+            })
+
+    return {
+        "client_email": client_email,
+        "total": len(thread),
+        "thread": thread
     }

@@ -147,6 +147,127 @@ class IMAPInboxSyncService:
         return "\n".join(clean_lines).strip()
 
     @classmethod
+    def _parse_date(cls, msg: email.message.Message) -> Optional[str]:
+        """Parse email date header into ISO string."""
+        date_str = msg.get("Date", "")
+        if not date_str:
+            return None
+        try:
+            from email.utils import parsedate_to_datetime
+            dt = parsedate_to_datetime(date_str)
+            return dt.astimezone(timezone.utc).isoformat()
+        except Exception:
+            return None
+
+    @classmethod
+    def fetch_raw_messages(cls, creds: Dict[str, Any], limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Fetches up to `limit` most recent messages from the IMAP inbox.
+        Returns full message metadata including date, read status, and account info.
+        """
+        messages_out = []
+        mail = None
+        try:
+            mail = imaplib.IMAP4_SSL(creds["host"], creds["port"], timeout=20)
+            mail.login(creds["user"], creds["password"])
+            mail.select("INBOX")
+
+            status, data = mail.search(None, "ALL")
+            all_ids = data[0].split() if status == "OK" and data[0] else []
+            # Get most recent `limit` emails
+            fetch_ids = all_ids[-limit:] if len(all_ids) > limit else all_ids
+            fetch_ids = list(reversed(fetch_ids))  # newest first
+
+            # Fetch UNSEEN ids for read/unread marking
+            status2, unseen_data = mail.search(None, "UNSEEN")
+            unseen_ids = set(unseen_data[0].split()) if status2 == "OK" and unseen_data[0] else set()
+
+            for m_id in fetch_ids:
+                try:
+                    res, msg_data = mail.fetch(m_id, "(RFC822)")
+                    if res != "OK":
+                        continue
+                    for response_part in msg_data:
+                        if isinstance(response_part, tuple):
+                            raw_email = response_part[1]
+                            msg = email.message_from_bytes(raw_email)
+
+                            subject = cls._clean_header(msg.get("Subject")) or "(No Subject)"
+                            from_raw = cls._clean_header(msg.get("From"))
+                            from_email = cls._extract_email_address(from_raw)
+                            to_raw = cls._clean_header(msg.get("To", ""))
+                            message_id = cls._clean_header(msg.get("Message-ID"))
+                            in_reply_to = cls._clean_header(msg.get("In-Reply-To"))
+                            date_iso = cls._parse_date(msg)
+                            body = cls._extract_body_text(msg)
+                            is_unread = m_id in unseen_ids
+
+                            messages_out.append({
+                                "id": message_id or str(m_id),
+                                "imap_seq": m_id.decode() if isinstance(m_id, bytes) else str(m_id),
+                                "account_email": creds.get("from_email") or creds.get("user", ""),
+                                "account_id": creds.get("id", ""),
+                                "from_email": from_email,
+                                "from_raw": from_raw,
+                                "to": to_raw,
+                                "subject": subject,
+                                "body": body,
+                                "snippet": body[:200] if body else "",
+                                "date": date_iso,
+                                "is_unread": is_unread,
+                                "in_reply_to": in_reply_to,
+                                "message_id": message_id,
+                                "is_reply": bool(in_reply_to),
+                            })
+                except Exception as parse_err:
+                    logger.warning(f"Error parsing message {m_id}: {parse_err}")
+
+            mail.close()
+            mail.logout()
+        except Exception as e:
+            logger.error(f"IMAP fetch_raw_messages error for {creds.get('user')}: {e}")
+            if mail:
+                try:
+                    mail.logout()
+                except Exception:
+                    pass
+
+        return messages_out
+
+    @classmethod
+    async def fetch_all_inbox_messages(
+        cls,
+        session: Optional[AsyncSession] = None,
+        limit_per_account: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Aggregates emails from ALL configured IMAP accounts.
+        Returns combined list sorted by date (newest first).
+        """
+        all_creds = await cls.get_all_imap_credentials(session=session)
+        if not all_creds:
+            return []
+
+        loop = asyncio.get_running_loop()
+        all_messages: List[Dict[str, Any]] = []
+
+        for creds in all_creds:
+            try:
+                msgs = await loop.run_in_executor(
+                    None, lambda c=creds: cls.fetch_raw_messages(c, limit=limit_per_account)
+                )
+                all_messages.extend(msgs)
+            except Exception as e:
+                logger.warning(f"Failed to fetch from account {creds.get('user')}: {e}")
+
+        # Sort all messages by date (newest first)
+        def sort_key(m: Dict[str, Any]) -> str:
+            return m.get("date") or "1970-01-01T00:00:00+00:00"
+
+        all_messages.sort(key=sort_key, reverse=True)
+        return all_messages
+
+    @classmethod
     def check_inbox_sync(cls, creds: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Synchronous IMAP fetch executed inside a thread executor.
@@ -231,81 +352,83 @@ class IMAPInboxSyncService:
                 sender_email = msg["from_email"].lower()
                 reply_text = msg["body"]
 
-            # Match with Lead by email address
-            stmt = (
-                select(Lead)
-                .options(selectinload(Lead.business))
-                .join(Lead.business)
-                .where(
-                    or_(
-                        Lead.business.has(email=sender_email),
-                        Lead.business.has(email=sender_email.strip())
+                # ── Match reply with a Lead by sender email ────────────────────
+                stmt = (
+                    select(Lead)
+                    .options(selectinload(Lead.business))
+                    .join(Lead.business)
+                    .where(
+                        or_(
+                            Lead.business.has(email=sender_email),
+                            Lead.business.has(email=sender_email.strip())
+                        )
                     )
                 )
-            )
-            res = await session.execute(stmt)
-            matched_lead = res.scalar_one_or_none()
+                res = await session.execute(stmt)
+                matched_lead = res.scalar_one_or_none()
 
-            # Also check EmailOutreachLog if not matched directly
-            if not matched_lead:
-                log_stmt = (
-                    select(EmailOutreachLog)
-                    .options(selectinload(EmailOutreachLog.lead).selectinload(Lead.business))
-                    .where(EmailOutreachLog.recipient_email.ilike(sender_email))
-                    .order_by(EmailOutreachLog.created_at.desc())
+                # Also check EmailOutreachLog if not matched directly
+                if not matched_lead:
+                    log_stmt = (
+                        select(EmailOutreachLog)
+                        .options(selectinload(EmailOutreachLog.lead).selectinload(Lead.business))
+                        .where(EmailOutreachLog.recipient_email.ilike(sender_email))
+                        .order_by(EmailOutreachLog.created_at.desc())
+                    )
+                    log_res = await session.execute(log_stmt)
+                    matched_log = log_res.scalars().first()
+                    if matched_log and matched_log.lead:
+                        matched_lead = matched_log.lead
+
+                if not matched_lead:
+                    logger.debug(f"[IMAP SYNC] No lead matched for sender: {sender_email}")
+                    continue
+
+                # Prevent duplicate processing of the same exact reply
+                if matched_lead.outreach_notes and reply_text[:60] in matched_lead.outreach_notes:
+                    continue
+
+                # ── OpenClaw LLM Classification ────────────────────────────────
+                label, explanation = await OutreachEngine.classify_reply_sentiment(reply_text)
+
+                # ── Update Lead Status based on LLM verdict ───────────────────
+                if label == "HOT_LEAD":
+                    matched_lead.deal_status = "HOT_LEAD"
+                    matched_lead.outreach_status = "REPLIED_HOT"
+                elif label == "REJECTED":
+                    matched_lead.deal_status = "CLOSED_LOST"
+                    matched_lead.outreach_status = "DISCARDED"
+                else:  # NEUTRAL
+                    matched_lead.outreach_status = "REPLIED_NEUTRAL"
+
+                # Save reply snapshot to outreach notes
+                now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                note_entry = (
+                    f"\n[{now_iso}] INCOMING EMAIL REPLY ({label}):\n"
+                    f"Subject: {msg['subject']}\n"
+                    f"{reply_text[:500]}\n"
+                    f"AI Classification: {explanation}\n"
                 )
-                log_res = await session.execute(log_stmt)
-                matched_log = log_res.scalars().first()
-                if matched_log and matched_log.lead:
-                    matched_lead = matched_log.lead
+                matched_lead.outreach_notes = (matched_lead.outreach_notes or "") + note_entry
 
-            if not matched_lead:
-                continue
-
-            sentiment, explanation = OutreachEngine.classify_reply_sentiment(reply_text)
-
-            # Prevent duplicate processing of the same exact reply
-            if matched_lead.outreach_notes and reply_text[:60] in matched_lead.outreach_notes:
-                continue
-
-            # Update Lead Status
-            if sentiment == "POSITIVE":
-                matched_lead.deal_status = "HOT_LEAD"
-                matched_lead.outreach_status = "REPLIED_HOT"
-            elif sentiment == "NEGATIVE":
-                matched_lead.deal_status = "CLOSED_LOST"
-                matched_lead.outreach_status = "DISCARDED"
-            else:
-                matched_lead.outreach_status = "REPLIED_NEUTRAL"
-
-            # Save reply snapshot to outreach notes
-            now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-            note_entry = (
-                f"\n[{now_iso}] INCOMING EMAIL REPLY ({sentiment}):\n"
-                f"Subject: {msg['subject']}\n"
-                f"{reply_text[:500]}\n"
-                f"Classification: {explanation}\n"
-            )
-            matched_lead.outreach_notes = (matched_lead.outreach_notes or "") + note_entry
-
-            # Log into EmailOutreachLog
-            reply_log = EmailOutreachLog(
-                lead_id=matched_lead.id,
-                step=matched_lead.followup_step or 1,
-                recipient_email=sender_email,
-                subject=f"Re: {msg['subject']}",
-                body_snippet=reply_text[:300],
-                status="REPLIED",
-                reply_content=reply_text,
-                reply_sentiment=sentiment,
-                sent_at=datetime.now(timezone.utc)
-            )
-            session.add(reply_log)
-            processed_count += 1
-            logger.info(
-                f"[IMAP INBOX SYNC] Matched reply from {sender_email} -> {matched_lead.business.canonical_name} "
-                f"[{sentiment}]. Promoted to: {matched_lead.deal_status}"
-            )
+                # Log into EmailOutreachLog
+                reply_log = EmailOutreachLog(
+                    lead_id=matched_lead.id,
+                    step=matched_lead.followup_step or 1,
+                    recipient_email=sender_email,
+                    subject=f"Re: {msg['subject']}",
+                    body_snippet=reply_text[:300],
+                    status="REPLIED",
+                    reply_content=reply_text,
+                    reply_sentiment=label,
+                    sent_at=datetime.now(timezone.utc)
+                )
+                session.add(reply_log)
+                processed_count += 1
+                logger.info(
+                    f"[IMAP INBOX SYNC] Matched reply from {sender_email} -> "
+                    f"{matched_lead.business.canonical_name} [{label}]: {explanation}"
+                )
 
         if processed_count > 0:
             await session.commit()

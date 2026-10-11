@@ -220,7 +220,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (currentUser.role === "super_admin") return { allowed: true };
     if (currentUser.permissions_json?.all) return { allowed: true };
 
-    if (pathname.startsWith("/autopilot")) {
+    if (pathname.startsWith("/autopilot") || pathname.startsWith("/replies") || pathname.startsWith("/inbox")) {
       if (!hasPermission(currentUser, "can_access_autopilot", false)) {
         return {
           allowed: false,

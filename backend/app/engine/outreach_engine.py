@@ -60,18 +60,7 @@ class OutreachEngine:
         }
     }
 
-    POSITIVE_KEYWORDS = [
-        "interested", "tell me more", "call", "schedule", "pricing", "quote",
-        "meeting", "send details", "let's talk", "lets talk", "sure", "sounds good",
-        "yes", "demo", "cost", "more info", "available", "zoom", "talk with you",
-        "want to talk", "talk to you", "chat", "connect", "reach out", "free to talk",
-        "great", "sounds great", "let's connect", "lets connect", "speak with you"
-    ]
-
-    NEGATIVE_KEYWORDS = [
-        "unsubscribe", "remove", "stop", "not interested", "dont contact",
-        "don't contact", "leave me alone", "spam", "wrong person", "cease"
-    ]
+    # ── LLM-based classification — no keyword lists needed ──────────────────
 
     @classmethod
     def render_email(cls, step: int, lead_data: Dict[str, Any]) -> Tuple[str, str]:
@@ -479,18 +468,54 @@ class OutreachEngine:
         return await loop.run_in_executor(None, _send)
 
     @classmethod
-    def classify_reply_sentiment(cls, reply_text: str) -> Tuple[str, str]:
-        if not reply_text:
-            return "NEUTRAL", "Empty reply content"
+    async def classify_reply_sentiment(cls, reply_text: str) -> Tuple[str, str]:
+        """
+        LLM-powered reply intent classifier via OpenClaw Cloud AI Gateway.
+        Returns (label, reason) where label is one of:
+          HOT_LEAD   — prospect is interested, wants to talk/know pricing/schedule
+          NEUTRAL    — non-committal, thinking, asking a generic question
+          REJECTED   — explicitly not interested, wants to unsubscribe / stop emails
+        """
+        if not reply_text or not reply_text.strip():
+            return "NEUTRAL", "Empty reply — no content to classify"
 
-        clean = reply_text.lower()
+        from app.services.ai_client import AIClient
 
-        for neg in cls.NEGATIVE_KEYWORDS:
-            if neg in clean:
-                return "NEGATIVE", f"Opt-out or negative intent detected: '{neg}'"
+        system_prompt = (
+            "You are an expert B2B sales reply analyzer. "
+            "Your job is to read a reply to a cold outreach email and classify the prospect's intent.\n\n"
+            "Classification rules:\n"
+            "- HOT_LEAD: The prospect shows genuine interest. They ask about pricing, want a call/demo, "
+            "ask for more details, say yes/sure/sounds good, or want to schedule something.\n"
+            "- NEUTRAL: The prospect is neither clearly interested nor rejecting. "
+            "They say 'maybe later', 'let me think', ask a vague question, or give a non-committal response.\n"
+            "- REJECTED: The prospect clearly does not want further contact. "
+            "They say not interested, unsubscribe, stop, wrong person, leave me alone, spam, or similar.\n\n"
+            "Important: Understand full context, not just keywords. Sarcasm, politeness, and ambiguity should be handled intelligently.\n\n"
+            "Respond ONLY with a valid JSON object in this exact format:\n"
+            '{"label": "HOT_LEAD" | "NEUTRAL" | "REJECTED", "reason": "one concise sentence explaining why"}'
+        )
 
-        for pos in cls.POSITIVE_KEYWORDS:
-            if pos in clean:
-                return "POSITIVE", f"Hot lead interest signal detected: '{pos}'"
+        user_prompt = (
+            f"Classify the intent of this cold email reply:\n\n"
+            f"---\n{reply_text.strip()[:1500]}\n---"
+        )
 
-        return "NEUTRAL", "General response or inquiry"
+        try:
+            ai = AIClient(timeout=20.0)
+            result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+
+            label = str(result.get("label", "")).strip().upper()
+            reason = str(result.get("reason", "AI classification")).strip()
+
+            if label not in ("HOT_LEAD", "NEUTRAL", "REJECTED"):
+                logger.warning(f"[LLM Classifier] Unexpected label '{label}' — defaulting to NEUTRAL")
+                label = "NEUTRAL"
+
+            logger.info(f"[LLM Classifier] Result: {label} | Reason: {reason}")
+            return label, reason
+
+        except Exception as e:
+            logger.error(f"[LLM Classifier] OpenClaw call failed: {e}")
+            # Safe default — treat as NEUTRAL so outreach is not accidentally stopped
+            return "NEUTRAL", f"Classification unavailable (AI error): {str(e)[:120]}"

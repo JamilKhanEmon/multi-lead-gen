@@ -2056,3 +2056,144 @@ export async function simulateChatMessage(payload: {
   if (!res.ok) throw new Error("Simulation failed");
   return res.json();
 }
+
+export interface ReplyEntry {
+  id: string;
+  lead_id: string | null;
+  company_name: string;
+  contact_person: string | null;
+  client_email: string;
+  campaign_subject: string;
+  reply_text: string;
+  reply_snippet: string;
+  ai_label: "HOT_LEAD" | "NEUTRAL" | "REJECTED" | string;
+  deal_status: string | null;
+  outreach_status: string | null;
+  replied_at: string | null;
+  step: number;
+}
+
+export async function fetchReplies(filter?: "hot" | "neutral" | "rejected"): Promise<ReplyEntry[]> {
+  try {
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const url = filter
+      ? `${API_BASE}/autopilot/replies?filter=${filter}`
+      : `${API_BASE}/autopilot/replies`;
+    const res = await fetch(url, { cache: "no-store", headers });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch (err) {
+    console.warn("fetchReplies error:", err);
+    return [];
+  }
+}
+
+export interface InboxMessage {
+  id: string;
+  imap_seq: string;
+  account_email: string;
+  account_id: string;
+  from_email: string;
+  from_raw: string;
+  to: string;
+  subject: string;
+  body: string;
+  snippet: string;
+  date: string | null;
+  is_unread: boolean;
+  in_reply_to: string;
+  message_id: string;
+  is_reply: boolean;
+}
+
+export async function fetchInboxMessages(limit = 50): Promise<{
+  status: string;
+  accounts: string[];
+  total: number;
+  messages: InboxMessage[];
+}> {
+  try {
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/autopilot/inbox/messages?limit=${limit}`, {
+      cache: "no-store",
+      headers,
+    });
+    if (!res.ok) return { status: "error", accounts: [], total: 0, messages: [] };
+    return await res.json();
+  } catch (err) {
+    console.warn("fetchInboxMessages error:", err);
+    return { status: "error", accounts: [], total: 0, messages: [] };
+  }
+}
+
+export async function deleteInboxMessage(accountId: string, imapSeq: string): Promise<{ status: string; message: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/autopilot/inbox/delete`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ account_id: accountId, imap_seq: imapSeq }),
+  });
+  if (!res.ok) throw new Error("Failed to delete email");
+  return res.json();
+}
+
+export async function sendManualReply(payload: {
+  to_email: string;
+  subject: string;
+  body: string;
+  account_id?: string;
+}): Promise<{ status: string; message: string; note: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/autopilot/inbox/reply`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to send reply");
+  }
+  return res.json();
+}
+
+export interface ThreadMessage {
+  direction: "inbound" | "outbound";
+  from?: string;
+  to?: string;
+  subject: string;
+  body: string;
+  snippet: string;
+  sent_at: string | null;
+  ai_label?: string;
+  status?: string;
+  step: number;
+  company_name?: string;
+}
+
+export async function fetchEmailThread(clientEmail: string): Promise<{
+  client_email: string;
+  total: number;
+  thread: ThreadMessage[];
+}> {
+  try {
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(
+      `${API_BASE}/autopilot/inbox/thread?client_email=${encodeURIComponent(clientEmail)}`,
+      { cache: "no-store", headers }
+    );
+    if (!res.ok) return { client_email: clientEmail, total: 0, thread: [] };
+    return await res.json();
+  } catch {
+    return { client_email: clientEmail, total: 0, thread: [] };
+  }
+}
