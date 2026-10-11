@@ -197,6 +197,18 @@ async def dispatch_outreach_queue(
     res = await db.execute(stmt)
     ready_leads = res.scalars().all()
 
+    from app.models.email_template import PersonaSignature, EmailTemplate
+    p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
+    p_res = await db.execute(p_stmt)
+    active_personas = [
+        {"name": p.name, "title": p.title, "company": p.company, "raw_content": p.render_signature()}
+        for p in p_res.scalars().all()
+    ]
+
+    t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
+    t_res = await db.execute(t_stmt)
+    active_tpl = t_res.scalar_one_or_none()
+
     dispatched = 0
     is_live = await OutreachEngine.is_smtp_configured(db=db)
 
@@ -212,8 +224,14 @@ async def dispatch_outreach_queue(
                 "company_name": biz.canonical_name,
                 "contact_person": biz.contact_person or "Executive",
                 "city": biz.address or "",
+                "website": getattr(biz, "domain", ""),
                 "industry": getattr(biz, "business_type", ""),
-                "primary_gap": lead.primary_gap_summary
+                "primary_gap": lead.primary_gap_summary,
+                "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
+                "what_they_need": getattr(lead, "what_they_need", None) or "",
+                "matched_service": getattr(lead, "matched_service", None) or "",
+                "personas": active_personas,
+                "custom_template": active_tpl
             }
         )
 
