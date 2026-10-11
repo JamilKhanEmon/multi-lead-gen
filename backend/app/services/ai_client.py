@@ -116,10 +116,33 @@ class MockAIClient:
         if self.return_payload is not None:
             return self.return_payload
 
+        prompt_lower = user_prompt.lower()
+        full_context = (system_prompt + " " + user_prompt).lower()
+
+        # Handle reply sentiment / intent classification
+        if "classify" in full_context or "cold email reply" in full_context or "intent" in full_context:
+            rejection_words = [
+                "no needed", "not needed", "no need", "dont need", "don't need", "doesn't need",
+                "not interested", "no thanks", "no thank you", "unsubscribe", "stop",
+                "remove me", "take me off", "do not contact", "dont contact", "leave me alone",
+                "wrong person", "wrong email", "not looking", "not required", "opt out", "spam"
+            ]
+            if any(w in prompt_lower for w in rejection_words):
+                return {"label": "REJECTED", "reason": "Prospect explicitly indicated no need or declined contact"}
+
+            hot_words = [
+                "call me", "interested", "i want to talk", "want to talk", "lets talk", "let's talk",
+                "schedule", "demo", "pricing", "how much", "quote", "cost", "send details",
+                "tell me more", "sounds good", "yes please", "sure"
+            ]
+            if any(w in prompt_lower for w in hot_words):
+                return {"label": "HOT_LEAD", "reason": "Prospect expressed positive interest or requested follow-up"}
+
+            return {"label": "NEUTRAL", "reason": "Prospect response is non-committal or generic inquiry"}
+
         services = []
         findings = []
 
-        prompt_lower = user_prompt.lower()
         if '"has_whatsapp": false' in prompt_lower:
             findings.append({
                 "parameter_id": 43,

@@ -513,6 +513,32 @@ async def get_replies_intelligence(
         "rejected": "REJECTED",
     }
 
+    # Auto-heal any misclassified replies using high-precision classifier
+    try:
+        fix_stmt = (
+            select(EmailOutreachLog)
+            .options(selectinload(EmailOutreachLog.lead))
+            .where(EmailOutreachLog.reply_content.is_not(None), EmailOutreachLog.reply_sentiment == "NEUTRAL")
+        )
+        fix_res = await db.execute(fix_stmt)
+        needs_commit = False
+        for r_log in fix_res.scalars().all():
+            lbl, _ = await OutreachEngine.classify_reply_sentiment(r_log.reply_content)
+            if lbl != "NEUTRAL":
+                r_log.reply_sentiment = lbl
+                needs_commit = True
+                if r_log.lead:
+                    if lbl == "REJECTED":
+                        r_log.lead.deal_status = "CLOSED_LOST"
+                        r_log.lead.outreach_status = "DISCARDED"
+                    elif lbl == "HOT_LEAD":
+                        r_log.lead.deal_status = "HOT_LEAD"
+                        r_log.lead.outreach_status = "REPLIED_HOT"
+        if needs_commit:
+            await db.commit()
+    except Exception as heal_err:
+        logger.debug(f"Reply sentiment auto-heal notice: {heal_err}")
+
     stmt = (
         select(EmailOutreachLog)
         .options(
@@ -741,6 +767,24 @@ async def get_email_thread(
     for log in logs:
         biz_name = log.lead.business.canonical_name if log.lead and log.lead.business else None
         if log.reply_content:
+            ai_lbl = log.reply_sentiment
+            if ai_lbl == "NEUTRAL" or not ai_lbl:
+                lbl, _ = await OutreachEngine.classify_reply_sentiment(log.reply_content)
+                if lbl != "NEUTRAL":
+                    ai_lbl = lbl
+                    log.reply_sentiment = lbl
+                    try:
+                        if log.lead:
+                            if lbl == "REJECTED":
+                                log.lead.deal_status = "CLOSED_LOST"
+                                log.lead.outreach_status = "DISCARDED"
+                            elif lbl == "HOT_LEAD":
+                                log.lead.deal_status = "HOT_LEAD"
+                                log.lead.outreach_status = "REPLIED_HOT"
+                        await db.commit()
+                    except Exception:
+                        pass
+
             # Client's reply
             thread.append({
                 "direction": "inbound",
@@ -749,7 +793,7 @@ async def get_email_thread(
                 "body": log.reply_content,
                 "snippet": log.reply_content[:200],
                 "sent_at": log.sent_at.isoformat() if log.sent_at else None,
-                "ai_label": log.reply_sentiment,
+                "ai_label": ai_lbl,
                 "step": log.step,
                 "company_name": biz_name,
             })

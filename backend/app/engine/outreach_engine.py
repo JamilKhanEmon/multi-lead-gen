@@ -489,8 +489,8 @@ class OutreachEngine:
     @classmethod
     async def classify_reply_sentiment(cls, reply_text: str) -> Tuple[str, str]:
         """
-        LLM-powered reply intent classifier via OpenClaw Cloud AI Gateway.
-        Returns (label, reason) where label is one of:
+        AI & Deterministic Semantic reply intent classifier.
+        Classifies incoming cold email replies into:
           HOT_LEAD   — prospect is interested, wants to talk/know pricing/schedule
           NEUTRAL    — non-committal, thinking, asking a generic question
           REJECTED   — explicitly not interested, wants to unsubscribe / stop emails
@@ -498,6 +498,41 @@ class OutreachEngine:
         if not reply_text or not reply_text.strip():
             return "NEUTRAL", "Empty reply — no content to classify"
 
+        clean = reply_text.strip().lower()
+
+        # ── 1. High-Precision Semantic Pattern Matching ────────────────────────
+        # Check for explicit rejections
+        rejection_indicators = [
+            "no needed", "not needed", "no need", "dont need", "don't need", "doesn't need", "does not need",
+            "not interested", "no thanks", "no thank you", "no, thanks", "no, thank you",
+            "unsubscribe", "remove me", "take me off", "stop emailing", "please stop",
+            "do not contact", "dont contact", "don't contact", "leave me alone",
+            "never email", "wrong person", "wrong email", "not looking", "not required",
+            "not for us", "we already have", "we have a vendor", "we have someone",
+            "opt out", "spam", "please remove", "cease and desist"
+        ]
+        for indicator in rejection_indicators:
+            if indicator in clean:
+                logger.info(f"[Semantic Classifier] Matched REJECTED on: '{indicator}'")
+                return "REJECTED", f"Prospect explicitly declined ('{indicator}')"
+
+        # Check for explicit positive interest
+        hot_indicators = [
+            "great, i want to talk", "i want to talk", "want to talk", "call me",
+            "let's talk", "lets talk", "let's chat", "lets chat",
+            "interested", "schedule a call", "schedule a demo", "send pricing",
+            "how much", "what is the price", "what is the cost",
+            "send details", "send more info", "tell me more", "share details",
+            "sounds good", "yes please", "yes, please", "sure, send", "book a demo",
+            "send a proposal", "send quote", "free to talk", "available for a call",
+            "let's connect", "lets connect"
+        ]
+        for indicator in hot_indicators:
+            if indicator in clean:
+                logger.info(f"[Semantic Classifier] Matched HOT_LEAD on: '{indicator}'")
+                return "HOT_LEAD", f"Prospect showed clear interest ('{indicator}')"
+
+        # ── 2. AI / LLM Deep Reasoning for Nuanced / Complex Replies ───────────
         from app.services.ai_client import AIClient
 
         system_prompt = (
@@ -507,9 +542,9 @@ class OutreachEngine:
             "- HOT_LEAD: The prospect shows genuine interest. They ask about pricing, want a call/demo, "
             "ask for more details, say yes/sure/sounds good, or want to schedule something.\n"
             "- NEUTRAL: The prospect is neither clearly interested nor rejecting. "
-            "They say 'maybe later', 'let me think', ask a vague question, or give a non-committal response.\n"
+            "They say 'maybe later', 'let me think', ask a generic question, or give a non-committal response.\n"
             "- REJECTED: The prospect clearly does not want further contact. "
-            "They say not interested, unsubscribe, stop, wrong person, leave me alone, spam, or similar.\n\n"
+            "They say not interested, no needed, unsubscribe, stop, wrong person, leave me alone, spam, or similar.\n\n"
             "Important: Understand full context, not just keywords. Sarcasm, politeness, and ambiguity should be handled intelligently.\n\n"
             "Respond ONLY with a valid JSON object in this exact format:\n"
             '{"label": "HOT_LEAD" | "NEUTRAL" | "REJECTED", "reason": "one concise sentence explaining why"}'
