@@ -1228,7 +1228,13 @@ async def update_lead_details(
         lead.matched_service = data.matched_service.strip()
 
     if data.approve_for_outreach is True:
-        lead.outreach_status = "READY_FOR_OUTREACH"
+        has_already_sent = bool(lead.followup_step and lead.followup_step > 0) or bool(lead.last_contacted_at)
+        has_replied = lead.outreach_status in ("REPLIED_HOT", "REPLIED_NEUTRAL", "DISCARDED")
+        if not has_already_sent and not has_replied:
+            lead.outreach_status = "READY_FOR_OUTREACH"
+        elif has_already_sent and not has_replied:
+            lead.outreach_status = "SENT"
+
         lead.tier = "Strong Potential"
         lead.is_qualified = True
         if lead.email_status == "NEEDS_REVIEW" or not lead.email_status:
@@ -1309,7 +1315,9 @@ async def dispatch_staggered_outreach(
     else:
         stmt = stmt.where(
             Lead.outreach_status.in_(["READY_FOR_OUTREACH", "HOLD", "PENDING"]),
-            Lead.is_qualified == True
+            Lead.is_qualified == True,
+            Lead.followup_step == 0,
+            Lead.last_contacted_at.is_(None)
         )
 
     res = await db.execute(stmt)
@@ -1320,7 +1328,7 @@ async def dispatch_staggered_outreach(
             "status": "COMPLETED",
             "dispatched_count": 0,
             "results": [],
-            "message": "No valid leads found to dispatch."
+            "message": "No valid uncontacted leads found to dispatch."
         }
 
     from app.models.email_template import PersonaSignature, EmailTemplate
@@ -1343,6 +1351,14 @@ async def dispatch_staggered_outreach(
     for idx, lead in enumerate(leads_to_send):
         biz = lead.business
         if not biz or not biz.email:
+            continue
+
+        # Strict Safety Guard: Never re-dispatch to leads already sent or replied
+        if (lead.followup_step and lead.followup_step > 0) or lead.last_contacted_at:
+            logger.info(f"[Outreach Guard] Skipping '{biz.canonical_name}' - already contacted.")
+            continue
+        if lead.outreach_status in ("SENT", "FOLLOWUP_SENT", "REPLIED_HOT", "REPLIED_NEUTRAL", "DISCARDED"):
+            logger.info(f"[Outreach Guard] Skipping '{biz.canonical_name}' - status is '{lead.outreach_status}'.")
             continue
 
         recipient = biz.email.strip()

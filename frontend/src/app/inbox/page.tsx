@@ -151,7 +151,7 @@ export default function InboxPage() {
       setMessages((prev) => prev.filter((m) => m.id !== msg.id));
       if (selected?.id === msg.id) setSelected(null);
     } catch (e: any) {
-      alert(`Delete failed: ${e.message}`);
+      setSendMsg(`❌ Delete failed: ${e.message}`);
     } finally { setDeletingId(null); }
   };
 

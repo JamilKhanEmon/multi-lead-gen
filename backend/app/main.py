@@ -62,7 +62,7 @@ async def autonomous_outreach_scheduler():
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
     import os
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone, timedelta
 
     logger.info("Started Autonomous Anti-Spam Email Outreach Background Daemon.")
 
@@ -75,14 +75,6 @@ async def autonomous_outreach_scheduler():
             async with AsyncSessionLocal() as session:
                 if not await OutreachEngine.is_smtp_configured(db=session):
                     continue
-                stmt = (
-                    select(Lead)
-                    .options(selectinload(Lead.business))
-                    .where(Lead.outreach_status == "READY_FOR_OUTREACH", Lead.is_qualified == True)
-                    .limit(5)
-                )
-                res = await session.execute(stmt)
-                ready_leads = res.scalars().all()
 
                 from app.models.email_template import PersonaSignature, EmailTemplate
                 p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
@@ -95,6 +87,21 @@ async def autonomous_outreach_scheduler():
                 t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
                 t_res = await session.execute(t_stmt)
                 active_tpl = t_res.scalar_one_or_none()
+
+                # ── 1. Initial Outreach (Step 1): Uncontacted Ready Leads ──────
+                stmt = (
+                    select(Lead)
+                    .options(selectinload(Lead.business))
+                    .where(
+                        Lead.outreach_status == "READY_FOR_OUTREACH",
+                        Lead.is_qualified == True,
+                        Lead.followup_step == 0,
+                        Lead.last_contacted_at.is_(None)
+                    )
+                    .limit(5)
+                )
+                res = await session.execute(stmt)
+                ready_leads = res.scalars().all()
 
                 for idx, lead in enumerate(ready_leads):
                     biz = lead.business
@@ -157,10 +164,107 @@ async def autonomous_outreach_scheduler():
                         )
                         session.add(log)
                         await session.commit()
-                        logger.info(f"[AUTONOMOUS OUTREACH DAEMON] Dispatched lead email to {recipient} ({biz.canonical_name}).")
+                        logger.info(f"[AUTONOMOUS OUTREACH DAEMON] Dispatched Step 1 email to {recipient} ({biz.canonical_name}).")
 
                     if idx < len(ready_leads) - 1:
-                        import random
+                        await asyncio.sleep(random.uniform(45, 90))
+
+                # ── 2. Automated Follow-up Cadence (Step 2 and Step 3) with Reply Kill-Switch ──
+                now_utc = datetime.now(timezone.utc)
+                followup_cutoff = now_utc - timedelta(days=3)
+
+                followup_stmt = (
+                    select(Lead)
+                    .options(selectinload(Lead.business))
+                    .where(
+                        Lead.outreach_status == "SENT",
+                        Lead.deal_status.notin_(["HOT_LEAD", "CLOSED_LOST", "WON"]),
+                        Lead.followup_step.in_([1, 2]),
+                        Lead.last_contacted_at <= followup_cutoff,
+                        Lead.is_qualified == True
+                    )
+                    .limit(5)
+                )
+                followup_leads = (await session.execute(followup_stmt)).scalars().all()
+
+                for f_idx, f_lead in enumerate(followup_leads):
+                    f_biz = f_lead.business
+                    if not f_biz or not f_biz.email:
+                        continue
+
+                    # STRICT KILL-SWITCH: Verify prospect has never replied
+                    reply_check_stmt = select(EmailOutreachLog.id).where(
+                        EmailOutreachLog.lead_id == f_lead.id,
+                        EmailOutreachLog.status.in_(["REPLIED", "MANUAL_REPLY_SENT", "UNSUBSCRIBED"])
+                    ).limit(1)
+                    has_replied = (await session.execute(reply_check_stmt)).scalar_one_or_none() is not None
+                    if has_replied or f_lead.outreach_status in ("REPLIED_HOT", "REPLIED_NEUTRAL", "DISCARDED"):
+                        logger.info(f"[FOLLOW-UP KILL-SWITCH] Skipping '{f_biz.canonical_name}' - client has already replied.")
+                        continue
+
+                    target_step = f_lead.followup_step + 1
+                    if target_step > 3:
+                        continue
+
+                    f_meta = f_biz.metadata_json or {}
+                    f_target_city = f_meta.get("city") or f_biz.address or ""
+                    f_target_country = f_meta.get("country") or ""
+                    f_loc = f_biz.locations[0] if (f_biz.locations and len(f_biz.locations) > 0) else None
+                    f_lat = f_loc.latitude if f_loc else f_meta.get("latitude")
+                    f_lon = f_loc.longitude if f_loc else f_meta.get("longitude")
+
+                    is_valid_time, reason = OutreachEngine.is_within_target_business_hours(
+                        lat=f_lat,
+                        lon=f_lon,
+                        country=f_target_country,
+                        city=f_target_city
+                    )
+                    if not is_valid_time:
+                        continue
+
+                    f_recipient = f_biz.email.strip()
+                    f_subject, f_body = OutreachEngine.render_email(
+                        step=target_step,
+                        lead_data={
+                            "company_name": f_biz.canonical_name,
+                            "contact_person": f_biz.contact_person or "Executive",
+                            "city": f_target_city or "",
+                            "website": getattr(f_biz, "domain", ""),
+                            "industry": getattr(f_biz, "business_type", ""),
+                            "primary_gap": f_lead.primary_gap_summary,
+                            "why_they_need_us": getattr(f_lead, "why_they_need_us", None) or f_lead.primary_gap_summary,
+                            "what_they_need": getattr(f_lead, "what_they_need", None) or "",
+                            "matched_service": getattr(f_lead, "matched_service", None) or "",
+                            "personas": active_personas,
+                            "custom_template": active_tpl
+                        }
+                    )
+                    f_success, f_note = await OutreachEngine.dispatch_smtp_email(
+                        recipient_email=f_recipient,
+                        subject=f_subject,
+                        body=f_body,
+                        dry_run=False,
+                        db=session
+                    )
+                    if f_success:
+                        f_lead.followup_step = target_step
+                        f_lead.outreach_status = "SENT"
+                        f_lead.last_contacted_at = datetime.now(timezone.utc)
+                        f_log = EmailOutreachLog(
+                            lead_id=f_lead.id,
+                            step=target_step,
+                            recipient_email=f_recipient,
+                            subject=f_subject,
+                            body_snippet=f_body,
+                            status="SENT",
+                            error_message=f_note,
+                            sent_at=datetime.now(timezone.utc)
+                        )
+                        session.add(f_log)
+                        await session.commit()
+                        logger.info(f"[AUTONOMOUS OUTREACH DAEMON] Dispatched Step {target_step} follow-up to {f_recipient} ({f_biz.canonical_name}).")
+
+                    if f_idx < len(followup_leads) - 1:
                         await asyncio.sleep(random.uniform(45, 90))
         except asyncio.CancelledError:
             break

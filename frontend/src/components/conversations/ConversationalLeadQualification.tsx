@@ -73,6 +73,7 @@ export default function ConversationalLeadQualification() {
   const [editConfig, setEditConfig] = useState<Partial<ChatbotConfig>>({});
   const [savingConfig, setSavingConfig] = useState<boolean>(false);
   const [configSuccess, setConfigSuccess] = useState<string | null>(null);
+  const [configError, setConfigError] = useState<string | null>(null);
 
   // Simulation State
   const [simText, setSimText] = useState<string>("");
@@ -218,12 +219,13 @@ export default function ConversationalLeadQualification() {
     setSavingConfig(true);
     setConfigSuccess(null);
     try {
+      setConfigError(null);
       await updateChatbotConfig(editConfig);
       await loadConfig();
       setConfigSuccess("Business Profile & AI Settings saved successfully!");
       setTimeout(() => setConfigSuccess(null), 3000);
     } catch (err: any) {
-      alert("Error updating config: " + err.message);
+      setConfigError("Error updating config: " + err.message);
     } finally {
       setSavingConfig(false);
     }
@@ -235,6 +237,7 @@ export default function ConversationalLeadQualification() {
     setSimRunning(true);
     setSimResponse(null);
     try {
+      setConfigError(null);
       const res = await simulateChatMessage({
         platform: simPlatform,
         sender_name: simSender,
@@ -245,7 +248,7 @@ export default function ConversationalLeadQualification() {
       await loadConversations(false);
       setSelectedId(res.conversation_id);
     } catch (err: any) {
-      alert("Simulation error: " + err.message);
+      setConfigError("Simulation error: " + err.message);
     } finally {
       setSimRunning(false);
     }
@@ -847,6 +850,13 @@ export default function ConversationalLeadQualification() {
               <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs flex items-center gap-2">
                 <Check className="w-4 h-4" />
                 <span>{configSuccess}</span>
+              </div>
+            )}
+
+            {configError && (
+              <div className="p-3 bg-rose-500/20 border border-rose-500/40 rounded-xl text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                <span>{configError}</span>
               </div>
             )}
 

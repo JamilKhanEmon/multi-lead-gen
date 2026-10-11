@@ -65,7 +65,7 @@ export default function ResearchInitiatorPage() {
         setActiveRun((prev) => (prev ? { ...prev, status: "CANCELLED" } : null));
       }
     } catch (err: any) {
-      alert("Failed to cancel run: " + err.message);
+      setError("Failed to cancel run: " + err.message);
     } finally {
       setCancelling(false);
     }

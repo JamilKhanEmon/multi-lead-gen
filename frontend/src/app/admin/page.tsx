@@ -633,12 +633,12 @@ export default function AdminPortalPage() {
   const handleDeleteUser = async (u: AuthUser) => {
 
     if (u.role === "super_admin" && currentUser?.role !== "super_admin") {
-      alert("Security Violation: Admins are strictly prohibited from removing Super Administrators.");
+      setUserActionError("Security Violation: Admins are strictly prohibited from removing Super Administrators.");
       return;
     }
 
     if (u.id === currentUser?.id) {
-      alert("You cannot delete your own account.");
+      setUserActionError("You cannot delete your own account.");
       return;
     }
 

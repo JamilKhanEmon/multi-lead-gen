@@ -60,6 +60,10 @@ class Settings(BaseSettings):
         default="oc_dev_webhook_token_change_me_distinct_secret",
         description="Dedicated token for validating inbound cron/automation webhooks",
     )
+    OPENCLAW_MODEL: Optional[str] = Field(
+        default=None,
+        description="Optional override for OpenClaw active LLM model (defaults to active agent in OpenClaw)",
+    )
 
     WORKER_CONCURRENCY: int = Field(default=2, ge=1, le=4)
     RESEARCH_TIMEOUT_SECONDS: int = Field(default=120, ge=30, le=600)

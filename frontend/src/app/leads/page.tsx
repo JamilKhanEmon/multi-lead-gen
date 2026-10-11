@@ -37,6 +37,7 @@ import {
   Clock,
   ShieldCheck,
   Send,
+  AlertTriangle,
 } from "lucide-react";
 
 type PipelineStage = "ALL" | "REVIEW" | "READY" | "SENT" | "HOT_DEALS" | "NO_EMAIL";
@@ -64,6 +65,15 @@ export default function LeadsPipelinePage() {
     message: string;
     results: Array<{ lead_id: string; company: string; email: string; status: string; note?: string }>;
   } | null>(null);
+
+  const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    setToast({ type, message });
+    setTimeout(() => {
+      setToast((prev) => (prev?.message === message ? null : prev));
+    }, 4000);
+  };
 
   const loadLeads = (tier?: string, runId?: string, fitTier?: string) => {
     setLoading(true);
@@ -103,7 +113,7 @@ export default function LeadsPipelinePage() {
       setSelectedLeads([]);
       loadLeads(activeTier, selectedRunId);
     } catch (err: any) {
-      alert("Dispatch failed: " + (err.message || "Unknown error"));
+      showToast("Dispatch failed: " + (err.message || "Unknown error"), "error");
       setShowDispatchModal(false);
     } finally {
       setIsDispatching(false);
@@ -183,9 +193,10 @@ export default function LeadsPipelinePage() {
   const handleQuickApprove = async (leadId: string) => {
     try {
       await submitLeadFeedback(leadId, "APPROVED");
+      showToast("Lead approved for Outreach Queue!", "success");
       loadLeads(activeTier, selectedRunId);
     } catch (err: any) {
-      alert("Failed to approve lead: " + (err.message || "Unknown error"));
+      showToast("Failed to approve lead: " + (err.message || "Unknown error"), "error");
     }
   };
 
@@ -206,7 +217,12 @@ export default function LeadsPipelinePage() {
   };
 
   const isSentMail = (l: Lead) => {
-    return l.outreach_status === "SENT" || l.outreach_status === "FOLLOWUP_SENT";
+    return (
+      l.outreach_status === "SENT" ||
+      l.outreach_status === "FOLLOWUP_SENT" ||
+      Boolean(l.followup_step && l.followup_step > 0) ||
+      Boolean(l.last_contacted_at)
+    );
   };
 
   const isHotDeal = (l: Lead) => {
@@ -218,7 +234,9 @@ export default function LeadsPipelinePage() {
       hasEmailForOutreach(l) &&
       !isNeedsReview(l) &&
       !isHotDeal(l) &&
-      !isSentMail(l)
+      !isSentMail(l) &&
+      (!l.followup_step || l.followup_step === 0) &&
+      !l.last_contacted_at
     );
   };
 
@@ -279,7 +297,7 @@ export default function LeadsPipelinePage() {
 
   const exportToCsv = (items: Lead[], customName?: string) => {
     if (!items || items.length === 0) {
-      alert("No leads available to export!");
+      showToast("No leads available to export!", "error");
       return;
     }
 
@@ -382,7 +400,7 @@ export default function LeadsPipelinePage() {
     }
 
     if (!items || items.length === 0) {
-      alert("No leads available to export!");
+      showToast("No leads available to export!", "error");
       return;
     }
     const jsonContent = JSON.stringify(items, null, 2);
@@ -1284,6 +1302,36 @@ export default function LeadsPipelinePage() {
                 </button>
               </div>
             ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* Sleek Floating Glassmorphic Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[100] animate-in fade-in slide-in-from-bottom-5 duration-300">
+          <div
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-xl ${
+              toast.type === "success"
+                ? "bg-slate-900/95 border-emerald-500/40 text-emerald-400 shadow-emerald-950/40"
+                : toast.type === "error"
+                ? "bg-slate-900/95 border-rose-500/40 text-rose-400 shadow-rose-950/40"
+                : "bg-slate-900/95 border-sky-500/40 text-sky-400 shadow-sky-950/40"
+            }`}
+          >
+            {toast.type === "success" ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            ) : toast.type === "error" ? (
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+            ) : (
+              <Zap className="w-5 h-5 text-sky-400 shrink-0" />
+            )}
+            <span className="text-xs font-semibold text-slate-100">{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       )}
