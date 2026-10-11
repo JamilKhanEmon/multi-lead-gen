@@ -66,7 +66,7 @@ class AIClient:
             return ws_res
 
         # 2. OpenRouter Direct Inference (Powering OpenClaw's GLM 5.3 Flash)
-        openrouter_key = os.getenv("OPENROUTER_API_KEY")
+        openrouter_key = getattr(settings, "OPENROUTER_API_KEY", None) or os.getenv("OPENROUTER_API_KEY")
         if openrouter_key:
             try:
                 async with httpx.AsyncClient(timeout=20.0) as or_client:
@@ -96,7 +96,7 @@ class AIClient:
                 logger.debug(f"OpenRouter inference notice: {or_err}")
 
         # 3. Google Gemini Cloud API (if configured)
-        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        gemini_key = getattr(settings, "GEMINI_API_KEY", None) or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if gemini_key:
             try:
                 g_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"

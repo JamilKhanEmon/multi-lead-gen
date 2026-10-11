@@ -61,6 +61,9 @@ class Settings(BaseSettings):
         description="Dedicated token for validating inbound cron/automation webhooks",
     )
 
+    GEMINI_API_KEY: Optional[str] = Field(default=None, description="Google Gemini API Key for autonomous cloud LLM reasoning")
+    OPENROUTER_API_KEY: Optional[str] = Field(default=None, description="OpenRouter API Key for GLM 5.3 Flash / Cloud LLM reasoning")
+
     WORKER_CONCURRENCY: int = Field(default=2, ge=1, le=4)
     RESEARCH_TIMEOUT_SECONDS: int = Field(default=120, ge=30, le=600)
     MAX_RETRY_ATTEMPTS: int = Field(default=5, ge=1, le=10)
