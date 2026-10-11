@@ -558,37 +558,43 @@ class OutreachEngine:
             logger.warning(f"[Reply Classifier] OpenClaw AI unreachable or failed ({e}). Falling back to Rule Logic.")
 
         # ── 2. Fallback: High-Precision Semantic Pattern Matching & Rule Logic ──
-        logger.info("[Reply Classifier] Executing Deterministic Rule Logic Engine.")
+        try:
+            logger.info("[Reply Classifier] Executing Deterministic Rule Logic Engine.")
 
-        # Check for explicit rejections
-        rejection_indicators = [
-            "no needed", "not needed", "no need", "dont need", "don't need", "doesn't need", "does not need",
-            "not interested", "no thanks", "no thank you", "no, thanks", "no, thank you",
-            "unsubscribe", "remove me", "take me off", "stop emailing", "please stop",
-            "do not contact", "dont contact", "don't contact", "leave me alone",
-            "never email", "wrong person", "wrong email", "not looking", "not required",
-            "not for us", "we already have", "we have a vendor", "we have someone",
-            "opt out", "spam", "please remove", "cease and desist"
-        ]
-        for indicator in rejection_indicators:
-            if indicator in clean:
-                logger.info(f"[Rule Logic Classifier] Matched REJECTED on: '{indicator}'")
-                return ClassificationResult("REJECTED", f"Prospect explicitly declined ('{indicator}')", "RULE_LOGIC")
+            # Check for explicit rejections
+            rejection_indicators = [
+                "no needed", "not needed", "no need", "dont need", "don't need", "doesn't need", "does not need",
+                "not interested", "no thanks", "no thank you", "no, thanks", "no, thank you",
+                "unsubscribe", "remove me", "take me off", "stop emailing", "please stop",
+                "do not contact", "dont contact", "don't contact", "leave me alone",
+                "never email", "wrong person", "wrong email", "not looking", "not required",
+                "not for us", "we already have", "we have a vendor", "we have someone",
+                "opt out", "spam", "please remove", "cease and desist"
+            ]
+            for indicator in rejection_indicators:
+                if indicator in clean:
+                    logger.info(f"[Rule Logic Classifier] Matched REJECTED on: '{indicator}'")
+                    return ClassificationResult("REJECTED", f"Prospect explicitly declined ('{indicator}')", "RULE_LOGIC")
 
-        # Check for explicit positive interest
-        hot_indicators = [
-            "great, i want to talk", "i want to talk", "want to talk", "call me",
-            "let's talk", "lets talk", "let's chat", "lets chat",
-            "interested", "schedule a call", "schedule a demo", "send pricing",
-            "how much", "what is the price", "what is the cost",
-            "send details", "send more info", "tell me more", "share details",
-            "sounds good", "yes please", "yes, please", "sure, send", "book a demo",
-            "send a proposal", "send quote", "free to talk", "available for a call",
-            "let's connect", "lets connect"
-        ]
-        for indicator in hot_indicators:
-            if indicator in clean:
-                logger.info(f"[Rule Logic Classifier] Matched HOT_LEAD on: '{indicator}'")
-                return ClassificationResult("HOT_LEAD", f"Prospect showed clear interest ('{indicator}')", "RULE_LOGIC")
+            # Check for explicit positive interest
+            hot_indicators = [
+                "great, i want to talk", "i want to talk", "want to talk", "call me",
+                "let's talk", "lets talk", "let's chat", "lets chat",
+                "interested", "schedule a call", "schedule a demo", "send pricing",
+                "how much", "what is the price", "what is the cost",
+                "send details", "send more info", "tell me more", "share details",
+                "sounds good", "yes please", "yes, please", "sure, send", "book a demo",
+                "send a proposal", "send quote", "free to talk", "available for a call",
+                "let's connect", "lets connect"
+            ]
+            for indicator in hot_indicators:
+                if indicator in clean:
+                    logger.info(f"[Rule Logic Classifier] Matched HOT_LEAD on: '{indicator}'")
+                    return ClassificationResult("HOT_LEAD", f"Prospect showed clear interest ('{indicator}')", "RULE_LOGIC")
 
-        return ClassificationResult("NEUTRAL", "Prospect reply is neutral / non-committal", "RULE_LOGIC")
+            return ClassificationResult("NEUTRAL", "Prospect reply is neutral / non-committal", "RULE_LOGIC")
+
+        except Exception as fallback_err:
+            logger.error(f"[Reply Classifier] Rule engine fail-safe triggered: {fallback_err}")
+            # Ultimate safeguard: treat as NEUTRAL so email is safely preserved in inbox
+            return ClassificationResult("NEUTRAL", "Safe default: Review manually in inbox", "RULE_LOGIC")
