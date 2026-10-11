@@ -360,15 +360,62 @@ async def get_inbox_monitor_stats(
     admin_user: User = Depends(require_admin),
 ):
     from app.engine.outreach_engine import OutreachEngine
-    
+    from app.models.autopilot import EmailOutreachLog
+    from datetime import datetime, timezone
+
+    # 1. Fetch configured inboxes from DB
     db_inboxes_stmt = select(SMTPInbox).order_by(SMTPInbox.created_at)
     res = await db.execute(db_inboxes_stmt)
     db_inboxes = res.scalars().all()
-    
+
+    # 2. Query persistent outreach logs sent TODAY from PostgreSQL
+    now = datetime.now(timezone.utc)
+    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+
+    today_logs_stmt = select(EmailOutreachLog).where(
+        EmailOutreachLog.sent_at >= today_start,
+        EmailOutreachLog.status.in_(["SENT", "MANUAL_REPLY_SENT", "DELIVERED"])
+    )
+    today_logs_res = await db.execute(today_logs_stmt)
+    today_logs = today_logs_res.scalars().all()
+
+    # Map persistent sent logs to specific inboxes
+    inbox_db_counts = {}
+    unassigned_today_count = 0
+
+    for l in today_logs:
+        err_msg = l.error_message or ""
+        matched = False
+        for idx, ib in enumerate(db_inboxes):
+            ib_id_str = str(ib.id)
+            if (
+                ib_id_str in err_msg
+                or f"#{idx + 1}" in err_msg
+                or f"#{ib.id}" in err_msg
+                or (ib.from_email and ib.from_email.lower() in err_msg.lower())
+            ):
+                inbox_db_counts[ib_id_str] = inbox_db_counts.get(ib_id_str, 0) + 1
+                matched = True
+                break
+        if not matched:
+            unassigned_today_count += 1
+
     inbox_list = []
     if db_inboxes:
         for idx, ib in enumerate(db_inboxes):
-            sent_today = OutreachEngine.INBOX_STATS.get(str(ib.id), 0)
+            ib_id_str = str(ib.id)
+            db_sent = inbox_db_counts.get(ib_id_str, 0)
+            mem_sent = OutreachEngine.INBOX_STATS.get(ib_id_str, 0)
+            sent_today = max(db_sent, mem_sent)
+
+            # Attribute legacy unassigned logs sent today so total matches database reality
+            if unassigned_today_count > 0:
+                sent_today += unassigned_today_count
+                unassigned_today_count = 0
+
+            # Keep in-memory cache in sync with persistent DB
+            OutreachEngine.INBOX_STATS[ib_id_str] = sent_today
+
             inbox_list.append({
                 "id": str(ib.id),
                 "index": idx + 1,
@@ -387,7 +434,7 @@ async def get_inbox_monitor_stats(
         env_inboxes = OutreachEngine.get_active_smtp_inboxes()
         for ib in env_inboxes:
             ib_id = ib["id"]
-            sent_today = OutreachEngine.INBOX_STATS.get(str(ib_id), 0)
+            sent_today = len(today_logs) if len(today_logs) > 0 else OutreachEngine.INBOX_STATS.get(str(ib_id), 0)
             inbox_list.append({
                 "id": str(ib_id),
                 "index": ib_id,

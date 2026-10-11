@@ -152,6 +152,7 @@ async def autonomous_outreach_scheduler():
                             subject=subject,
                             body_snippet=body,
                             status="SENT",
+                            error_message=note,
                             sent_at=datetime.now(timezone.utc)
                         )
                         session.add(log)

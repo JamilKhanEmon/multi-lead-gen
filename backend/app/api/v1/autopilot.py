@@ -237,6 +237,7 @@ async def dispatch_outreach_queue(
                 subject=subject,
                 body_snippet=body,
                 status="SENT",
+                error_message=note,
                 sent_at=datetime.now(timezone.utc)
             )
             db.add(log)
@@ -737,6 +738,7 @@ async def send_manual_reply(
         subject=data.subject,
         body_snippet=data.body,
         status="MANUAL_REPLY_SENT",
+        error_message=note,
         sent_at=datetime.now(timezone.utc)
     )
     db.add(log)

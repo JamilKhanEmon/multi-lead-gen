@@ -103,6 +103,7 @@ async def dispatch_pending_outreach(force_live: bool = False):
                     subject=subject,
                     body_snippet=body,
                     status="SENT",
+                    error_message=note,
                     sent_at=datetime.now(timezone.utc)
                 )
                 session.add(log)
