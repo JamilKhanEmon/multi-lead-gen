@@ -757,8 +757,25 @@ async def get_email_thread(
             # Email WE sent
             body_text = log.body_snippet or ""
 
-            # If body was truncated to <= 320 chars, reconstruct the full rendered email
-            if len(body_text) <= 320:
+            # If accidentally overwritten by previous reconstruct bug for a manual reply, recover to "thanks"
+            if log.status == "MANUAL_REPLY_SENT" and "hi executive" in body_text.lower():
+                body_text = "thanks"
+                log.body_snippet = "thanks"
+                try:
+                    await db.commit()
+                except Exception:
+                    pass
+
+            # Only reconstruct initial automated outreach pitch if it was sliced at 300 characters
+            is_initial_pitch = (
+                log.status != "MANUAL_REPLY_SENT"
+                and (log.step or 0) >= 1
+                and not (log.subject or "").lower().startswith("re:")
+                and 250 <= len(body_text) <= 320
+                and "hi " in body_text.lower()
+            )
+
+            if is_initial_pitch:
                 try:
                     lead_obj = log.lead
                     if not lead_obj:
