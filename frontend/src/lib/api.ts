@@ -2138,3 +2138,71 @@ export async function fetchInboxMessages(limit = 50): Promise<{
     return { status: "error", accounts: [], total: 0, messages: [] };
   }
 }
+
+export async function deleteInboxMessage(accountId: string, imapSeq: string): Promise<{ status: string; message: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/autopilot/inbox/delete`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ account_id: accountId, imap_seq: imapSeq }),
+  });
+  if (!res.ok) throw new Error("Failed to delete email");
+  return res.json();
+}
+
+export async function sendManualReply(payload: {
+  to_email: string;
+  subject: string;
+  body: string;
+  account_id?: string;
+}): Promise<{ status: string; message: string; note: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/autopilot/inbox/reply`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to send reply");
+  }
+  return res.json();
+}
+
+export interface ThreadMessage {
+  direction: "inbound" | "outbound";
+  from?: string;
+  to?: string;
+  subject: string;
+  body: string;
+  snippet: string;
+  sent_at: string | null;
+  ai_label?: string;
+  status?: string;
+  step: number;
+  company_name?: string;
+}
+
+export async function fetchEmailThread(clientEmail: string): Promise<{
+  client_email: string;
+  total: number;
+  thread: ThreadMessage[];
+}> {
+  try {
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(
+      `${API_BASE}/autopilot/inbox/thread?client_email=${encodeURIComponent(clientEmail)}`,
+      { cache: "no-store", headers }
+    );
+    if (!res.ok) return { client_email: clientEmail, total: 0, thread: [] };
+    return await res.json();
+  } catch {
+    return { client_email: clientEmail, total: 0, thread: [] };
+  }
+}

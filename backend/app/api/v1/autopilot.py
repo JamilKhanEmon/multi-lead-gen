@@ -589,3 +589,162 @@ async def get_inbox_messages(
         "total": len(messages),
         "messages": messages
     }
+
+
+class InboxDeleteRequest(BaseModel):
+    account_id: str = Field(..., description="SMTP inbox account ID from DB")
+    imap_seq: str = Field(..., description="IMAP sequence number of the message")
+
+
+class InboxReplyRequest(BaseModel):
+    to_email: str = Field(..., description="Recipient email address")
+    subject: str = Field(..., description="Reply subject line")
+    body: str = Field(..., description="Reply body text")
+    account_id: Optional[str] = Field(default=None, description="Which SMTP account to send from (optional)")
+
+
+@router.post("/inbox/delete")
+async def delete_inbox_message(
+    data: InboxDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete an email from IMAP inbox by sequence ID."""
+    check_autopilot_permission(current_user, "can_access_autopilot")
+    from app.services.imap_sync_service import IMAPInboxSyncService
+    import imaplib
+
+    all_creds = await IMAPInboxSyncService.get_all_imap_credentials(session=db)
+    creds = next((c for c in all_creds if str(c.get("id")) == str(data.account_id)), None)
+    if not creds:
+        # fallback: use first available
+        creds = all_creds[0] if all_creds else None
+    if not creds:
+        raise HTTPException(status_code=404, detail="No IMAP account found")
+
+    import asyncio
+    loop = asyncio.get_running_loop()
+
+    def _delete():
+        mail = None
+        try:
+            mail = imaplib.IMAP4_SSL(creds["host"], creds["port"], timeout=15)
+            mail.login(creds["user"], creds["password"])
+            mail.select("INBOX")
+            mail.store(data.imap_seq.encode(), "+FLAGS", "\\Deleted")
+            mail.expunge()
+            mail.close()
+            mail.logout()
+            return True
+        except Exception as e:
+            if mail:
+                try:
+                    mail.logout()
+                except Exception:
+                    pass
+            raise e
+
+    try:
+        await loop.run_in_executor(None, _delete)
+        return {"status": "ok", "message": "Email deleted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete email: {str(e)}")
+
+
+@router.post("/inbox/reply")
+async def send_manual_reply(
+    data: InboxReplyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Send a manual reply email from one of the configured SMTP accounts."""
+    check_autopilot_permission(current_user, "can_access_autopilot")
+
+    success, note = await OutreachEngine.dispatch_smtp_email(
+        recipient_email=data.to_email,
+        subject=data.subject,
+        body=data.body,
+        dry_run=False,
+        db=db
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {note}")
+
+    # Log the manual reply in EmailOutreachLog
+    # Find lead by email for logging
+    from sqlalchemy import select as sa_select
+    from app.models.autopilot import EmailOutreachLog as EOL
+    log = EOL(
+        lead_id=None,
+        step=0,
+        recipient_email=data.to_email,
+        subject=data.subject,
+        body_snippet=data.body[:300],
+        status="MANUAL_REPLY_SENT",
+        sent_at=datetime.now(timezone.utc)
+    )
+    db.add(log)
+    await db.commit()
+
+    return {"status": "ok", "message": f"Reply sent to {data.to_email} successfully", "note": note}
+
+
+@router.get("/inbox/thread")
+async def get_email_thread(
+    client_email: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Returns the full email thread for a specific client:
+    - Emails WE sent (from EmailOutreachLog)
+    - Replies THEY sent (from EmailOutreachLog where status=REPLIED)
+    Sorted chronologically so you can see the full conversation.
+    """
+    check_autopilot_permission(current_user, "can_access_autopilot")
+
+    stmt = (
+        select(EmailOutreachLog)
+        .options(selectinload(EmailOutreachLog.lead).selectinload(Lead.business))
+        .where(EmailOutreachLog.recipient_email.ilike(client_email.strip()))
+        .order_by(EmailOutreachLog.sent_at.asc())
+    )
+    res = await db.execute(stmt)
+    logs = res.scalars().all()
+
+    thread = []
+    for log in logs:
+        biz_name = log.lead.business.canonical_name if log.lead and log.lead.business else None
+        if log.reply_content:
+            # Client's reply
+            thread.append({
+                "direction": "inbound",
+                "from": log.recipient_email,
+                "subject": log.subject,
+                "body": log.reply_content,
+                "snippet": log.reply_content[:200],
+                "sent_at": log.sent_at.isoformat() if log.sent_at else None,
+                "ai_label": log.reply_sentiment,
+                "step": log.step,
+                "company_name": biz_name,
+            })
+        else:
+            # Email WE sent
+            thread.append({
+                "direction": "outbound",
+                "to": log.recipient_email,
+                "subject": log.subject,
+                "body": log.body_snippet,
+                "snippet": log.body_snippet,
+                "sent_at": log.sent_at.isoformat() if log.sent_at else None,
+                "status": log.status,
+                "step": log.step,
+                "company_name": biz_name,
+            })
+
+    return {
+        "client_email": client_email,
+        "total": len(thread),
+        "thread": thread
+    }
