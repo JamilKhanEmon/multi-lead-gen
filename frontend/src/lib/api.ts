@@ -2090,15 +2090,6 @@ export async function fetchReplies(filter?: "hot" | "neutral" | "rejected"): Pro
   }
 }
 
-export async function triggerInboxSync(): Promise<{ status: string; processed_count: number; message: string }> {
-  const token = getStoredToken();
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${API_BASE}/autopilot/inbox/sync`, { method: "POST", headers });
-  if (!res.ok) throw new Error("Inbox sync failed");
-  return res.json();
-}
-
 export interface InboxMessage {
   id: string;
   imap_seq: string;
