@@ -369,12 +369,21 @@ class OutreachEngine:
     @classmethod
     def get_active_smtp_inboxes(cls) -> List[Dict[str, Any]]:
         inboxes = []
-        base_host = os.getenv("SMTP_HOST")
-        base_user = os.getenv("SMTP_USER")
-        base_pass = os.getenv("SMTP_PASSWORD")
-        base_port = int(os.getenv("SMTP_PORT", "587"))
-        base_from = os.getenv("SMTP_FROM_EMAIL", base_user or "")
-        base_name = os.getenv("SMTP_FROM_NAME", "")
+        try:
+            from app.core.config import settings
+            base_host = settings.SMTP_HOST or os.getenv("SMTP_HOST")
+            base_user = settings.SMTP_USER or os.getenv("SMTP_USER")
+            base_pass = settings.SMTP_PASSWORD or os.getenv("SMTP_PASSWORD")
+            base_port = settings.SMTP_PORT or int(os.getenv("SMTP_PORT", "587"))
+            base_from = settings.SMTP_FROM_EMAIL or os.getenv("SMTP_FROM_EMAIL", base_user or "")
+            base_name = settings.SMTP_FROM_NAME or os.getenv("SMTP_FROM_NAME", "")
+        except Exception:
+            base_host = os.getenv("SMTP_HOST")
+            base_user = os.getenv("SMTP_USER")
+            base_pass = os.getenv("SMTP_PASSWORD")
+            base_port = int(os.getenv("SMTP_PORT", "587"))
+            base_from = os.getenv("SMTP_FROM_EMAIL", base_user or "")
+            base_name = os.getenv("SMTP_FROM_NAME", "")
 
         if base_host and base_user:
             inboxes.append({
@@ -417,17 +426,27 @@ class OutreachEngine:
         subject: str,
         body: str,
         dry_run: bool = False,
-        db: Optional[Any] = None
+        db: Optional[Any] = None,
+        account_id: Optional[str] = None
     ) -> Tuple[bool, str]:
         inboxes = await cls.get_active_inboxes(db=db)
+
+        if not inboxes:
+            inboxes = cls.get_active_smtp_inboxes()
 
         if dry_run or not inboxes:
             logger.info(f"[OUTREACH SIMULATOR] Dispatching to {recipient_email} | Subject: '{subject}' | (Simulated 200 OK)")
             await asyncio.sleep(0.5)
             return True, "Simulated delivery successful (Dry-Run Mode)"
 
-        # Randomly choose one active inbox from available inboxes for load balancing
-        selected_inbox = random.choice(inboxes)
+        selected_inbox = None
+        if account_id:
+            selected_inbox = next((ib for ib in inboxes if str(ib.get("id")) == str(account_id)), None)
+            if not selected_inbox:
+                selected_inbox = next((ib for ib in inboxes if str(ib.get("from_email")) == str(account_id) or str(ib.get("user")) == str(account_id)), None)
+
+        if not selected_inbox:
+            selected_inbox = random.choice(inboxes)
 
         smtp_host = selected_inbox["host"]
         smtp_port = selected_inbox["port"]

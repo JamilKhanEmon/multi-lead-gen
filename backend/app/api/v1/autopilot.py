@@ -660,24 +660,44 @@ async def send_manual_reply(
     """Send a manual reply email from one of the configured SMTP accounts."""
     check_autopilot_permission(current_user, "can_access_autopilot")
 
+    clean_email = data.to_email.strip().lower()
+
     success, note = await OutreachEngine.dispatch_smtp_email(
-        recipient_email=data.to_email,
+        recipient_email=clean_email,
         subject=data.subject,
         body=data.body,
         dry_run=False,
-        db=db
+        db=db,
+        account_id=data.account_id
     )
 
     if not success:
         raise HTTPException(status_code=500, detail=f"Failed to send email: {note}")
 
-    # Log the manual reply in EmailOutreachLog
-    # Find lead by email for logging
-    from sqlalchemy import select as sa_select
+    lead_id = None
+    campaign_id = None
+    try:
+        from app.models.lead import Lead
+        from app.models.business import Business
+        stmt = (
+            select(Lead)
+            .join(Business, Lead.business_id == Business.id)
+            .where(Business.email.ilike(clean_email))
+            .limit(1)
+        )
+        l_res = await db.execute(stmt)
+        lead_obj = l_res.scalar_one_or_none()
+        if lead_obj:
+            lead_id = lead_obj.id
+            campaign_id = getattr(lead_obj, "campaign_id", None)
+    except Exception as err:
+        logger.warning(f"Could not link lead for manual reply to {clean_email}: {err}")
+
     log = EmailOutreachLog(
-        lead_id=None,
+        lead_id=lead_id,
+        campaign_id=campaign_id,
         step=0,
-        recipient_email=data.to_email,
+        recipient_email=clean_email,
         subject=data.subject,
         body_snippet=data.body,
         status="MANUAL_REPLY_SENT",
@@ -686,7 +706,7 @@ async def send_manual_reply(
     db.add(log)
     await db.commit()
 
-    return {"status": "ok", "message": f"Reply sent to {data.to_email} successfully", "note": note}
+    return {"status": "ok", "message": f"Reply sent to {clean_email} successfully", "note": note}
 
 
 @router.get("/inbox/thread")

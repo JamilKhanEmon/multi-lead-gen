@@ -53,7 +53,7 @@ class AutopilotCampaign(Base, UUIDMixin, TimestampMixin):
 class EmailOutreachLog(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "email_outreach_logs"
 
-    lead_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=False, index=True)
+    lead_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("leads.id", ondelete="CASCADE"), nullable=True, index=True)
     campaign_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("autopilot_campaigns.id", ondelete="SET NULL"), nullable=True, index=True)
     
     step: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
