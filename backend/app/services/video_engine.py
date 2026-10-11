@@ -4,12 +4,10 @@ import json
 import httpx
 from typing import Dict, Any, List, Optional
 from app.core.config import settings
-from app.services.ollama_client import OllamaClient
+from app.services.ai_client import AIClient
 from app.core.logging import logger
 
 class VideoMediaEngine:
-
-    GOOGLE_GENAI_URL = "https://generativelanguage.googleapis.com/v1beta"
 
     @classmethod
     async def generate_storyboard(
@@ -19,7 +17,7 @@ class VideoMediaEngine:
         selected_topic: str,
         reference_image_description: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        ollama = OllamaClient()
+        ai = AIClient()
 
         prompt = f"""
 You are an expert Hollywood AI Cinematographer and B2B Commercial Director.
@@ -87,7 +85,7 @@ For EACH scene return:
         ]
 
         try:
-            resp = await ollama.analyze(
+            resp = await ai.analyze(
                 system_prompt="Return ONLY a JSON list of 4 objects with keys: scene_number, scene_name, duration_seconds, prompt, camera_motion, narration.",
                 user_prompt=prompt,
             )

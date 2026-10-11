@@ -61,15 +61,6 @@ class Settings(BaseSettings):
         description="Dedicated token for validating inbound cron/automation webhooks",
     )
 
-    OLLAMA_BASE_URL: str = Field(
-        default="http://127.0.0.1:11434",
-        description="Native macOS Ollama instance",
-    )
-    OLLAMA_MODEL: str = Field(
-        default="qwen2.5:7b",
-        description="High-speed B2B reasoning model (Qwen 2.5 7B, precise JSON and cold outreach copy)",
-    )
-
     WORKER_CONCURRENCY: int = Field(default=2, ge=1, le=4)
     RESEARCH_TIMEOUT_SECONDS: int = Field(default=120, ge=30, le=600)
     MAX_RETRY_ATTEMPTS: int = Field(default=5, ge=1, le=10)
@@ -78,7 +69,7 @@ class Settings(BaseSettings):
     META_AD_ACCOUNT_ID: Optional[str] = Field(default=None, description="Meta Ad Account ID e.g. act_123456789")
     META_PAGE_ID: Optional[str] = Field(default=None, description="Facebook Business Page ID")
 
-    GOOGLE_API_KEY: Optional[str] = Field(default=None, description="Google Gemini/Imagen/Veo API key")
+    ELEVENLABS_API_KEY: Optional[str] = Field(default=None, description="ElevenLabs API Key for Voice Agent & Cloning")
 
     SMTP_HOST: Optional[str] = Field(default=None, description="SMTP Server Host (e.g., smtp.gmail.com)")
     SMTP_PORT: int = Field(default=587, description="SMTP Port (587 for TLS, 465 for SSL)")
@@ -86,6 +77,12 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP Authentication Password or App Password")
     SMTP_FROM_EMAIL: Optional[str] = Field(default=None, description="Sender Email Address")
     SMTP_FROM_NAME: str = Field(default="", description="Sender Name displayed in email clients")
+
+    IMAP_HOST: Optional[str] = Field(default=None, description="IMAP Server Host (e.g., imap.gmail.com)")
+    IMAP_PORT: int = Field(default=993, description="IMAP SSL Port (typically 993)")
+    IMAP_USER: Optional[str] = Field(default=None, description="IMAP Username/Email (defaults to SMTP_USER if not set)")
+    IMAP_PASSWORD: Optional[str] = Field(default=None, description="IMAP Password or App Password (defaults to SMTP_PASSWORD if not set)")
+    IMAP_POLL_INTERVAL_SECONDS: int = Field(default=180, description="Interval in seconds to check inbox for client replies")
 
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",

@@ -2,7 +2,7 @@ import re
 import urllib.parse
 from typing import Dict, Any, List, Tuple, Optional
 from app.core.logging import logger
-from app.services.ollama_client import OllamaClient, OllamaClientError
+from app.services.ai_client import AIClient, AIClientError
 
 class DiscoveryOptimizer:
 
@@ -30,7 +30,7 @@ class DiscoveryOptimizer:
         ind_clean = industry.strip()
 
         try:
-            ollama = OllamaClient(timeout=8.0)
+            ai = AIClient(timeout=8.0)
             system_prompt = (
                 "You are an expert B2B Lead Generation Discovery Query Optimizer.\n"
                 "Given any target industry and any location worldwide, generate broad, high-coverage search queries, "
@@ -46,7 +46,7 @@ class DiscoveryOptimizer:
                 f"Ensure queries target all active commercial businesses, firms, clinics, or agencies in this area, NOT residential areas or random shops."
             )
 
-            result = await ollama.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+            result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
             if (
                 isinstance(result, dict)
                 and "search_queries" in result
@@ -192,7 +192,7 @@ class DiscoveryOptimizer:
                 if len(neg_l) >= 4 and neg_l in full_text:
                     return False, f"Matched AI negative filter: '{neg}'"
 
-        # Prioritize AI Semantic Verification (Ollama) before heuristic matching
+        # AI Semantic Verification before heuristic matching
         if ollama_client and (page_title or meta_description or business_name):
             try:
                 system_prompt = (

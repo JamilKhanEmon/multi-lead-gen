@@ -67,21 +67,6 @@ async def get_system_health(
         overall_healthy = False
         components["redis"] = ComponentHealth(status="down", details={"error": str(e)})
 
-    t0 = time.time()
-    try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            resp = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
-            ollama_latency = (time.time() - t0) * 1000
-            if resp.status_code == 200:
-                components["ollama"] = ComponentHealth(
-                    status="healthy",
-                    latency_ms=round(ollama_latency, 2),
-                    details={"model": settings.OLLAMA_MODEL},
-                )
-            else:
-                components["ollama"] = ComponentHealth(status="degraded", details={"status_code": resp.status_code})
-    except Exception as e:
-        components["ollama"] = ComponentHealth(status="down", details={"error": str(e)})
 
     gw_url = settings.OPENCLAW_GATEWAY_URL or ""
     if gw_url.startswith("http://") or gw_url.startswith("https://"):

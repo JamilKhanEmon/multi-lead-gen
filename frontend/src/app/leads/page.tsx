@@ -411,9 +411,16 @@ export default function LeadsPipelinePage() {
   const renderOutreachBadge = (lead: Lead) => {
     if (lead.deal_status === "HOT_LEAD" || lead.outreach_status === "REPLIED_HOT") {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
-          <Flame className="w-3 h-3 text-rose-400 fill-rose-400" /> Hot Deal / Positive Reply
-        </span>
+        <div className="space-y-1">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+            <Flame className="w-3 h-3 text-rose-400 fill-rose-400" /> Hot Deal / Positive Reply
+          </span>
+          {lead.outreach_notes && lead.outreach_notes.includes("INCOMING EMAIL REPLY") && (
+            <div className="text-[10px] text-emerald-400 font-mono truncate max-w-[200px]" title={lead.outreach_notes}>
+              💬 Reply received in inbox
+            </div>
+          )}
+        </div>
       );
     }
     if (lead.outreach_status === "FOLLOWUP_SENT") {

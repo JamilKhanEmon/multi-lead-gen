@@ -1,6 +1,4 @@
 from typing import Optional, List, Dict, Any
-from datetime import datetime
-import uuid
 from pydantic import BaseModel, ConfigDict, Field
 
 class VoiceKnowledgeBaseCreate(BaseModel):
@@ -17,6 +15,15 @@ class VoiceKnowledgeBaseCreate(BaseModel):
     office_hours_end: str = "18:00"
     is_active: bool = True
     objections_json: List[Dict[str, str]] = Field(default_factory=list)
+    voice_provider: str = "elevenlabs"
+    elevenlabs_api_key: Optional[str] = None
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_model_id: str = "eleven_multilingual_v2"
+    cloned_voice_id: Optional[str] = None
+    cloned_voice_name: Optional[str] = None
+    auto_call_enabled: bool = False
+    max_daily_calls: int = 50
+    country_language_map: Dict[str, str] = Field(default_factory=dict)
 
 class VoiceKnowledgeBaseUpdate(BaseModel):
     name: Optional[str] = None
@@ -32,6 +39,16 @@ class VoiceKnowledgeBaseUpdate(BaseModel):
     office_hours_end: Optional[str] = None
     is_active: Optional[bool] = None
     objections_json: Optional[List[Dict[str, str]]] = None
+    voice_provider: Optional[str] = None
+    elevenlabs_api_key: Optional[str] = None
+    elevenlabs_voice_id: Optional[str] = None
+    elevenlabs_model_id: Optional[str] = None
+    cloned_voice_id: Optional[str] = None
+    cloned_voice_name: Optional[str] = None
+    cloned_voice_sample_url: Optional[str] = None
+    auto_call_enabled: Optional[bool] = None
+    max_daily_calls: Optional[int] = None
+    country_language_map: Optional[Dict[str, str]] = None
 
 class VoiceKnowledgeBaseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -50,6 +67,16 @@ class VoiceKnowledgeBaseResponse(BaseModel):
     office_hours_end: str
     is_active: bool
     objections_json: List[Dict[str, str]] = Field(default_factory=list)
+    voice_provider: str = "elevenlabs"
+    elevenlabs_api_key_configured: bool = False
+    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_model_id: str = "eleven_multilingual_v2"
+    cloned_voice_id: Optional[str] = None
+    cloned_voice_name: Optional[str] = None
+    cloned_voice_sample_url: Optional[str] = None
+    auto_call_enabled: bool = False
+    max_daily_calls: int = 50
+    country_language_map: Dict[str, str] = Field(default_factory=dict)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -58,6 +85,8 @@ class VoiceCallQueueItemCreate(BaseModel):
     contact_title: Optional[str] = None
     company_name: str
     phone: str
+    country: str = "Bangladesh"
+    language: str = "Bengali"
     exact_problem: str
     selected_for_call: bool = True
     lead_id: Optional[str] = None
@@ -68,6 +97,8 @@ class VoiceCallQueueItemUpdate(BaseModel):
     contact_title: Optional[str] = None
     company_name: Optional[str] = None
     phone: Optional[str] = None
+    country: Optional[str] = None
+    language: Optional[str] = None
     exact_problem: Optional[str] = None
     status: Optional[str] = None
     selected_for_call: Optional[bool] = None
@@ -84,9 +115,12 @@ class VoiceCallQueueItemResponse(BaseModel):
     contact_title: Optional[str] = None
     company_name: str
     phone: str
+    country: str = "Bangladesh"
+    language: str = "Bengali"
     exact_problem: str
     status: str
     selected_for_call: bool
+    call_attempts: int = 0
     meeting_link: Optional[str] = None
     meeting_time: Optional[str] = None
     last_called_at: Optional[str] = None
@@ -106,6 +140,7 @@ class VoiceDialogueTurnRequest(BaseModel):
     client_name: Optional[str] = None
     company_name: Optional[str] = None
     exact_problem: Optional[str] = None
+    language: Optional[str] = None
 
 class VoiceDialogueTurnResponse(BaseModel):
     agent_reply_text: str
@@ -113,6 +148,7 @@ class VoiceDialogueTurnResponse(BaseModel):
     meeting_link: Optional[str] = None
     meeting_time: Optional[str] = None
     detected_intent: str = "general_query"
+    language: str = "Bengali"
     audio_base64: Optional[str] = None
     audio_url: Optional[str] = None
 
@@ -126,6 +162,8 @@ class VoiceCallLogResponse(BaseModel):
     company_name: str
     contact_person: str
     call_duration_seconds: int
+    language_used: str = "Bengali"
+    recording_url: Optional[str] = None
     transcript_json: List[Dict[str, Any]]
     sentiment: str
     meeting_booked: bool

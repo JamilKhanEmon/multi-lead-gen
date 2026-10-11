@@ -76,30 +76,6 @@ async def check_redis() -> Tuple[bool, str]:
     except Exception as e:
         return False, f"Redis error: {str(e)}"
 
-async def check_ollama() -> Tuple[bool, str]:
-    import urllib.request
-    import urllib.error
-
-    host = "127.0.0.1"
-    port = 11434
-    if not check_tcp_port(host, port):
-        return False, "Ollama daemon not running on 127.0.0.1:11434 (Run: ollama serve)"
-
-    url = f"http://{host}:{port}/api/tags"
-    try:
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=3.0) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            models = [m.get("name") for m in data.get("models", [])]
-            target_model = os.getenv("OLLAMA_MODEL", "gemma3:4b")
-            has_target = any(target_model in m for m in models)
-            if has_target:
-                return True, f"Active. Model '{target_model}' found. Total models: {len(models)}"
-            else:
-                return True, f"Active, but '{target_model}' not pulled yet. Available: {models or 'None'}. (Run: ollama pull {target_model})"
-    except Exception as e:
-        return False, f"Ollama HTTP check failed: {str(e)}"
-
 async def check_openclaw_gateway() -> Tuple[bool, str]:
     host = "127.0.0.1"
     port = 18789
@@ -156,7 +132,6 @@ async def main():
     services = [
         ("PostgreSQL 16 (Docker: 127.0.0.1:5432)", check_postgres),
         ("Redis 7 (Docker: 127.0.0.1:6379)", check_redis),
-        ("Ollama Local Runtime (127.0.0.1:11434)", check_ollama),
         ("OpenClaw Gateway (127.0.0.1:18789)", check_openclaw_gateway),
     ]
 

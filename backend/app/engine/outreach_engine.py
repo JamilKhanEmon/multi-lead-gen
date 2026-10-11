@@ -63,7 +63,9 @@ class OutreachEngine:
     POSITIVE_KEYWORDS = [
         "interested", "tell me more", "call", "schedule", "pricing", "quote",
         "meeting", "send details", "let's talk", "lets talk", "sure", "sounds good",
-        "yes", "demo", "cost", "more info", "available", "zoom"
+        "yes", "demo", "cost", "more info", "available", "zoom", "talk with you",
+        "want to talk", "talk to you", "chat", "connect", "reach out", "free to talk",
+        "great", "sounds great", "let's connect", "lets connect", "speak with you"
     ]
 
     NEGATIVE_KEYWORDS = [

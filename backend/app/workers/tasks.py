@@ -13,7 +13,7 @@ from app.models import (
     ParameterResult, ResearchRun, ResearchJob,
 )
 from app.services.openclaw_client import OpenClawClient, MockOpenClawClient
-from app.services.ollama_client import OllamaClient, MockOllamaClient
+from app.services.ai_client import AIClient, MockAIClient
 from app.engine.deduplication import DeduplicationEngine
 from app.engine.parameter_engine import ParameterEngine
 from app.engine.evidence_engine import EvidenceEngine
@@ -236,7 +236,7 @@ async def handle_discover_businesses(
 async def handle_research_and_qualify(
     task_payload: Dict[str, Any],
     openclaw_client: OpenClawClient,
-    ollama_client: OllamaClient,
+    ollama_client: AIClient,
 ) -> Dict[str, Any]:
     payload = task_payload.get("payload", {})
     try:
@@ -283,7 +283,7 @@ async def handle_research_and_qualify(
 async def _execute_research_and_qualify(
     task_payload: Dict[str, Any],
     openclaw_client: OpenClawClient,
-    ollama_client: OllamaClient,
+    ollama_client: AIClient,
     business_id: uuid.UUID,
     run_id: uuid.UUID,
 ) -> Dict[str, Any]:
@@ -530,8 +530,8 @@ async def _execute_research_and_qualify(
             user_prompt=f"Company: {business_name}, Type: {business_type}. Signals: {json.dumps(website_data)}",
         )
     except Exception as e:
-        logger.warning(f"Ollama inference fallback: {e}")
-        mock_ollama = MockOllamaClient()
+        logger.warning(f"AI inference fallback: {e}")
+        mock_ollama = MockAIClient()
         ollama_analysis = await mock_ollama.analyze("", "")
 
     llm_suggestions = ollama_analysis.get("service_matches", [])
