@@ -66,6 +66,18 @@ function ThreadBubble({ msg }: { msg: ThreadMessage }) {
               🤖 {msg.ai_label.replace("_", " ")}
             </span>
           )}
+          {msg.analyzed_by && (
+            <span
+              className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium flex items-center gap-1 ${
+                msg.analyzed_by === "OPENCLAW"
+                  ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
+                  : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+              }`}
+              title={msg.analyzed_by === "OPENCLAW" ? "Classified by OpenClaw AI Agent" : "Classified by Deterministic Rule Engine"}
+            >
+              {msg.analyzed_by === "OPENCLAW" ? "⚡ OpenClaw AI" : "🛡️ Rule Logic"}
+            </span>
+          )}
           <span className="text-[9px] text-slate-500 ml-auto">{timeAgo(msg.sent_at)}</span>
         </div>
         <p className="font-semibold text-xs mb-2 pb-1.5 border-b border-white/5 opacity-80">{msg.subject}</p>

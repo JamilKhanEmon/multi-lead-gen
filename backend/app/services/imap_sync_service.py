@@ -388,10 +388,13 @@ class IMAPInboxSyncService:
                 if matched_lead.outreach_notes and reply_text[:60] in matched_lead.outreach_notes:
                     continue
 
-                # ── OpenClaw LLM Classification ────────────────────────────────
-                label, explanation = await OutreachEngine.classify_reply_sentiment(reply_text)
+                # ── OpenClaw / Dual-Engine Reply Classification ──────────────
+                res = await OutreachEngine.classify_reply_sentiment(reply_text)
+                label = res.label
+                explanation = res.reason
+                source = getattr(res, "source", "RULE_LOGIC")
 
-                # ── Update Lead Status based on LLM verdict ───────────────────
+                # ── Update Lead Status based on verdict ───────────────────────
                 if label == "HOT_LEAD":
                     matched_lead.deal_status = "HOT_LEAD"
                     matched_lead.outreach_status = "REPLIED_HOT"
@@ -404,23 +407,24 @@ class IMAPInboxSyncService:
                 # Save reply snapshot to outreach notes
                 now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
                 note_entry = (
-                    f"\n[{now_iso}] INCOMING EMAIL REPLY ({label}):\n"
+                    f"\n[{now_iso}] INCOMING EMAIL REPLY ({label}) [Analyzed by: {source}]:\n"
                     f"Subject: {msg['subject']}\n"
                     f"{reply_text[:500]}\n"
-                    f"AI Classification: {explanation}\n"
+                    f"Classification: {explanation}\n"
                 )
                 matched_lead.outreach_notes = (matched_lead.outreach_notes or "") + note_entry
 
-                # Log into EmailOutreachLog
+                # Log into EmailOutreachLog with analyzed_by tag
                 reply_log = EmailOutreachLog(
                     lead_id=matched_lead.id,
                     step=matched_lead.followup_step or 1,
                     recipient_email=sender_email,
                     subject=f"Re: {msg['subject']}",
-                    body_snippet=reply_text[:300],
+                    body_snippet=reply_text,
                     status="REPLIED",
                     reply_content=reply_text,
                     reply_sentiment=label,
+                    error_message=f"ANALYZED_BY:{source}",
                     sent_at=datetime.now(timezone.utc)
                 )
                 session.add(reply_log)

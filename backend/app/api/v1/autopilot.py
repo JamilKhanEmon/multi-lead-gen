@@ -437,7 +437,10 @@ async def simulate_incoming_reply(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    label, explanation = await OutreachEngine.classify_reply_sentiment(data.reply_text)
+    res = await OutreachEngine.classify_reply_sentiment(data.reply_text)
+    label = res.label
+    explanation = res.reason
+    source = getattr(res, "source", "RULE_LOGIC")
 
     if label == "HOT_LEAD":
         lead.deal_status = "HOT_LEAD"
@@ -453,10 +456,11 @@ async def simulate_incoming_reply(
         step=lead.followup_step or 1,
         recipient_email=lead.business.email or "client@example.com",
         subject=f"Re: Outreach Response - {lead.business.canonical_name}",
-        body_snippet=data.reply_text[:300],
+        body_snippet=data.reply_text,
         status=f"REPLIED_{label}",
         reply_content=data.reply_text,
         reply_sentiment=label,
+        error_message=f"ANALYZED_BY:{source}",
         sent_at=datetime.now(timezone.utc)
     )
     db.add(log)
@@ -466,6 +470,7 @@ async def simulate_incoming_reply(
         "lead_id": str(lead.id),
         "label": label,
         "explanation": explanation,
+        "analyzed_by": source,
         "new_deal_status": lead.deal_status,
         "new_outreach_status": lead.outreach_status
     }
@@ -523,9 +528,12 @@ async def get_replies_intelligence(
         fix_res = await db.execute(fix_stmt)
         needs_commit = False
         for r_log in fix_res.scalars().all():
-            lbl, _ = await OutreachEngine.classify_reply_sentiment(r_log.reply_content)
+            res = await OutreachEngine.classify_reply_sentiment(r_log.reply_content)
+            lbl = res.label
+            src = getattr(res, "source", "RULE_LOGIC")
             if lbl != "NEUTRAL":
                 r_log.reply_sentiment = lbl
+                r_log.error_message = f"ANALYZED_BY:{src}"
                 needs_commit = True
                 if r_log.lead:
                     if lbl == "REJECTED":
@@ -560,6 +568,7 @@ async def get_replies_intelligence(
     for log in logs:
         lead = log.lead
         biz = lead.business if lead else None
+        analyzed_by = "OPENCLAW" if "OPENCLAW" in (log.error_message or "") else "RULE_LOGIC"
         results.append({
             "id": str(log.id),
             "lead_id": str(log.lead_id) if log.lead_id else None,
@@ -570,6 +579,7 @@ async def get_replies_intelligence(
             "reply_text": log.reply_content,
             "reply_snippet": (log.reply_content or "")[:200],
             "ai_label": log.reply_sentiment,
+            "analyzed_by": analyzed_by,
             "deal_status": lead.deal_status if lead else None,
             "outreach_status": lead.outreach_status if lead else None,
             "replied_at": log.sent_at.isoformat() if log.sent_at else None,
@@ -768,11 +778,16 @@ async def get_email_thread(
         biz_name = log.lead.business.canonical_name if log.lead and log.lead.business else None
         if log.reply_content:
             ai_lbl = log.reply_sentiment
+            analyzed_by = "OPENCLAW" if "OPENCLAW" in (log.error_message or "") else "RULE_LOGIC"
             if ai_lbl == "NEUTRAL" or not ai_lbl:
-                lbl, _ = await OutreachEngine.classify_reply_sentiment(log.reply_content)
+                res = await OutreachEngine.classify_reply_sentiment(log.reply_content)
+                lbl = res.label
+                src = getattr(res, "source", "RULE_LOGIC")
                 if lbl != "NEUTRAL":
                     ai_lbl = lbl
                     log.reply_sentiment = lbl
+                    log.error_message = f"ANALYZED_BY:{src}"
+                    analyzed_by = src
                     try:
                         if log.lead:
                             if lbl == "REJECTED":
@@ -794,6 +809,7 @@ async def get_email_thread(
                 "snippet": log.reply_content[:200],
                 "sent_at": log.sent_at.isoformat() if log.sent_at else None,
                 "ai_label": ai_lbl,
+                "analyzed_by": analyzed_by,
                 "step": log.step,
                 "company_name": biz_name,
             })

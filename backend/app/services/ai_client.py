@@ -61,6 +61,8 @@ class AIClient:
         if ws_res:
             elapsed_ms = round((time.time() - t0) * 1000, 2)
             logger.info(f"OpenClaw Protocol 4 (GLM 5.3 Flash) completed in {elapsed_ms}ms")
+            if isinstance(ws_res, dict):
+                ws_res["_source"] = "OPENCLAW"
             return ws_res
 
         # 2. OpenRouter Direct Inference (Powering OpenClaw's GLM 5.3 Flash)
@@ -87,7 +89,9 @@ class AIClient:
                         content = or_resp.json().get("choices", [{}])[0].get("message", {}).get("content", "{}")
                         match = re.search(r"\{.*\}", content, re.DOTALL)
                         if match:
-                            return json.loads(match.group(0))
+                            parsed = json.loads(match.group(0))
+                            parsed["_source"] = "OPENCLAW"
+                            return parsed
             except Exception as or_err:
                 logger.debug(f"OpenRouter inference notice: {or_err}")
 
@@ -108,7 +112,9 @@ class AIClient:
                         g_text = g_resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "{}")
                         match = re.search(r"\{.*\}", g_text, re.DOTALL)
                         if match:
-                            return json.loads(match.group(0))
+                            parsed = json.loads(match.group(0))
+                            parsed["_source"] = "OPENCLAW"
+                            return parsed
             except Exception as g_err:
                 logger.debug(f"Gemini API inference notice: {g_err}")
 
@@ -139,14 +145,19 @@ class AIClient:
                             content = gw_resp.json().get("choices", [{}])[0].get("message", {}).get("content", "{}")
                             clean_c = re.sub(r"^```(?:json)?\s*", "", content.strip())
                             clean_c = re.sub(r"\s*```$", "", clean_c)
-                            return json.loads(clean_c)
+                            parsed = json.loads(clean_c)
+                            parsed["_source"] = "OPENCLAW"
+                            return parsed
                 except Exception as gw_err:
                     logger.debug(f"OpenClaw Cloud Gateway notice: {gw_err}")
 
         # 5. Deterministic Semantic Reasoning Engine Fallback (Instant, Zero External Dependency)
         logger.info("Using deterministic semantic reasoning engine.")
         mock_fallback = MockAIClient()
-        return await mock_fallback.analyze(system_prompt, user_prompt, image_paths, response_schema)
+        res = await mock_fallback.analyze(system_prompt, user_prompt, image_paths, response_schema)
+        if isinstance(res, dict):
+            res["_source"] = "RULE_LOGIC"
+        return res
 
     async def _query_openclaw_ws(self, system_prompt: str, user_prompt: str) -> Optional[Dict[str, Any]]:
         """
