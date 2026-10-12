@@ -155,7 +155,9 @@ async def _bg_run_campaign(campaign_id: uuid.UUID):
                 await AutopilotRunner.run_campaign_batch(db=session, campaign=camp, batch_size=lead_cap)
             except Exception as e:
                 import logging
-                logging.getLogger(__name__).error(f"Error in background campaign run '{camp.name}': {e}")
+                logging.getLogger(__name__).error(f"Error in background campaign run '{camp.name}': {e}", exc_info=True)
+                camp.status = "IDLE"
+                await session.commit()
 
 @router.post("/campaigns/{campaign_id}/run-now")
 async def trigger_campaign_run(

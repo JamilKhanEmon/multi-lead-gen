@@ -218,7 +218,7 @@ class AutopilotRunner:
                         ai_client = AIClient(timeout=8.0)
 
                         is_ind_fit, ind_reason = await DiscoveryOptimizer.verify_industry_fit(
-                            target_industry=target_industry,
+                            target_industry=target_keyword,
                             business_name=c_name,
                             domain=c_dom,
                             page_title=page_title,
