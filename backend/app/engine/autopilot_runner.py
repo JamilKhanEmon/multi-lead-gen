@@ -295,7 +295,7 @@ class AutopilotRunner:
 
                     fit_tier = gate_eval["fit_tier"]
                     is_dropped = (fit_tier == "DROPPED")
-                    if is_dropped or fit_tier not in ("HOT", "WARM"):
+                    if is_dropped:
                         logger.info(f"[AUTOPILOT STRICT FILTER] Dropping rejected candidate '{c_name}' (Fit: {fit_tier}). Not adding to CRM.")
                         continue
 
