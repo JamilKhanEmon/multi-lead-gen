@@ -849,3 +849,35 @@ async def _execute_research_and_qualify(
     })
 
     return {"status": "SUCCESS", "tier": tier, "score": final_score, "is_qualified": is_qualified}
+
+async def handle_autopilot_campaign_run(task_payload: Dict[str, Any]) -> Dict[str, Any]:
+    from app.engine.autopilot_runner import AutopilotRunner
+    from app.models.autopilot import AutopilotCampaign
+
+    try:
+        campaign_id = uuid.UUID(task_payload["campaign_id"])
+    except Exception as e:
+        logger.error(f"TaskAutopilot: Invalid campaign_id: {e}")
+        return {"status": "FAILED", "error": str(e)}
+
+    logger.info(f"TaskAutopilot: Worker executing multi-location campaign run for ID {campaign_id}")
+
+    async with AsyncSessionLocal() as session:
+        stmt = select(AutopilotCampaign).where(AutopilotCampaign.id == campaign_id)
+        res = await session.execute(stmt)
+        camp = res.scalar_one_or_none()
+        if not camp:
+            logger.warning(f"TaskAutopilot: Campaign {campaign_id} not found.")
+            return {"status": "NOT_FOUND"}
+
+        try:
+            is_unlimited = getattr(camp, "is_unlimited_leads", False)
+            lead_cap = 0 if is_unlimited else (getattr(camp, "daily_lead_limit", 0) or 0)
+            result = await AutopilotRunner.run_campaign_batch(db=session, campaign=camp, batch_size=lead_cap)
+            logger.info(f"TaskAutopilot: Campaign '{camp.name}' finished successfully with result: {result}")
+            return {"status": "COMPLETED", "result": result}
+        except Exception as err:
+            logger.error(f"TaskAutopilot: Error executing campaign '{camp.name}': {err}", exc_info=True)
+            camp.status = "IDLE"
+            await session.commit()
+            return {"status": "FAILED", "error": str(err)}

@@ -175,8 +175,27 @@ async def trigger_campaign_run(
     campaign.status = "RUNNING"
     await db.commit()
 
-    import asyncio
-    asyncio.create_task(_bg_run_campaign(campaign_id))
+    enqueued = False
+    try:
+        import redis.asyncio as aioredis
+        from app.core.config import settings
+        redis_client = aioredis.from_url(settings.REDIS_URL)
+        task_payload = {
+            "job_id": str(uuid.uuid4()),
+            "type": "autopilot_campaign_run",
+            "campaign_id": str(campaign.id),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await redis_client.lpush("leadgen:tasks", json.dumps(task_payload))
+        await redis_client.aclose()
+        enqueued = True
+    except Exception as redis_err:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not enqueue autopilot to Redis ({redis_err}), using local task.")
+
+    if not enqueued:
+        import asyncio
+        asyncio.create_task(_bg_run_campaign(campaign_id))
 
     return {
         "campaign_id": str(campaign.id),
