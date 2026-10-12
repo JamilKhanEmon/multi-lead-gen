@@ -32,6 +32,10 @@ import {
   ChevronUp,
   Trash2,
   Lock,
+  X,
+  Globe,
+  MapPin,
+  Zap,
 } from "lucide-react";
 import {
   conductCampaignResearch,
@@ -57,6 +61,90 @@ const PRESET_INDUSTRIES = [
   "Manufacturing & Industrial Facilities",
   "Real Estate & Commercial Properties",
   "E-Commerce, Logistics & Retail",
+];
+
+interface SolutionPreset {
+  id: string;
+  label: string;
+  industry: string;
+  serviceName: string;
+  painPoint: string;
+  coreOffer: string;
+}
+
+const B2B_SOLUTION_PRESETS: SolutionPreset[] = [
+  {
+    id: "real-estate-erp",
+    label: "Real Estate & Construction ERP (Installment & Buyer Inquiries)",
+    industry: "Real Estate & Commercial Properties",
+    serviceName: "Real Estate ERP & Property Sales Automation System",
+    painPoint: "Buyer inquiries slipping through cracks, manual installment tracking confusion, missed follow-ups, and untracked unsold plot/flat inventory.",
+    coreOffer: "Free 5-Minute Live Interactive Demo of Real Estate ERP & Installment Automation.",
+  },
+  {
+    id: "enterprise-erp",
+    label: "Enterprise Resource Planning (Manufacturing, Inventory & Supply Chain)",
+    industry: "Manufacturing & Industrial Facilities",
+    serviceName: "Enterprise Resource Planning (ERP) & Operations Workflow Tracker",
+    painPoint: "Manual Excel registers, untracked warehouse stock shrinkage, billing delays, and lack of real-time multi-branch financial reports.",
+    coreOffer: "Tailored Cloud ERP Architecture Preview & Operations Workflow Audit.",
+  },
+  {
+    id: "pos-retail",
+    label: "POS & Retail Management (Barcode Billing & Inventory Sync)",
+    industry: "E-Commerce, Logistics & Retail",
+    serviceName: "Cloud POS & Automated Inventory Sync System",
+    painPoint: "Long customer queues at counter, untracked inventory shrinkage, and manual calculation errors during rush hours.",
+    coreOffer: "Rapid POS Setup Demonstration with Automated Low-Stock Alert System.",
+  },
+  {
+    id: "web-software-engineering",
+    label: "Modern Web Engineering & High-Converting Corporate Portals",
+    industry: "Software, SaaS & Digital Technology",
+    serviceName: "High-Converting Corporate Web Engineering & Lead Capture Platform",
+    painPoint: "Broken mobile layouts, slow website loading speed, outdated brand presence, and zero on-site lead capture.",
+    coreOffer: "Free 15-Minute UX & Speed Audit + Interactive Prototype within 48 Hours.",
+  },
+  {
+    id: "digital-ordering-ecommerce",
+    label: "Digital Ordering & WhatsApp E-Commerce Platform",
+    industry: "E-Commerce, Logistics & Retail",
+    serviceName: "Digital Ordering & WhatsApp E-Commerce Platform",
+    painPoint: "Phone order bottlenecks during rush hours, missed customer calls, and manual delivery dispatch confusion.",
+    coreOffer: "Instant Digital Storefront Preview with Automated WhatsApp Ordering Flow.",
+  },
+  {
+    id: "campus-management",
+    label: "School, College & Campus Management Platform",
+    industry: "Professional & Legal Services",
+    serviceName: "Automated Campus Management & Student Billing Portal",
+    painPoint: "Manual fee collection queues, delayed exam report cards, untracked student absences, and paper-heavy administration.",
+    coreOffer: "Live Demonstration of Automated Fee Billing & Parent Notification Portal.",
+  },
+  {
+    id: "healthcare-clinic",
+    label: "Hospital, Clinic & Diagnostic Management System",
+    industry: "Healthcare & Specialized Clinics",
+    serviceName: "Clinic Appointment & Digital Diagnostic Management System",
+    painPoint: "Front-desk phone chaos for doctor appointments, manual prescription errors, and delayed digital lab test deliveries.",
+    coreOffer: "Risk-Free Outpatient Booking & Diagnostic Workflow Preview Demonstration.",
+  },
+  {
+    id: "performance-tracking-seo",
+    label: "B2B Conversion Tracking, Meta Pixel & Performance SEO",
+    industry: "Software, SaaS & Digital Technology",
+    serviceName: "Enterprise Conversion Tracking & Performance Marketing Optimization",
+    painPoint: "Unmeasured advertising budgets, inability to retarget past website visitors, and low local search visibility.",
+    coreOffer: "Free Digital Presence & Conversion Tracking Gap Audit Report.",
+  },
+  {
+    id: "cloud-hosting-migration",
+    label: "Managed Cloud Hosting & Infrastructure Migration",
+    industry: "Commercial Contracting & Engineering",
+    serviceName: "High-Speed Managed Cloud Hosting & Infrastructure Optimization",
+    painPoint: "Slow page loading speeds, frequent server downtime, lack of automated daily backups, and unsecure business emails.",
+    coreOffer: "Free Website Speed & Zero-Downtime Cloud Migration Assessment.",
+  },
 ];
 
 const PRESET_LOCATIONS = [
@@ -105,6 +193,7 @@ export default function MetaCampaignsPage() {
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const [serviceName, setServiceName] = useState("");
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("");
   const [industry, setIndustry] = useState("");
   const [customIndustry, setCustomIndustry] = useState("");
   const [targetLocation, setTargetLocation] = useState("");
@@ -138,7 +227,9 @@ export default function MetaCampaignsPage() {
     poster_url: "",
   });
 
-  const [mediaMode, setMediaMode] = useState<"ai_video" | "ai_poster" | "manual_upload">("ai_video");
+  const [researchLogs, setResearchLogs] = useState<string[]>([]);
+  const [showRawIntel, setShowRawIntel] = useState<boolean>(false);
+  const [mediaMode, setMediaMode] = useState<"ai_video" | "ai_poster" | "manual_upload">("manual_upload");
   const [manualUploadedFile, setManualUploadedFile] = useState<string | null>(null);
   const [manualFileName, setManualFileName] = useState<string>("");
 
@@ -250,8 +341,12 @@ export default function MetaCampaignsPage() {
       locationMode === "manual"
         ? customLocation.trim() || targetLocation || "Global / Worldwide"
         : targetLocation || customLocation.trim() || "Global / Worldwide";
-    try {
 
+    setResearchLogs([
+      `[Initiating] Connecting to OpenClaw Intelligence Gateway...`,
+      `[Querying] Web scraping competitor ad angles for "${serviceName}" in "${finalIndustry}"...`,
+    ]);
+    try {
       const res = await conductCampaignResearch({
         service_name: serviceName,
         industry: finalIndustry,
@@ -267,6 +362,12 @@ export default function MetaCampaignsPage() {
         setSelectedRoles(res.targeting.job_titles);
       }
 
+      setResearchLogs((prev) => [
+        ...prev,
+        `[Scraped] Extracted ${res.competitor_insights?.scraped_competitors?.length || 0} active competitor campaigns and market angles.`,
+        `[Synthesizing] Generating 3-second video hooks and WhatsApp retargeting copy...`,
+      ]);
+
       const creativeRes = await generateCampaignCreatives({
         service_name: serviceName,
         industry: finalIndustry,
@@ -279,12 +380,22 @@ export default function MetaCampaignsPage() {
       if (creativeRes.post1) setPost1(creativeRes.post1);
       if (creativeRes.post2) setPost2(creativeRes.post2);
 
+      setResearchLogs((prev) => [
+        ...prev,
+        `[Complete] 3-Second Hooks, Cold Video Script, and WhatsApp Offer created.`,
+        `[Ready] Advancing to Step 3: Ads Card Preview and Media Studio.`,
+      ]);
+
       setFeedbackMsg({
         type: "success",
-        text: "Market intelligence researched via OpenClaw and high-converting creatives successfully generated!",
+        text: "Market intelligence researched via OpenClaw and high-converting creatives successfully generated.",
       });
       setCurrentStep(3);
     } catch (err: any) {
+      setResearchLogs((prev) => [
+        ...prev,
+        `[Error] Research error: ${err.message}`,
+      ]);
       setFeedbackMsg({ type: "error", text: `Research error: ${err.message}` });
     } finally {
       setResearching(false);
@@ -292,114 +403,31 @@ export default function MetaCampaignsPage() {
   };
 
   const handleGenerateStoryboard = async () => {
-    setGeneratingStoryboard(true);
-    const effectiveTopic =
-      storyboardTopic === "custom"
-        ? customTopicText || (serviceName ? `${serviceName} Demonstration` : "B2B Solutions Overview")
-        : storyboardTopic === "speed_challenge"
-        ? (serviceName ? `Manual vs Automated: ${serviceName} Performance` : "Manual Bottlenecks vs Automated Efficiency")
-        : storyboardTopic === "zero_chargeback"
-        ? (serviceName ? `Quality Assurance & Risk Elimination with ${serviceName}` : "Quality Assurance & Operational Risk Elimination")
-        : (serviceName ? `Financial Loss & ROI Breakdown for ${serviceName}` : "Financial Loss & ROI Breakdown");
-
-    try {
-      const res = await generateVideoStoryboard({
-        service_name: serviceName,
-        industry: customIndustry || industry,
-        selected_topic: effectiveTopic,
-        reference_image_description: referenceImageDescription,
-      });
-
-      if (res.scenes && res.scenes.length > 0) {
-        setStoryboardScenes(res.scenes.map((s: any) => ({ ...s, show_prompt: false })));
-        setFeedbackMsg({
-          type: "success",
-          text: `Generated 4 cinematic scene prompts locked to your reference character/hardware anchor!`,
-        });
-      }
-    } catch (err: any) {
-      setFeedbackMsg({ type: "error", text: `Failed to generate storyboard: ${err.message}` });
-    } finally {
-      setGeneratingStoryboard(false);
-    }
+    setFeedbackMsg({
+      type: "error",
+      text: "AI Video Storyboard generation is locked by administrator. Please use Manual Upload to upload your video directly.",
+    });
   };
 
   const handleRegenerateScene = async (sceneNumber: number) => {
-    setRenderingSceneNum(sceneNumber);
-    const scene = storyboardScenes.find((s) => s.scene_number === sceneNumber);
-    if (!scene) return;
-
-    try {
-      const res = await renderSingleScene({
-        scene_number: sceneNumber,
-        prompt: scene.prompt,
-        reference_image_url: referenceImageFile || undefined,
-      });
-
-      setStoryboardScenes((prev) =>
-        prev.map((s) =>
-          s.scene_number === sceneNumber
-            ? { ...s, clip_url: res.clip_url, status: "RENDERED" }
-            : s
-        )
-      );
-
-      setFeedbackMsg({
-        type: "success",
-        text: `Scene ${sceneNumber} successfully re-rendered with reference anchor consistency!`,
-      });
-    } catch (err: any) {
-      setFeedbackMsg({ type: "error", text: `Failed to render scene ${sceneNumber}: ${err.message}` });
-    } finally {
-      setRenderingSceneNum(null);
-    }
+    setFeedbackMsg({
+      type: "error",
+      text: "AI Scene generation is locked by administrator. Please use Manual Upload.",
+    });
   };
 
   const handleStitchVideo = async () => {
-    setStitchingVideo(true);
-    try {
-      const res = await stitchScenesIntoVideo({
-        scenes: storyboardScenes,
-        campaign_name: `${serviceName} Ad`,
-      });
-
-      if (res.video_url) {
-        setPost1((prev: any) => ({ ...prev, video_url: res.video_url }));
-        setFeedbackMsg({
-          type: "success",
-          text: "All 4 scenes stitched into a seamless 20s B2B commercial video! Ready for Meta deployment.",
-        });
-      }
-    } catch (err: any) {
-      setFeedbackMsg({ type: "error", text: `Video stitching failed: ${err.message}` });
-    } finally {
-      setStitchingVideo(false);
-    }
+    setFeedbackMsg({
+      type: "error",
+      text: "AI Video stitching is locked by administrator. Please use Manual Upload.",
+    });
   };
 
   const handleGeneratePoster = async () => {
-    setGeneratingPoster(true);
-    try {
-      const res = await generateB2BPoster({
-        service_name: serviceName,
-        industry: customIndustry || industry,
-        headline: post2.offer_headline,
-        offer: post2.offer_description,
-        reference_image_url: referenceImageFile || undefined,
-      });
-
-      if (res.image_url) {
-        setPost2((prev: any) => ({ ...prev, poster_url: res.image_url }));
-        setFeedbackMsg({
-          type: "success",
-          text: "Google Imagen 3 generated a photorealistic B2B promotional ad poster with WhatsApp badge!",
-        });
-      }
-    } catch (err: any) {
-      setFeedbackMsg({ type: "error", text: `Poster generation failed: ${err.message}` });
-    } finally {
-      setGeneratingPoster(false);
-    }
+    setFeedbackMsg({
+      type: "error",
+      text: "AI Poster generation is locked by administrator. Please use Manual Upload to upload your poster directly.",
+    });
   };
 
   const handleManualFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -489,6 +517,29 @@ export default function MetaCampaignsPage() {
       const res = await toggleMetaCampaignStatus(activeCampaign.id);
       setActiveCampaign((prev) => (prev ? { ...prev, status: res.status } : null));
       await loadCampaigns();
+      setFeedbackMsg({
+        type: "success",
+        text: `Campaign status changed to ${res.status}`,
+      });
+    } catch (err: any) {
+      setFeedbackMsg({ type: "error", text: "Failed to toggle status: " + err.message });
+    }
+  };
+
+  const handleToggleAnyCampaignStatus = async (cmpId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await toggleMetaCampaignStatus(cmpId);
+      setCampaignHistory((prev) =>
+        prev.map((c) => (c.id === cmpId ? { ...c, status: res.status } : c))
+      );
+      if (activeCampaign?.id === cmpId) {
+        setActiveCampaign((prev) => (prev ? { ...prev, status: res.status } : null));
+      }
+      setFeedbackMsg({
+        type: "success",
+        text: `Campaign status changed to ${res.status}`,
+      });
     } catch (err: any) {
       setFeedbackMsg({ type: "error", text: "Failed to toggle status: " + err.message });
     }
@@ -631,9 +682,9 @@ export default function MetaCampaignsPage() {
           </div>
           <button
             onClick={() => setFeedbackMsg(null)}
-            className="text-slate-400 hover:text-white text-xs px-2 py-0.5 rounded"
+            className="text-slate-400 hover:text-white p-1 rounded"
           >
-            ✕
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
@@ -642,7 +693,7 @@ export default function MetaCampaignsPage() {
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-7 space-y-6">
           <div>
             <div className="flex items-center gap-2 text-pink-400 text-xs font-mono uppercase tracking-wider">
-              <span>Step 1 of 5</span> • <span>Custom B2B Audience Configuration</span>
+              <span>Step 1 of 5</span> | <span>Custom B2B Audience Configuration</span>
             </div>
             <h2 className="text-xl font-bold text-white mt-1">
               Who are your corporate decision makers & where are they located?
@@ -836,7 +887,7 @@ export default function MetaCampaignsPage() {
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-pink-400 group-hover:bg-rose-400" />
                       <span>{role}</span>
-                      <span className="text-[10px] text-pink-400 group-hover:text-rose-300 ml-0.5">✕</span>
+                      <X className="w-3 h-3 text-pink-400 group-hover:text-rose-300 ml-0.5" />
                     </button>
                   ))}
                   {selectedRoles.length === 0 && (
@@ -909,7 +960,8 @@ export default function MetaCampaignsPage() {
                       className="text-[11px] bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded-md hover:bg-rose-500/25 transition flex items-center gap-1 group"
                       title="Click to remove exclusion"
                     >
-                      <span>✕ {ex}</span>
+                      <X className="w-3 h-3" />
+                      <span>{ex}</span>
                     </button>
                   ))}
                   {selectedExclusions.length === 0 && (
@@ -917,6 +969,48 @@ export default function MetaCampaignsPage() {
                       No exclusions configured. All audiences eligible.
                     </span>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-800">
+              <span className="font-bold text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-pink-400" />
+                <span>Step 1 Live Output: Targeting Specification</span>
+              </span>
+              <span className="text-[10px] bg-slate-800 text-slate-300 font-mono px-2 py-0.5 rounded">
+                Targeting Ready
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
+                <div className="text-[10px] text-slate-400 uppercase font-mono">Industry & Geo</div>
+                <div className="font-semibold text-white truncate mt-0.5">
+                  {customIndustry.trim() || industry || "B2B & Enterprise"}
+                </div>
+                <div className="text-[10px] text-pink-400 truncate mt-0.5 flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-pink-400 inline shrink-0" />
+                  <span>{locationMode === "manual" ? customLocation.trim() || "Global" : targetLocation || "Global"}</span>
+                </div>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
+                <div className="text-[10px] text-slate-400 uppercase font-mono">Decision Maker Roles</div>
+                <div className="font-bold text-emerald-400 text-sm mt-0.5">
+                  {selectedRoles.length} Roles Active
+                </div>
+                <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                  {selectedRoles.slice(0, 2).join(", ")} {selectedRoles.length > 2 ? `+${selectedRoles.length - 2} more` : ""}
+                </div>
+              </div>
+              <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
+                <div className="text-[10px] text-slate-400 uppercase font-mono">Negative Filter / Shield</div>
+                <div className="font-bold text-rose-400 text-sm mt-0.5">
+                  {selectedExclusions.length} Negative Groups
+                </div>
+                <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                  Budget saved from non-buyers
                 </div>
               </div>
             </div>
@@ -938,7 +1032,7 @@ export default function MetaCampaignsPage() {
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-7 space-y-6">
           <div>
             <div className="flex items-center gap-2 text-pink-400 text-xs font-mono uppercase tracking-wider">
-              <span>Step 2 of 5</span> • <span>Service & Irresistible Offer</span>
+              <span>Step 2 of 5</span> | <span>Service & Irresistible Offer</span>
             </div>
             <h2 className="text-xl font-bold text-white mt-1">
               What corporate bottleneck do you solve and why should they book a demo?
@@ -946,6 +1040,62 @@ export default function MetaCampaignsPage() {
             <p className="text-xs text-slate-400 mt-1">
               State your core B2B service and customer pain points. OpenClaw uses this to scrape winning competitor ad hooks in Meta Ad Library.
             </p>
+          </div>
+
+          {/* Quick-Fill Preset Dropdown */}
+          <div className="bg-slate-950/80 border border-purple-500/30 rounded-xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-purple-300 uppercase tracking-wide flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                <span>Quick-Fill Solution Preset (Optional)</span>
+              </label>
+              {selectedPresetId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPresetId("");
+                    setServiceName("");
+                    setPainPoint("");
+                    setCoreOffer("");
+                  }}
+                  className="text-[10px] text-slate-400 hover:text-rose-400 transition"
+                >
+                  Clear Fields
+                </button>
+              )}
+            </div>
+            <select
+              value={selectedPresetId}
+              onChange={(e) => {
+                const pId = e.target.value;
+                setSelectedPresetId(pId);
+                const found = B2B_SOLUTION_PRESETS.find((p) => p.id === pId);
+                if (found) {
+                  setServiceName(found.serviceName);
+                  setPainPoint(found.painPoint);
+                  setCoreOffer(found.coreOffer);
+                  if (!customIndustry && (!industry || industry === "B2B & Enterprise")) {
+                    setIndustry(found.industry);
+                  }
+                }
+              }}
+              className="w-full bg-slate-900 border border-slate-700 hover:border-purple-500/50 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-pink-500 transition cursor-pointer"
+            >
+              <option value="">-- Choose a Solution Template to Auto-Fill (or Type Custom Below) --</option>
+              {B2B_SOLUTION_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+              <span>Selecting a template auto-populates the 3 fields below. You can freely edit them anytime.</span>
+              {selectedPresetId && (
+                <span className="text-emerald-400 font-mono text-[10px] flex items-center gap-1">
+                  <Check className="w-3 h-3" /> Auto-filled
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -1015,6 +1165,53 @@ export default function MetaCampaignsPage() {
               )}
             </button>
           </div>
+
+          {(researching || researchLogs.length > 0) && (
+            <div className="p-4 rounded-xl bg-slate-950 border border-purple-500/30 space-y-3 font-mono">
+              <div className="flex items-center justify-between pb-2 border-b border-purple-500/20">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${researching ? "bg-emerald-400" : "bg-purple-400"} opacity-75`}></span>
+                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${researching ? "bg-emerald-500" : "bg-purple-500"}`}></span>
+                  </span>
+                  <span className="text-xs font-bold text-white tracking-wide">
+                    {researching ? "OpenClaw Live Research in Progress..." : "OpenClaw Live Output Stream"}
+                  </span>
+                </div>
+                <span className="text-[10px] text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                  Protocol: Gateway WebSocket & Live Web Spy
+                </span>
+              </div>
+
+              <div className="space-y-1.5 text-[11px] max-h-48 overflow-y-auto pr-1">
+                {researchLogs.map((log, i) => (
+                  <div key={i} className="text-slate-300 flex items-start gap-2">
+                    <span className="text-purple-400 select-none">&gt;</span>
+                    <span className={log.includes("Complete") || log.includes("Ready") || log.includes("Scraped") ? "text-emerald-400 font-semibold" : "text-slate-300"}>
+                      {log}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {!researching && competitorIntel && (
+                <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5 text-emerald-400 inline" />
+                    <span>Intelligence Pulled: {competitorIntel?.scraped_competitors?.length || 0} competitors, {competitorIntel?.winning_angles?.length || 0} angles</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(3)}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition cursor-pointer"
+                  >
+                    <span>Inspect Output in Ads Card (Step 3)</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1039,7 +1236,30 @@ export default function MetaCampaignsPage() {
                   </p>
                 </div>
               </div>
+
+              {competitorIntel && (
+                <button
+                  type="button"
+                  onClick={() => setShowRawIntel(!showRawIntel)}
+                  className="text-[11px] bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 px-3 py-1.5 rounded-lg transition font-mono flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Search className="w-3 h-3 text-purple-400" />
+                  <span>{showRawIntel ? "Hide Raw Data" : "Inspect Raw Scraped JSON"}</span>
+                </button>
+              )}
             </div>
+
+            {showRawIntel && competitorIntel && (
+              <div className="mt-4 p-3.5 rounded-xl bg-slate-950 border border-purple-500/30 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-mono text-purple-300 border-b border-purple-500/20 pb-1.5">
+                  <span className="font-bold uppercase tracking-wider">Raw OpenClaw Intelligence Payload:</span>
+                  <span className="text-slate-500">Live JSON Feed</span>
+                </div>
+                <pre className="text-[10px] text-slate-300 font-mono leading-relaxed max-h-60 overflow-y-auto whitespace-pre-wrap pr-1">
+                  {JSON.stringify(competitorIntel, null, 2)}
+                </pre>
+              </div>
+            )}
 
             {competitorIntel ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -1110,42 +1330,53 @@ export default function MetaCampaignsPage() {
               <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setMediaMode("ai_video")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    mediaMode === "ai_video"
-                      ? "bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md"
-                      : "text-slate-400 hover:text-white"
-                  }`}
+                  onClick={() =>
+                    setFeedbackMsg({
+                      type: "error",
+                      text: "AI Video (Google Veo) generation is locked by administrator. Please use Manual Upload below.",
+                    })
+                  }
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 bg-slate-900/50 border border-slate-800 cursor-not-allowed opacity-60 hover:border-amber-500/30 transition"
+                  title="AI Video generation is locked by administrator"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>AI Video (Google Veo)</span>
+                  <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>AI Video (Veo)</span>
+                  <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1 py-0.5 rounded font-mono">Locked</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setMediaMode("ai_poster")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    mediaMode === "ai_poster"
-                      ? "bg-gradient-to-r from-purple-600 to-sky-600 text-white shadow-md"
-                      : "text-slate-400 hover:text-white"
-                  }`}
+                  onClick={() =>
+                    setFeedbackMsg({
+                      type: "error",
+                      text: "AI Poster (Imagen 3) generation is locked by administrator. Please use Manual Upload below.",
+                    })
+                  }
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 bg-slate-900/50 border border-slate-800 cursor-not-allowed opacity-60 hover:border-amber-500/30 transition"
+                  title="AI Poster generation is locked by administrator"
                 >
-                  <ImageIcon className="w-3.5 h-3.5" />
-                  <span>AI Poster (Imagen 3)</span>
+                  <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>AI Poster (Imagen)</span>
+                  <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1 py-0.5 rounded font-mono">Locked</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setMediaMode("manual_upload")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    mediaMode === "manual_upload"
-                      ? "bg-slate-800 text-white shadow-md"
-                      : "text-slate-400 hover:text-white"
-                  }`}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md shadow-pink-500/20"
                 >
                   <UploadCloud className="w-3.5 h-3.5" />
-                  <span>Manual Upload</span>
+                  <span>Manual Upload (Active)</span>
                 </button>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  <strong>AI Media Generation Locked:</strong> AI Video and Poster generation has been locked by administrator. Please upload your custom MP4 video or PNG/JPG creative banner below.
+                </span>
               </div>
             </div>
 
@@ -1173,8 +1404,9 @@ export default function MetaCampaignsPage() {
                   </label>
                 </div>
                 {manualFileName && (
-                  <div className="text-xs text-emerald-400 font-mono mt-2">
-                    ✓ Active file: {manualFileName}
+                  <div className="text-xs text-emerald-400 font-mono mt-2 flex items-center justify-center gap-1">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Active file: {manualFileName}</span>
                   </div>
                 )}
               </div>
@@ -1208,8 +1440,9 @@ export default function MetaCampaignsPage() {
                       <input type="file" accept="image/*" onChange={handleReferenceImageUpload} className="hidden" />
                     </label>
                     {referenceImageFile && (
-                      <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded">
-                        ✓ Locked
+                      <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded flex items-center gap-1">
+                        <Lock className="w-3 h-3 text-emerald-400" />
+                        <span>Locked</span>
                       </span>
                     )}
                   </div>
@@ -1559,7 +1792,7 @@ export default function MetaCampaignsPage() {
               ) : (
                 <div className="space-y-4 text-xs">
                   <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-emerald-300 text-[11px]">
-                    💡 <strong>Smart Retargeting Rule:</strong> This high-intent offer ad is displayed ONLY to people who watched 50%+ of Post 1. Casual browsers are completely excluded.
+                    <strong>Smart Retargeting Rule:</strong> This offer ad is displayed only to prospects who watched 50%+ of Post 1 video.
                   </div>
 
                   <div>
@@ -1654,10 +1887,12 @@ export default function MetaCampaignsPage() {
                     <div>
                       <div className="font-bold text-white flex items-center gap-1">
                         <span>{(serviceName?.trim() ? serviceName.trim().split(" ")[0] : "B2B")} Solutions</span>
-                        <span className="text-[10px] text-sky-400">✓</span>
+                        <Check className="w-3 h-3 text-sky-400" />
                       </div>
-                      <div className="text-[10px] text-slate-500 flex items-center gap-1">
-                        <span>Sponsored</span> • <span>🌐</span>
+                      <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
+                        <span>Sponsored</span>
+                        <span>-</span>
+                        <Globe className="w-2.5 h-2.5 text-slate-400" />
                       </div>
                     </div>
                   </div>
@@ -1683,7 +1918,7 @@ export default function MetaCampaignsPage() {
                         <div className="p-4 text-center">
                           <Play className="w-10 h-10 text-pink-500 mx-auto mb-2" />
                           <span className="text-[11px] font-bold text-white">
-                            &ldquo;{post1.selected_hook || "High Converting 3-Second Hook"}&rdquo;
+                            &ldquo;{post1.selected_hook || "3-Second Video Hook"}&rdquo;
                           </span>
                         </div>
                       )
@@ -1697,7 +1932,7 @@ export default function MetaCampaignsPage() {
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent flex flex-col justify-end p-2.5">
                           <span className="text-xs font-bold text-white">
-                            {post2.offer_headline || "Exclusive B2B Offer"}
+                            {post2.offer_headline || "B2B Offer"}
                           </span>
                         </div>
                       </div>
@@ -1717,7 +1952,7 @@ export default function MetaCampaignsPage() {
                         {previewTab === "post1" ? "Video View Ad" : "WhatsApp Direct"}
                       </div>
                       <div className="font-bold text-white truncate">
-                        {(previewTab === "post1" ? post1.headline : post2.offer_headline) || "High-Impact B2B Campaign"}
+                        {(previewTab === "post1" ? post1.headline : post2.offer_headline) || "B2B Campaign"}
                       </div>
                     </div>
 
@@ -1743,7 +1978,7 @@ export default function MetaCampaignsPage() {
         <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-7 space-y-6">
           <div>
             <div className="flex items-center gap-2 text-pink-400 text-xs font-mono uppercase tracking-wider">
-              <span>Step 4 of 5</span> • <span>Budget & 2-Step Funnel Configuration</span>
+              <span>Step 4 of 5</span> | <span>Budget & 2-Step Funnel Configuration</span>
             </div>
             <h2 className="text-xl font-bold text-white mt-1">
               Daily Advertising Budget & 2-Step Video Retargeting Rules
@@ -1833,7 +2068,7 @@ export default function MetaCampaignsPage() {
               </div>
 
               <div className="flex items-center justify-center gap-2 text-xs font-mono text-emerald-400">
-                <span>↓ Automatic Meta Audience Rule ({retargetingThreshold}%+ Viewers) ↓</span>
+                <span>Automatic Retargeting Filter: {retargetingThreshold}%+ Video Watchers</span>
               </div>
 
               <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/30 space-y-1 text-xs">
@@ -1912,8 +2147,8 @@ export default function MetaCampaignsPage() {
                   {activeCampaign?.target_location ||
                     (locationMode === "manual" ? customLocation : targetLocation) ||
                     "Global"}
-                </span>{" "}
-                •
+                </span>
+                <span className="text-slate-500">|</span>
                 <span>Budget: ${activeCampaign?.budget_daily_bdt || budgetDaily}/day</span>
               </div>
             </div>
@@ -2054,6 +2289,27 @@ export default function MetaCampaignsPage() {
                         </td>
                         <td className="py-3 px-3 text-right">
                           <div className="flex items-center justify-end gap-2.5">
+                            <button
+                              onClick={(e) => handleToggleAnyCampaignStatus(cmp.id, e)}
+                              className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition ${
+                                cmp.status === "ACTIVE"
+                                  ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30"
+                                  : "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30"
+                              }`}
+                              title={cmp.status === "ACTIVE" ? "Click to Pause" : "Click to Resume"}
+                            >
+                              {cmp.status === "ACTIVE" ? (
+                                <>
+                                  <Pause className="w-2.5 h-2.5" />
+                                  <span>Pause</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-2.5 h-2.5 fill-emerald-300" />
+                                  <span>Resume</span>
+                                </>
+                              )}
+                            </button>
                             <button
                               onClick={() => setActiveCampaign(cmp)}
                               className="text-pink-400 hover:text-pink-300 font-semibold text-[11px]"
