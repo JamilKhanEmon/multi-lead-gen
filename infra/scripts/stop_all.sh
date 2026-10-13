@@ -46,4 +46,7 @@ if [[ ${REPLY:-} =~ ^[Yy]$ ]]; then
     docker compose -f infra/docker-compose.yml down
 fi
 
+# Clean up any remaining pid files including macOS duplicates
+rm -f "$PROJECT_DIR/logs"/*.pid "$PROJECT_DIR/logs"/*\ *.pid 2>/dev/null || true
+
 echo "[+] All LeadGen services stopped cleanly."
