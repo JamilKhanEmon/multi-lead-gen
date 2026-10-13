@@ -98,11 +98,13 @@ class LiveResearchEngine:
         except Exception as e:
             logger.warning(f"Live browser discovery fallback: {e}")
 
-        # 2. Multi-engine search expansion across all targeted queries
-        if is_unlimited or len(discovered) < effective_limit:
+        # 2. Multi-engine search expansion across targeted queries (capped to avoid stalls)
+        target_cap = effective_limit if not is_unlimited else 30
+        if len(discovered) < target_cap:
             queries = plan.get("search_queries", []) or GeoExpander.build_search_queries(industry, full_location)
-            for q in queries:
-                if not is_unlimited and len(discovered) >= effective_limit:
+            # Query top targeted queries without hanging on 60+ sequential calls
+            for q in queries[:6]:
+                if len(discovered) >= target_cap:
                     break
                 try:
                     page_html, _ = await loop.run_in_executor(None, cls._fetch_ddg_html, q, None)
@@ -110,114 +112,108 @@ class LiveResearchEngine:
                         continue
                     items = cls._parse_ddg_items(page_html)
                     for actual_url, title, snippet in items:
-                        if not is_unlimited and len(discovered) >= effective_limit:
+                        if len(discovered) >= target_cap:
                             break
                         biz = cls._process_candidate_url(actual_url, title, snippet, industry, full_location, business_type_override, seen_domains, seen_names, plan=plan)
                         if biz:
                             biz["city"] = city
                             biz["country"] = country
                             discovered.append(biz)
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.05)
                 except Exception as e:
                     logger.warning(f"Web search error for '{q}': {e}")
 
         # 3. Supplemental: OSM Directory Search ONLY for entities that have website/domain or direct email
-        if is_unlimited or len(discovered) < effective_limit:
+        if len(discovered) < target_cap:
             osm_search_targets = plan.get("osm_queries", [])
-            for target_q in osm_search_targets:
-                if not is_unlimited and len(discovered) >= effective_limit:
+            for target_q in osm_search_targets[:2]:
+                if len(discovered) >= target_cap:
                     break
                 try:
-                    places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 50, country, city, sub_city)
+                    places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 25, country, city, sub_city)
                     for p in (places or []):
-                        if not is_unlimited and len(discovered) >= effective_limit:
+                        if len(discovered) >= target_cap:
                             break
-                    
-                    p_name = p.get("name", "").strip()
-                    clean_norm_name = re.sub(r'[^a-zA-Z0-9]', '', p_name.lower())
-                    if not p_name or clean_norm_name in seen_names or len(p_name) < 3:
-                        continue
+                        p_name = p.get("name", "").strip()
+                        clean_norm_name = re.sub(r'[^a-zA-Z0-9]', '', p_name.lower())
+                        if not p_name or clean_norm_name in seen_names or len(p_name) < 3:
+                            continue
 
-                    candidate_check = {
-                        "canonical_name": p_name,
-                        "industry": industry,
-                        "location": full_location,
-                        "address": p.get("address"),
-                        "website": p.get("website"),
-                        "domain": None,
-                        "snippet": p.get("display_name"),
-                    }
-                    is_valid, reason = DiscoveryOptimizer.validate_candidate(candidate_check, plan)
-                    if not is_valid:
-                        logger.debug(f"OSM candidate rejected: {reason}")
-                        continue
+                        candidate_check = {
+                            "canonical_name": p_name,
+                            "industry": industry,
+                            "location": full_location,
+                            "address": p.get("address"),
+                            "website": p.get("website"),
+                            "domain": None,
+                            "snippet": p.get("display_name"),
+                        }
+                        is_valid, reason = DiscoveryOptimizer.validate_candidate(candidate_check, plan)
+                        if not is_valid:
+                            continue
 
-                    website = p.get("website")
-                    domain = None
-                    if website:
-                        try:
-                            domain = urllib.parse.urlparse(website).netloc.lower().replace("www.", "")
-                            if domain in seen_domains:
-                                continue
-                        except Exception:
-                            pass
+                        website = p.get("website")
+                        domain = None
+                        if website:
+                            try:
+                                domain = urllib.parse.urlparse(website).netloc.lower().replace("www.", "")
+                                if domain in seen_domains:
+                                    continue
+                            except Exception:
+                                pass
 
-                    phone = p.get("phone")
-                    email = p.get("email")
+                        phone = p.get("phone")
+                        email = p.get("email")
+                        lat = p.get("latitude")
+                        lon = p.get("longitude")
 
-                    if not website and not phone and not email:
-                        enriched = await cls.enrich_contact_from_web(p_name, full_location)
-                        if enriched.get("phone"):
-                            phone = enriched["phone"]
-                        if enriched.get("email"):
-                            email = enriched["email"]
-                        if enriched.get("website"):
-                            website = enriched["website"]
-                            domain = enriched.get("domain")
+                        if not website and not phone and not email:
+                            enriched = await cls.enrich_contact_from_web(p_name, full_location)
+                            if enriched.get("phone"):
+                                phone = enriched["phone"]
+                            if enriched.get("email"):
+                                email = enriched["email"]
+                            if enriched.get("website"):
+                                website = enriched["website"]
+                                domain = enriched.get("domain")
 
-                    if not website and not domain and not phone and not email and not p.get("address") and lat is None:
-                        logger.debug(f"Discarding ghost candidate '{p_name}' (No contact channel and no address).")
-                        continue
+                        if not website and not domain and not phone and not email and not p.get("address") and lat is None:
+                            continue
 
-                    if domain:
-                        seen_domains.add(domain)
-                    seen_names.add(clean_norm_name)
+                        if domain:
+                            seen_domains.add(domain)
+                        seen_names.add(clean_norm_name)
 
-                    lat = p.get("latitude")
-                    lon = p.get("longitude")
+                        if lat is not None and lon is not None:
+                            gmaps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+                        else:
+                            maps_q = urllib.parse.quote(f"{p_name} {full_location}")
+                            gmaps_url = f"https://www.google.com/maps/search/{maps_q}"
 
-                    if lat is not None and lon is not None:
-                        gmaps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-                    else:
-                        maps_q = urllib.parse.quote(f"{p_name} {full_location}")
-                        gmaps_url = f"https://www.google.com/maps/search/{maps_q}"
-                    
-                    search_q = urllib.parse.quote(f"{p_name} {full_location}")
-                    gsearch_url = f"https://www.google.com/search?q={search_q}"
+                        search_q = urllib.parse.quote(f"{p_name} {full_location}")
+                        gsearch_url = f"https://www.google.com/search?q={search_q}"
+                        b_type = (business_type_override or industry).lower().replace(" ", "_")
 
-                    b_type = (business_type_override or industry).lower().replace(" ", "_")
-
-                    discovered.append({
-                        "canonical_name": p_name,
-                        "industry": industry,
-                        "location": full_location,
-                        "city": city or p.get("city"),
-                        "country": country or p.get("country"),
-                        "address": p.get("address"),
-                        "website": website,
-                        "domain": domain,
-                        "business_type": b_type,
-                        "snippet": p.get("display_name") or f"Commercial {industry} in {full_location}",
-                        "source_url": website or gmaps_url,
-                        "google_maps_url": gmaps_url,
-                        "google_search_url": gsearch_url,
-                        "latitude": lat,
-                        "longitude": lon,
-                        "phone": phone,
-                        "email": email,
-                        "confidence": 0.98 if website else 0.92,
-                    })
-                    await asyncio.sleep(0.1)
+                        discovered.append({
+                            "canonical_name": p_name,
+                            "industry": industry,
+                            "location": full_location,
+                            "city": city or p.get("city"),
+                            "country": country or p.get("country"),
+                            "address": p.get("address"),
+                            "website": website,
+                            "domain": domain,
+                            "business_type": b_type,
+                            "snippet": p.get("display_name") or f"Commercial {industry} in {full_location}",
+                            "source_url": website or gmaps_url,
+                            "google_maps_url": gmaps_url,
+                            "google_search_url": gsearch_url,
+                            "latitude": lat,
+                            "longitude": lon,
+                            "phone": phone,
+                            "email": email,
+                            "confidence": 0.98 if website else 0.92,
+                        })
                 except Exception as e:
                     logger.warning(f"OSM directory search error for '{target_q}': {e}")
 
@@ -609,7 +605,7 @@ class LiveResearchEngine:
             else:
                 req = urllib.request.Request(f"{url}?q={urllib.parse.quote(query_str)}", headers=headers)
 
-            with urllib.request.urlopen(req, timeout=7) as resp:
+            with urllib.request.urlopen(req, timeout=3) as resp:
                 html = resp.read().decode("utf-8", errors="ignore")
                 inputs = dict(re.findall(r'<input[^>]+name=\"([^\"]+)\"[^>]+value=\"([^\"]*)\"', html))
                 if "result__a" in html or "result__snippet" in html:
@@ -626,7 +622,7 @@ class LiveResearchEngine:
                 "Referer": "https://lite.duckduckgo.com/",
             }
             req = urllib.request.Request(lite_url, data=post_data, headers=lite_headers)
-            with urllib.request.urlopen(req, timeout=7) as resp:
+            with urllib.request.urlopen(req, timeout=3) as resp:
                 html = resp.read().decode("utf-8", errors="ignore")
                 return html, {}
         except Exception:
