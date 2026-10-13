@@ -291,6 +291,7 @@ class AutopilotRunner:
                         metadata_json=metadata_payload,
                         company_kb=kb_dict,
                         use_company_kb=use_kb,
+                        analyze_website=metadata_payload.get("analyze_website", False),
                     )
 
                     fit_tier = gate_eval["fit_tier"]

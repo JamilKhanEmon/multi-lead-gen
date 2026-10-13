@@ -15,7 +15,6 @@ from app.models.audit import User
 from app.api.deps import get_current_user
 from app.engine.email_verifier import EmailVerifier
 from app.engine.outreach_engine import OutreachEngine
-from app.engine.autopilot_runner import AutopilotRunner
 
 router = APIRouter(prefix="/autopilot", tags=["Autopilot & Outreach"])
 
@@ -143,21 +142,7 @@ async def update_campaign(
     return campaign
 
 async def _bg_run_campaign(campaign_id: uuid.UUID):
-    from app.db.session import AsyncSessionLocal
-    async with AsyncSessionLocal() as session:
-        stmt = select(AutopilotCampaign).where(AutopilotCampaign.id == campaign_id)
-        res = await session.execute(stmt)
-        camp = res.scalar_one_or_none()
-        if camp:
-            try:
-                is_unlimited = getattr(camp, "is_unlimited_leads", False)
-                lead_cap = 0 if is_unlimited else (getattr(camp, "daily_lead_limit", 0) or 0)
-                await AutopilotRunner.run_campaign_batch(db=session, campaign=camp, batch_size=lead_cap)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Error in background campaign run '{camp.name}': {e}", exc_info=True)
-                camp.status = "IDLE"
-                await session.commit()
+    logger.info(f"Old autopilot campaign run is deprecated for ID {campaign_id}. Use new Strategy Engine.")
 
 @router.post("/campaigns/{campaign_id}/run-now")
 async def trigger_campaign_run(

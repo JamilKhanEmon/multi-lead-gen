@@ -12,6 +12,7 @@ from .email_template import EmailTemplate, SMTPInbox, PersonaSignature
 from .autopilot import AutopilotCampaign, EmailOutreachLog
 from .company_kb import CompanyKB, DEFAULT_SERVICES
 from .conversation import ChatbotConfig, Conversation, ConversationMessage, DEFAULT_QUALIFICATION_FIELDS
+from .ai_settings import AISettings
 
 __all__ = [
     "Base",
@@ -55,5 +56,6 @@ __all__ = [
     "EmailTemplate",
     "SMTPInbox",
     "PersonaSignature",
+    "AISettings",
 ]
 

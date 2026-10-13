@@ -187,38 +187,43 @@ class OutreachEngine:
 
         if any(w in industry for w in ["dental", "clinic", "health", "medical", "doctor", "care"]):
             value_pitch = "increase direct patient bookings and modernize your digital inquiry capture"
-            call_to_action = f"preview the patient acquisition audit we prepared specifically for {company_name}"
+        matched_svc = lead_data.get("matched_service") or ""
+        has_no_website = bool("Zero official website" in str(primary_gap) or "NO_WEBSITE" in str(lead_data.get("why_they_need_us") or ""))
+
+        if has_no_website:
+            value_pitch = f"launch a high-converting branded website and automated client inquiry portal tailored for your {industry or 'business'}"
+            call_to_action = f"see the live interactive software demo and portal prototype we modeled for {company_name}"
+        elif any(w in industry for w in ["clinic", "doctor", "dental", "dentist", "healthcare", "therapy"]):
+            value_pitch = f"streamline patient bookings and automate appointment coordination with {matched_svc or 'custom clinic software'}"
+            call_to_action = f"see a 5-minute interactive live software demo and patient acquisition system for {company_name}"
         elif any(w in industry for w in ["real estate", "property", "developer", "realty", "builder"]):
-            value_pitch = "capture high-ticket property buyers and instantly qualify inquiry leads"
-            call_to_action = f"see the tailored property buyer funnel recommendations for {company_name}"
+            value_pitch = f"capture high-intent property buyers and automate lead follow-ups with {matched_svc or 'custom real estate CRM software'}"
+            call_to_action = f"walk through a 5-minute interactive live software demo and buyer acquisition funnel for {company_name}"
         elif any(w in industry for w in ["restaurant", "cafe", "food", "dining", "catering"]):
-            value_pitch = "drive direct table reservations and WhatsApp customer inquiries without intermediary commissions"
-            call_to_action = f"check out the digital reservation flow we modeled for {company_name}"
+            value_pitch = f"drive direct table reservations and WhatsApp customer inquiries with {matched_svc or 'automated ordering software'}"
+            call_to_action = f"check out the 5-minute live software demo we modeled for {company_name}"
         elif any(w in industry for w in ["roofing", "contractor", "plumbing", "hvac", "solar", "construction"]):
-            value_pitch = "convert local emergency searchers into high-margin estimate requests"
-            call_to_action = f"see the estimate capture analysis we put together for {company_name}"
-        elif any(w in industry for w in ["law", "legal", "attorney", "accounting", "consulting"]):
-            value_pitch = "enhance client trust and capture premium retainer consultations"
-            call_to_action = f"review the client intake optimization audit for {company_name}"
+            value_pitch = f"convert local project inquiries and automate quotes with {matched_svc or 'contractor management software'}"
+            call_to_action = f"see the 5-minute live software demonstration prepared for {company_name}"
         else:
-            value_pitch = "resolve key conversion bottlenecks and significantly increase your monthly inbound client inquiries"
-            call_to_action = f"see the free growth audit report we prepared for {company_name}"
+            value_pitch = f"automate client acquisition and eliminate manual operational delays with {matched_svc or 'specialized growth software'}"
+            call_to_action = f"review a brief 5-minute interactive live software demo prepared for {company_name}"
 
         if step == 2:
-            subject = f"Following up: Growth opportunity for {company_name}"
+            subject = f"Following up: Live Demo & Solution for {company_name}"
             body = (
                 f"Hi {contact_person},\n\n"
                 f"Just following up on my previous note regarding {company_name}. I know you're busy managing operations in {city}.\n\n"
-                f"Did you have a chance to review our observation regarding {primary_gap}?\n\n"
-                f"We help businesses in your space {value_pitch}. Happy to email over a concise 1-page summary if that's more convenient.\n\n"
+                f"We specialize in helping businesses in your space {value_pitch}.\n\n"
+                f"Would you be open to a quick 5-minute chat this week to walk through the live demo, or would you prefer a concise 1-page overview by email?\n\n"
                 f"{sig_block}"
             )
         elif step == 3:
             subject = f"Permission to close your file, {contact_person}?"
             body = (
                 f"Hi {contact_person},\n\n"
-                f"I haven't heard back, so I assume addressing {primary_gap} isn't an active priority for {company_name} right now.\n\n"
-                f"I won't take up any more of your time. If you ever want to explore modernizing this in the future to {value_pitch}, feel free to reach out anytime.\n\n"
+                f"I haven't heard back, so I assume modernizing systems to {value_pitch} isn't an active priority for {company_name} right now.\n\n"
+                f"I won't take up any more of your time. If you ever want to see the interactive demo in the future, feel free to reach out anytime.\n\n"
                 f"Wishing {company_name} continued success!\n\n"
                 f"{sig_block}"
             )
@@ -226,10 +231,10 @@ class OutreachEngine:
             subject = f"Quick question regarding {company_name} ({city})"
             body = (
                 f"Hi {contact_person},\n\n"
-                f"I was researching established businesses in {city} and came across {company_name}.\n\n"
-                f"While reviewing your digital touchpoints online, I noticed a key opportunity regarding {primary_gap}.\n\n"
-                f"We recently helped similar businesses in your industry {value_pitch} by over 30% within 48 hours.\n\n"
-                f"Would you be open to a brief 3-minute chat this week to {call_to_action}?\n\n"
+                f"I was researching top businesses in {city} and came across {company_name}.\n\n"
+                f"We develop specialized systems and marketing solutions to help companies in your industry {value_pitch}.\n\n"
+                f"We currently have a ready 5-minute interactive live software demo showcasing exactly how this works.\n\n"
+                f"Would you be open to a brief 5-minute call this Thursday to {call_to_action}?\n\n"
                 f"{sig_block}"
             )
 

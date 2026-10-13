@@ -42,6 +42,7 @@ class LiveResearchEngine:
         sub_city: str = "",
         company_limit: int = 0,
         business_type_override: Optional[str] = None,
+        sub_areas: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         loc_parts = [p for p in [sub_city, city, country] if p]
         full_location = ", ".join(loc_parts) if loc_parts else location.strip()
@@ -63,6 +64,18 @@ class LiveResearchEngine:
             city=city,
             sub_city=sub_city,
         )
+
+        if sub_areas:
+            area_queries = []
+            for area in sub_areas[:15]:
+                clean_a = str(area).strip()
+                if clean_a:
+                    area_queries.append(f"{industry} in {clean_a}")
+                    area_queries.append(f"site:facebook.com \"{industry}\" \"{clean_a}\"")
+                    area_queries.append(f"{industry} company {clean_a}")
+            plan["search_queries"] = area_queries + plan.get("search_queries", [])
+            logger.info(f"DiscoveryOptimizer: Injected {len(area_queries)} approved sub-area queries.")
+
         logger.info(f"DiscoveryOptimizer: Using {len(plan['search_queries'])} targeted search queries and {len(plan['osm_queries'])} OSM targets.")
 
         # 1. Primary: High-coverage Web Search for genuine companies with official domains
@@ -663,10 +676,61 @@ class LiveResearchEngine:
         parsed = urllib.parse.urlparse(actual_url)
         domain = parsed.netloc.lower().replace("www.", "")
 
-        if not domain or domain in seen_domains:
+        if not domain:
             return None
 
+        # Check if actual_url is a Facebook business page (social-only candidate)
+        is_fb_page = "facebook.com" in domain and len(parsed.path.strip("/")) > 0 and not any(
+            bad in parsed.path.lower() for bad in ["/login", "/share", "/policies", "/help", "/hashtag", "/groups", "/events", "/p/"]
+        )
+
         from app.engine.deduplication import DeduplicationEngine
+        if is_fb_page:
+            company_name, detected_btype = cls._clean_company_identity(title, "facebook.com", snippet, industry, business_type_override)
+            clean_norm_name = re.sub(r'[^a-zA-Z0-9]', '', company_name.lower())
+            if clean_norm_name in seen_names or len(company_name) < 3 or clean_norm_name in ["facebook", "login", "home"]:
+                return None
+
+            phone = None
+            email = None
+            full_text = f"{title} {snippet}"
+            phone_match = re.search(r'(?:\+?880\s?1[3-9]\d{8}|\+?1[2-9]\d{2}[2-9]\d{6}|\+?[0-9]{2,4}[\s.-]?[0-9]{3,4}[\s.-]?[0-9]{4,6})', full_text)
+            if phone_match:
+                raw_ph = phone_match.group(0).strip()
+                if len(re.sub(r'\D', '', raw_ph)) >= 7:
+                    phone = raw_ph
+
+            email_match = re.search(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', full_text)
+            if email_match:
+                cand_em = email_match.group(0).lower()
+                if not any(cand_em.endswith(x) for x in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"]):
+                    email = cand_em
+
+            candidate = {
+                "canonical_name": company_name,
+                "industry": industry,
+                "location": location,
+                "address": None,
+                "website": None,
+                "domain": None,
+                "facebook_url": actual_url,
+                "business_type": detected_btype,
+                "snippet": snippet or title,
+                "source_url": actual_url,
+                "phone": phone,
+                "email": email,
+                "confidence": 0.95,
+                "is_social_only": True,
+            }
+            seen_names.add(clean_norm_name)
+            maps_query = urllib.parse.quote(f"{company_name} {location}")
+            candidate["google_maps_url"] = f"https://www.google.com/maps/search/{maps_query}"
+            candidate["google_search_url"] = f"https://www.google.com/search?q={maps_query}"
+            return candidate
+
+        if domain in seen_domains:
+            return None
+
         if DeduplicationEngine.is_generic_platform(domain) or DeduplicationEngine.is_directory_or_aggregator(actual_url, title):
             logger.info(f"OpenClaw: Skipping directory/aggregator platform '{domain}' ({actual_url})")
             return None
@@ -1457,6 +1521,7 @@ class OpenClawClient:
                 sub_city=sub_city,
                 company_limit=raw_limit,
                 business_type_override=b_type,
+                sub_areas=parameters.get("sub_areas"),
             )
 
         elif skill_name == "website-research":

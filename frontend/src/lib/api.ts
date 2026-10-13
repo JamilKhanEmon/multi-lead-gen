@@ -221,6 +221,37 @@ export async function evaluateLeadFitGate(id: string): Promise<any> {
   return res.json();
 }
 
+export interface StrategyPreview {
+  industry: string;
+  target_location: string;
+  analyze_website: boolean;
+  mode_label: string;
+  sub_areas: Array<{ name: string; checked: boolean }>;
+  search_queries: string[];
+  matched_services: Array<{ name: string; type: string; description: string; offer_hook: string }>;
+  demo_offer: string;
+  total_areas_count: number;
+}
+
+export async function previewResearchStrategy(data: {
+  industry: string;
+  location: string;
+  country?: string;
+  city?: string;
+  analyze_website?: boolean;
+}): Promise<StrategyPreview> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/research/preview`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to generate strategy preview");
+  return res.json();
+}
+
 export async function createResearchRun(data: {
   industry: string;
   country?: string;
@@ -232,6 +263,8 @@ export async function createResearchRun(data: {
   business_type_override?: string;
   auto_mail_enabled?: boolean;
   use_company_kb?: boolean;
+  analyze_website?: boolean;
+  sub_areas?: string[];
 }): Promise<ResearchRun> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -244,6 +277,8 @@ export async function createResearchRun(data: {
       company_limit: data.company_limit ?? 0,
       auto_mail_enabled: data.auto_mail_enabled ?? true,
       use_company_kb: data.use_company_kb ?? true,
+      analyze_website: data.analyze_website ?? false,
+      sub_areas: data.sub_areas ?? [],
     }),
   });
   if (!res.ok) throw new Error("Failed to start research run");
@@ -2199,3 +2234,103 @@ export async function fetchEmailThread(clientEmail: string): Promise<{
     return { client_email: clientEmail, total: 0, thread: [] };
   }
 }
+
+export interface AISettings {
+  id?: string;
+  primary_provider: string;
+  primary_model: string;
+  enable_fallback: boolean;
+  fallback_provider?: string | null;
+  fallback_model?: string | null;
+  groq_api_key_masked?: string | null;
+  openrouter_api_key_masked?: string | null;
+  openai_api_key_masked?: string | null;
+  custom_api_key_masked?: string | null;
+  custom_base_url?: string | null;
+  has_groq_key: boolean;
+  has_openrouter_key: boolean;
+  has_openai_key: boolean;
+  has_custom_key: boolean;
+  max_tokens: number;
+  temperature: number;
+  is_active: boolean;
+}
+
+export interface AISettingsUpdatePayload {
+  primary_provider: string;
+  primary_model: string;
+  enable_fallback: boolean;
+  fallback_provider?: string | null;
+  fallback_model?: string | null;
+  groq_api_key?: string | null;
+  openrouter_api_key?: string | null;
+  openai_api_key?: string | null;
+  custom_api_key?: string | null;
+  custom_base_url?: string | null;
+  max_tokens?: number;
+  temperature?: number;
+}
+
+export interface AITestResult {
+  success: boolean;
+  latency_ms: number;
+  provider: string;
+  model: string;
+  message: string;
+  response_sample?: any;
+}
+
+export async function fetchAISettings(): Promise<AISettings> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/ai-settings`, {
+    headers,
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error("Failed to fetch AI Settings");
+  }
+  return res.json();
+}
+
+export async function updateAISettings(data: AISettingsUpdatePayload): Promise<AISettings> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/ai-settings`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update AI Settings");
+  }
+  return res.json();
+}
+
+export async function testAIConnection(data: {
+  provider: string;
+  model: string;
+  api_key?: string;
+  custom_base_url?: string;
+}): Promise<AITestResult> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/ai-settings/test`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to test AI connection");
+  }
+  return res.json();
+}
+

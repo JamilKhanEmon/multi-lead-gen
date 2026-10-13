@@ -15,6 +15,15 @@ class ResearchRunCreate(BaseModel):
     target_services: List[str] = Field(default_factory=list)
     auto_mail_enabled: bool = Field(default=True)
     use_company_kb: bool = Field(default=True)
+    analyze_website: bool = Field(default=False, description="True for deep website technical audit; False for social media & software demo focus")
+    sub_areas: List[str] = Field(default_factory=list, description="Approved list of sub-areas to crawl")
+
+class StrategyPreviewRequest(BaseModel):
+    industry: str = Field(..., example="Real Estate")
+    location: str = Field(..., example="Dhaka, Bangladesh")
+    country: Optional[str] = Field(default="", example="Bangladesh")
+    city: Optional[str] = Field(default="", example="Dhaka")
+    analyze_website: bool = Field(default=False)
 
 class ResearchJobResponse(BaseModel):
     id: uuid.UUID

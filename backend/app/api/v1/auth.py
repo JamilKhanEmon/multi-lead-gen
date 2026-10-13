@@ -24,38 +24,34 @@ async def ensure_default_accounts(db: AsyncSession):
     import os
     from app.core.logging import logger
 
-    admin_email = (os.getenv("SUPERADMIN_EMAIL") or "").lower().strip()
-    admin_password = os.getenv("SUPERADMIN_PASSWORD") or ""
-    admin_name = os.getenv("SUPERADMIN_NAME") or "Super Administrator"
-
-    if not admin_email or not admin_password:
-        return
-
     try:
-        stmt = select(User).where(User.email == admin_email)
-        res = await db.execute(stmt)
-        existing = res.scalar_one_or_none()
-        if not existing:
-            new_u = User(
-                email=admin_email,
-                hashed_password=get_password_hash(admin_password),
-                full_name=admin_name,
-                role="super_admin",
-                permissions_json={"all": True},
-                is_active=True,
-            )
-            db.add(new_u)
-            await db.commit()
-            logger.info(f"Initialized default superadmin account: {admin_email}")
-        else:
-            # Account exists: never overwrite the database password, preserving user/admin changes
-            if existing.role != "super_admin":
-                existing.role = "super_admin"
-                existing.permissions_json = {"all": True}
-                await db.commit()
+        # If any user account already exists in the database, skip seeding completely
+        has_any_user = await db.execute(select(User.id).limit(1))
+        if has_any_user.scalar_one_or_none() is not None:
+            return
+
+        # If database is empty, only seed if explicit environment variables are provided (no hardcoded passwords)
+        admin_email = os.getenv("SUPERADMIN_EMAIL")
+        admin_password = os.getenv("SUPERADMIN_PASSWORD")
+        admin_name = os.getenv("SUPERADMIN_NAME", "Administrator")
+
+        if not admin_email or not admin_password:
+            return  # Zero hardcoded credentials in codebase
+
+        new_u = User(
+            email=admin_email.lower().strip(),
+            hashed_password=get_password_hash(admin_password),
+            full_name=admin_name.strip(),
+            role="super_admin",
+            permissions_json={"all": True},
+            is_active=True,
+        )
+        db.add(new_u)
+        await db.commit()
+        logger.info(f"Initialized initial superadmin account: {admin_email}")
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error ensuring default superadmin: {e}")
+        logger.error(f"Error ensuring initial superadmin: {e}")
 
 @router.post("/login", response_model=Token)
 async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):

@@ -272,47 +272,7 @@ async def autonomous_outreach_scheduler():
             logger.error(f"[OUTREACH DAEMON] Loop error: {err}")
             await asyncio.sleep(60)
 
-async def autonomous_campaign_discovery_loop():
-    from app.engine.autopilot_runner import AutopilotRunner
-    from app.models.autopilot import AutopilotCampaign
-    from app.db.session import AsyncSessionLocal
-    from sqlalchemy import select
-    from datetime import datetime, timezone, timedelta
 
-    logger.info("Started Autonomous Continuous Campaign Discovery Daemon.")
-    await asyncio.sleep(60)
-
-    while True:
-        try:
-            async with AsyncSessionLocal() as session:
-                stmt = select(AutopilotCampaign).where(
-                    AutopilotCampaign.is_active == True,
-                    AutopilotCampaign.status == "IDLE"
-                )
-                res = await session.execute(stmt)
-                active_campaigns = res.scalars().all()
-
-                for camp in active_campaigns:
-                    should_run = not camp.last_run_at or (datetime.now(timezone.utc) - camp.last_run_at) > timedelta(hours=3)
-                    if should_run:
-                        logger.info(f"[AUTONOMOUS DISCOVERY DAEMON] Scheduled run starting for campaign '{camp.name}'...")
-                        try:
-                            is_unlimited = getattr(camp, "is_unlimited_leads", False)
-                            lead_cap = 0 if is_unlimited else (getattr(camp, "daily_lead_limit", 0) or 0)
-                            await AutopilotRunner.run_campaign_batch(
-                                db=session,
-                                campaign=camp,
-                                batch_size=lead_cap
-                            )
-                        except Exception as ce:
-                            logger.error(f"[AUTONOMOUS DISCOVERY DAEMON] Error running '{camp.name}': {ce}")
-
-            await asyncio.sleep(900)
-        except asyncio.CancelledError:
-            break
-        except Exception as err:
-            logger.error(f"[AUTONOMOUS DISCOVERY DAEMON] Daemon error: {err}")
-            await asyncio.sleep(120)
 
 async def autonomous_imap_sync_loop():
     from app.services.imap_sync_service import IMAPInboxSyncService
@@ -403,12 +363,10 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Database table initialization warning: {e}")
     listener_task = asyncio.create_task(redis_event_listener())
     outreach_daemon_task = asyncio.create_task(autonomous_outreach_scheduler())
-    discovery_daemon_task = asyncio.create_task(autonomous_campaign_discovery_loop())
     imap_sync_task = asyncio.create_task(autonomous_imap_sync_loop())
     yield
     listener_task.cancel()
     outreach_daemon_task.cancel()
-    discovery_daemon_task.cancel()
     imap_sync_task.cancel()
     logger.info("Shutdown complete.")
 

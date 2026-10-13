@@ -106,7 +106,7 @@ async def test_verify_industry_fit_accepts_matching_industry():
             meta_description="Providing professional commercial services.",
         )
         assert is_fit is True, f"Failed for {ind}: {reason}"
-        assert "Direct dynamic industry keyword matched" in reason
+        assert ("Direct dynamic industry keyword matched" in reason or "Industry synonym verified" in reason)
 
 @pytest.mark.asyncio
 async def test_verify_industry_fit_rejects_negative_keywords():

@@ -31,12 +31,9 @@ class ChatbotService:
         kb_res = await db.execute(kb_stmt)
         kb = kb_res.scalar_one_or_none()
 
-        biz_name = kb.company_name if (kb and kb.company_name) else "Global Enterprise Solutions"
-        biz_tagline = kb.tagline_experience if (kb and kb.tagline_experience) else "World-class services tailored to your needs"
-        biz_services = kb.services_json if (kb and kb.services_json) else [
-            {"name": "Consulting & Strategy", "description": "Customized growth and operational consultation", "price": "Custom quote"},
-            {"name": "Digital Transformation", "description": "End-to-end technology and process modernization", "price": "Custom quote"}
-        ]
+        biz_name = (kb.company_name if (kb and kb.company_name) else "") or ""
+        biz_tagline = (kb.tagline_experience if (kb and kb.tagline_experience) else "") or ""
+        biz_services = (kb.services_json if (kb and kb.services_json) else []) or []
 
         new_config = ChatbotConfig(
             business_name=biz_name,
@@ -45,12 +42,9 @@ class ChatbotService:
             country="Global / Worldwide",
             currency_symbol="$",
             currency_code="USD",
-            description=kb.master_kb_notes if (kb and kb.master_kb_notes) else "We deliver high-impact solutions to clients worldwide across multiple industries.",
+            description=kb.master_kb_notes if (kb and kb.master_kb_notes) else "",
             services_json=biz_services,
-            faqs_json=[
-                {"question": "How do we get started?", "answer": "Simply provide your details and requirements, and our team will schedule a tailored discovery session."},
-                {"question": "Do you work with international clients?", "answer": "Yes, we proudly serve clients globally with flexible time-zone coverage."}
-            ],
+            faqs_json=[],
             qualification_fields_json=DEFAULT_QUALIFICATION_FIELDS,
             master_ai_enabled=True,
             auto_detect_language=True,

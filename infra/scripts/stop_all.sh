@@ -13,7 +13,9 @@ for pidfile in "$PROJECT_DIR/logs/frontend.pid"; do
         rm -f "$pidfile"
     fi
 done
-lsof -ti :3000 | xargs kill -9 2>/dev/null || true
+for pid in $(lsof -ti :3000 2>/dev/null || true); do
+    kill -9 "$pid" 2>/dev/null || true
+done
 
 for pidfile in "$PROJECT_DIR/logs/worker.pid" /tmp/leadgen_worker.pid; do
     if [ -f "$pidfile" ]; then

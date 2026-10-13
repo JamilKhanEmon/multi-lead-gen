@@ -14,8 +14,12 @@ echo "[2/4] Verifying OpenClaw Gateway configuration..."
 echo "[+] Gateway URL: ${OPENCLAW_GATEWAY_URL:-Configured in .env}"
 
 echo "[4/6] Cleaning up old processes on ports 8000 & 3000..."
-lsof -ti :8000 | xargs kill -9 2>/dev/null || true
-lsof -ti :3000 | xargs kill -9 2>/dev/null || true
+for pid in $(lsof -ti :8000 2>/dev/null || true); do
+    kill -9 "$pid" 2>/dev/null || true
+done
+for pid in $(lsof -ti :3000 2>/dev/null || true); do
+    kill -9 "$pid" 2>/dev/null || true
+done
 pkill -f "app.workers.runner" 2>/dev/null || true
 sleep 1
 
