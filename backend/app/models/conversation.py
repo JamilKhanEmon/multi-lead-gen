@@ -42,12 +42,12 @@ DEFAULT_QUALIFICATION_FIELDS: List[Dict[str, Any]] = [
 class ChatbotConfig(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "chatbot_configs"
 
-    business_name: Mapped[str] = mapped_column(String(255), default="Global Enterprise Solutions", nullable=False)
+    business_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     industry: Mapped[str] = mapped_column(String(100), default="Business Services", nullable=False)
     country: Mapped[str] = mapped_column(String(100), default="Global / Worldwide", nullable=False)
     currency_symbol: Mapped[str] = mapped_column(String(10), default="$", nullable=False)
     currency_code: Mapped[str] = mapped_column(String(10), default="USD", nullable=False)
-    tagline: Mapped[str] = mapped_column(String(500), default="Empowering businesses with modern growth solutions", nullable=False)
+    tagline: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, default="", nullable=True)
 
     services_json: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, default=list, nullable=False)

@@ -77,10 +77,9 @@ class QualificationEngine:
             failed_reasons.append(f"Industry mismatch: {industry_mismatch_reason or 'Website content does not align with target industry'}.")
 
         if not has_direct_contact:
-            failed_reasons.append("Needs manual outreach review: Direct phone or email not yet verified.")
+            failed_reasons.append("Unreachable: No direct phone number or email address found.")
 
-        fatal_failures = [r for r in failed_reasons if not r.startswith("Needs manual outreach review")]
-        passed = len(fatal_failures) == 0
+        passed = len(failed_reasons) == 0
         return passed, failed_reasons
 
     @classmethod

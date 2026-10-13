@@ -15,7 +15,6 @@ from app.models.audit import User
 from app.api.deps import get_current_user
 from app.engine.email_verifier import EmailVerifier
 from app.engine.outreach_engine import OutreachEngine
-from app.engine.autopilot_runner import AutopilotRunner
 
 router = APIRouter(prefix="/autopilot", tags=["Autopilot & Outreach"])
 
@@ -143,21 +142,7 @@ async def update_campaign(
     return campaign
 
 async def _bg_run_campaign(campaign_id: uuid.UUID):
-    from app.db.session import AsyncSessionLocal
-    async with AsyncSessionLocal() as session:
-        stmt = select(AutopilotCampaign).where(AutopilotCampaign.id == campaign_id)
-        res = await session.execute(stmt)
-        camp = res.scalar_one_or_none()
-        if camp:
-            try:
-                is_unlimited = getattr(camp, "is_unlimited_leads", False)
-                lead_cap = 0 if is_unlimited else (getattr(camp, "daily_lead_limit", 0) or 0)
-                await AutopilotRunner.run_campaign_batch(db=session, campaign=camp, batch_size=lead_cap)
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Error in background campaign run '{camp.name}': {e}", exc_info=True)
-                camp.status = "IDLE"
-                await session.commit()
+    logger.info(f"Old autopilot campaign run is deprecated for ID {campaign_id}. Use new Strategy Engine.")
 
 @router.post("/campaigns/{campaign_id}/run-now")
 async def trigger_campaign_run(
@@ -175,8 +160,27 @@ async def trigger_campaign_run(
     campaign.status = "RUNNING"
     await db.commit()
 
-    import asyncio
-    asyncio.create_task(_bg_run_campaign(campaign_id))
+    enqueued = False
+    try:
+        import redis.asyncio as aioredis
+        from app.core.config import settings
+        redis_client = aioredis.from_url(settings.REDIS_URL)
+        task_payload = {
+            "job_id": str(uuid.uuid4()),
+            "type": "autopilot_campaign_run",
+            "campaign_id": str(campaign.id),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await redis_client.lpush("leadgen:tasks", json.dumps(task_payload))
+        await redis_client.aclose()
+        enqueued = True
+    except Exception as redis_err:
+        import logging
+        logging.getLogger(__name__).warning(f"Could not enqueue autopilot to Redis ({redis_err}), using local task.")
+
+    if not enqueued:
+        import asyncio
+        asyncio.create_task(_bg_run_campaign(campaign_id))
 
     return {
         "campaign_id": str(campaign.id),

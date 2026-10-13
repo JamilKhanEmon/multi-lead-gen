@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -63,6 +63,39 @@ class Settings(BaseSettings):
     OPENCLAW_MODEL: Optional[str] = Field(
         default=None,
         description="Optional override for OpenClaw active LLM model (defaults to active agent in OpenClaw)",
+    )
+
+    GROQ_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Groq API Key (ultra-fast, cost-efficient inference via console.groq.com)",
+    )
+    OPENAI_API_KEY: Optional[str] = Field(
+        default=None,
+        description="OpenAI API Key (e.g. for gpt-4o-mini)",
+    )
+    LLM_PROVIDER: str = Field(
+        default="groq",
+        description="LLM Provider: 'groq', 'openai', 'openclaw', or 'custom'",
+    )
+    LLM_MODEL: Optional[str] = Field(
+        default=None,
+        description="Override model name (e.g. 'llama-3.1-8b-instant' or 'gpt-4o-mini')",
+    )
+    LLM_BASE_URL: Optional[str] = Field(
+        default=None,
+        description="Custom OpenAI-compatible base URL (e.g. local Ollama or vLLM)",
+    )
+    LLM_MAX_TOKENS: int = Field(
+        default=250,
+        ge=50,
+        le=2048,
+        description="Strict maximum token limit to prevent excessive token usage and costs",
+    )
+    LLM_TEMPERATURE: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Sampling temperature for deterministic, concise outputs",
     )
 
     WORKER_CONCURRENCY: int = Field(default=2, ge=1, le=4)

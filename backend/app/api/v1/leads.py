@@ -990,6 +990,7 @@ async def get_lead_detail(
         if lead.run and hasattr(lead.run, "use_company_kb"):
             use_kb = bool(lead.run.use_company_kb)
 
+        analyze_web = bool(getattr(lead.run, "analyze_website", False)) if lead.run else bool(meta.get("analyze_website", False))
         kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
 
         gate_res = FitGateEngine.evaluate_candidate(
@@ -1004,6 +1005,7 @@ async def get_lead_detail(
             metadata_json=meta,
             company_kb=kb_dict,
             use_company_kb=use_kb,
+            analyze_website=analyze_web,
         )
         fit_t = gate_res["fit_tier"]
         why_us = gate_res["why_they_need_us"]
@@ -1273,6 +1275,7 @@ async def evaluate_lead_fit_gate(
     if lead.run and hasattr(lead.run, "use_company_kb"):
         use_kb = bool(lead.run.use_company_kb)
 
+    analyze_web = bool(getattr(lead.run, "analyze_website", False)) if lead.run else bool(meta.get("analyze_website", False))
     kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
 
     gate_res = FitGateEngine.evaluate_candidate(
@@ -1287,6 +1290,7 @@ async def evaluate_lead_fit_gate(
         metadata_json=meta,
         company_kb=kb_dict,
         use_company_kb=use_kb,
+        analyze_website=analyze_web,
     )
     lead.fit_tier = gate_res["fit_tier"]
     lead.why_they_need_us = gate_res["why_they_need_us"]

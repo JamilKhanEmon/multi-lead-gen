@@ -141,14 +141,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isHubPage = pathname === "/" || pathname === "/admin" || pathname === "/login";
 
   const getSubRouteModule = () => {
-    if (pathname.startsWith("/autopilot")) {
-      return {
-        id: "autopilot",
-        label: "Autonomous Cold Email & Autopilot",
-        icon: Zap,
-        color: "text-amber-400 bg-amber-500/10 border-amber-500/30",
-      };
-    }
+
     if (pathname.startsWith("/research") || pathname.startsWith("/leads") || pathname.startsWith("/parameters")) {
       return {
         id: "leads",
@@ -168,7 +161,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/conversations")) {
       return {
         id: "conversations",
-        label: "Conversational Lead Qualification (AI Chatbot)",
+        label: "Direct Inbound Conversations",
         icon: Bot,
         color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30",
       };

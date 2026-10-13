@@ -134,8 +134,11 @@ class DiscoveryOptimizer:
 
         req_sub_city = (plan.get("sub_city") or "").lower().strip()
         req_city = (plan.get("city") or "").lower().strip()
-        if cand_address and req_city and len(req_city) >= 3:
-            cand_full_loc = f"{cand_address} {snippet} {candidate.get('location', '')}".lower()
+        cand_full_loc = f"{cand_address} {snippet} {candidate.get('location', '')}".lower()
+        if cand_address and req_sub_city and len(req_sub_city) >= 3:
+            if req_sub_city not in cand_full_loc:
+                return False, f"Candidate address '{cand_address}' does not match requested area '{req_sub_city}'"
+        elif cand_address and req_city and len(req_city) >= 3:
             if req_city not in cand_full_loc and req_sub_city not in cand_full_loc:
                 return False, f"Candidate location does not match target city '{req_city}'"
 
@@ -190,7 +193,7 @@ class DiscoveryOptimizer:
             for neg in negative_keywords:
                 neg_l = neg.lower().strip()
                 if len(neg_l) >= 4 and neg_l in full_text:
-                    return False, f"Matched AI negative filter: '{neg}'"
+                    return False, f"Matched dynamic negative filter: '{neg}'"
 
         # AI Semantic Verification before heuristic matching
         if ollama_client and (page_title or meta_description or business_name):
@@ -221,7 +224,7 @@ class DiscoveryOptimizer:
                 logger.debug(f"Dynamic AI semantic verification notice: {e}")
 
         if ind_phrase and len(ind_phrase) >= 4 and ind_phrase in full_text:
-            return True, f"Full industry phrase verified: '{ind_phrase}'"
+            return True, f"Direct dynamic industry keyword matched: '{ind_phrase}'"
         if ind_clean.replace(" ", "") in domain_l or ind_phrase.replace(" ", "") in domain_l:
             return True, f"Official domain matches industry: '{domain_l}'"
 
@@ -259,7 +262,7 @@ class DiscoveryOptimizer:
         for tok in target_tokens:
             stem = tok[:-1] if len(tok) > 4 and tok.endswith('s') else tok
             if tok in full_text or (len(stem) >= 4 and stem in full_text):
-                return True, f"Root industry stem matched: '{tok}'"
+                return True, f"Direct dynamic industry keyword matched: '{tok}'"
 
         if domain and (page_title or meta_description):
             return True, "General commercial relevance"

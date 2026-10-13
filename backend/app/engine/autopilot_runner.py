@@ -291,11 +291,12 @@ class AutopilotRunner:
                         metadata_json=metadata_payload,
                         company_kb=kb_dict,
                         use_company_kb=use_kb,
+                        analyze_website=metadata_payload.get("analyze_website", False),
                     )
 
                     fit_tier = gate_eval["fit_tier"]
                     is_dropped = (fit_tier == "DROPPED")
-                    if is_dropped or fit_tier not in ("HOT", "WARM"):
+                    if is_dropped:
                         logger.info(f"[AUTOPILOT STRICT FILTER] Dropping rejected candidate '{c_name}' (Fit: {fit_tier}). Not adding to CRM.")
                         continue
 

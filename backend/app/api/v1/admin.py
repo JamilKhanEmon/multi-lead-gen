@@ -903,3 +903,187 @@ async def purge_database_data(
     else:
         raise HTTPException(status_code=400, detail=f"Unknown purge target: {req.target}")
 
+
+# ── AI Engine & Model Settings ──────────────────────────────────────────────
+from app.models.ai_settings import AISettings
+from app.schemas.ai_settings import (
+    AISettingsResponse,
+    AISettingsUpdate,
+    AITestRequest,
+    AITestResponse,
+)
+from app.services.ai_client import AIClient, set_runtime_ai_settings
+import os
+
+def _mask_key(key: Optional[str]) -> Optional[str]:
+    if not key:
+        return None
+    k = key.strip()
+    if len(k) <= 8:
+        return "********"
+    return f"{k[:5]}...{k[-4:]}"
+
+@router.get("/ai-settings", response_model=AISettingsResponse)
+async def get_ai_settings(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(AISettings).where(AISettings.is_active == True).order_by(AISettings.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    cfg = res.scalar_one_or_none()
+
+    if not cfg:
+        cfg = AISettings(
+            primary_provider=settings.LLM_PROVIDER or "groq",
+            primary_model=settings.LLM_MODEL or "qwen/qwen3.8-27b",
+            enable_fallback=True,
+            fallback_provider="openrouter",
+            fallback_model="meta-llama/llama-3.3-70b-instruct:free",
+            groq_api_key=settings.GROQ_API_KEY,
+            openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),
+            openai_api_key=settings.OPENAI_API_KEY,
+            custom_api_key=None,
+            custom_base_url=None,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            temperature=settings.LLM_TEMPERATURE,
+            is_active=True,
+        )
+        db.add(cfg)
+        await db.commit()
+        await db.refresh(cfg)
+
+    return AISettingsResponse(
+        id=cfg.id,
+        primary_provider=cfg.primary_provider,
+        primary_model=cfg.primary_model,
+        enable_fallback=cfg.enable_fallback,
+        fallback_provider=cfg.fallback_provider,
+        fallback_model=cfg.fallback_model,
+        groq_api_key_masked=_mask_key(cfg.groq_api_key),
+        openrouter_api_key_masked=_mask_key(cfg.openrouter_api_key),
+        openai_api_key_masked=_mask_key(cfg.openai_api_key),
+        custom_api_key_masked=_mask_key(cfg.custom_api_key),
+        custom_base_url=cfg.custom_base_url,
+        has_groq_key=bool(cfg.groq_api_key),
+        has_openrouter_key=bool(cfg.openrouter_api_key),
+        has_openai_key=bool(cfg.openai_api_key),
+        has_custom_key=bool(cfg.custom_api_key),
+        max_tokens=cfg.max_tokens,
+        temperature=cfg.temperature,
+        is_active=cfg.is_active,
+    )
+
+@router.put("/ai-settings", response_model=AISettingsResponse)
+async def update_ai_settings(
+    data: AISettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(AISettings).where(AISettings.is_active == True).order_by(AISettings.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    cfg = res.scalar_one_or_none()
+
+    if not cfg:
+        cfg = AISettings()
+        db.add(cfg)
+
+    cfg.primary_provider = data.primary_provider.strip().lower()
+    cfg.primary_model = data.primary_model.strip()
+    cfg.enable_fallback = data.enable_fallback
+    cfg.fallback_provider = data.fallback_provider.strip().lower() if data.fallback_provider else None
+    cfg.fallback_model = data.fallback_model.strip() if data.fallback_model else None
+
+    if data.groq_api_key is not None and "..." not in data.groq_api_key and data.groq_api_key.strip():
+        cfg.groq_api_key = data.groq_api_key.strip()
+    if data.openrouter_api_key is not None and "..." not in data.openrouter_api_key and data.openrouter_api_key.strip():
+        cfg.openrouter_api_key = data.openrouter_api_key.strip()
+    if data.openai_api_key is not None and "..." not in data.openai_api_key and data.openai_api_key.strip():
+        cfg.openai_api_key = data.openai_api_key.strip()
+    if data.custom_api_key is not None and "..." not in data.custom_api_key and data.custom_api_key.strip():
+        cfg.custom_api_key = data.custom_api_key.strip()
+    if data.custom_base_url is not None:
+        cfg.custom_base_url = data.custom_base_url.strip() if data.custom_base_url.strip() else None
+
+    if data.max_tokens is not None:
+        cfg.max_tokens = data.max_tokens
+    if data.temperature is not None:
+        cfg.temperature = data.temperature
+
+    await db.commit()
+    await db.refresh(cfg)
+
+    set_runtime_ai_settings({
+        "primary_provider": cfg.primary_provider,
+        "primary_model": cfg.primary_model,
+        "enable_fallback": cfg.enable_fallback,
+        "fallback_provider": cfg.fallback_provider,
+        "fallback_model": cfg.fallback_model,
+        "groq_api_key": cfg.groq_api_key,
+        "openrouter_api_key": cfg.openrouter_api_key,
+        "openai_api_key": cfg.openai_api_key,
+        "custom_api_key": cfg.custom_api_key,
+        "custom_base_url": cfg.custom_base_url,
+        "max_tokens": cfg.max_tokens,
+        "temperature": cfg.temperature,
+    })
+
+    return AISettingsResponse(
+        id=cfg.id,
+        primary_provider=cfg.primary_provider,
+        primary_model=cfg.primary_model,
+        enable_fallback=cfg.enable_fallback,
+        fallback_provider=cfg.fallback_provider,
+        fallback_model=cfg.fallback_model,
+        groq_api_key_masked=_mask_key(cfg.groq_api_key),
+        openrouter_api_key_masked=_mask_key(cfg.openrouter_api_key),
+        openai_api_key_masked=_mask_key(cfg.openai_api_key),
+        custom_api_key_masked=_mask_key(cfg.custom_api_key),
+        custom_base_url=cfg.custom_base_url,
+        has_groq_key=bool(cfg.groq_api_key),
+        has_openrouter_key=bool(cfg.openrouter_api_key),
+        has_openai_key=bool(cfg.openai_api_key),
+        has_custom_key=bool(cfg.custom_api_key),
+        max_tokens=cfg.max_tokens,
+        temperature=cfg.temperature,
+        is_active=cfg.is_active,
+    )
+
+@router.post("/ai-settings/test", response_model=AITestResponse)
+async def test_ai_connection(
+    data: AITestRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    key = data.api_key
+    if not key or "..." in key:
+        stmt = select(AISettings).where(AISettings.is_active == True).order_by(AISettings.created_at.desc()).limit(1)
+        res = await db.execute(stmt)
+        cfg = res.scalar_one_or_none()
+        if cfg:
+            p = data.provider.lower().strip()
+            if p == "groq":
+                key = cfg.groq_api_key
+            elif p == "openrouter":
+                key = cfg.openrouter_api_key
+            elif p == "openai":
+                key = cfg.openai_api_key
+            elif p == "custom":
+                key = cfg.custom_api_key
+
+    result = await AIClient.test_provider_connection(
+        provider=data.provider,
+        model=data.model,
+        api_key=key,
+        custom_base_url=data.custom_base_url,
+    )
+
+    return AITestResponse(
+        success=result["success"],
+        latency_ms=result["latency_ms"],
+        provider=result["provider"],
+        model=result["model"],
+        message=result["message"],
+        response_sample=result.get("response_sample"),
+    )
+
+

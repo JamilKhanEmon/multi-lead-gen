@@ -75,6 +75,7 @@ async def handle_discover_businesses(
                 "location": location,
                 "company_limit": company_limit,
                 "business_type_override": payload.get("business_type_override"),
+                "sub_areas": payload.get("sub_areas"),
             },
         )
     except Exception as e:
@@ -98,18 +99,29 @@ async def handle_discover_businesses(
     async with AsyncSessionLocal() as session:
         for comp in companies:
             raw_name = comp.get("canonical_name", "").strip()
-            raw_domain = comp.get("website")
+            raw_domain = comp.get("domain") or comp.get("website")
             raw_phone = comp.get("phone")
+            raw_fb = comp.get("facebook_url")
 
             if not raw_name:
                 continue
+
+            # Check if this candidate is a social-only business (e.g. found via Facebook page)
+            if raw_domain and "facebook.com" in raw_domain.lower():
+                if not raw_fb:
+                    raw_fb = raw_domain
+                raw_domain = None
+                comp["website"] = None
+                comp["domain"] = None
+                comp["facebook_url"] = raw_fb
+                comp["is_social_only"] = True
 
             raw_name_l = raw_name.lower().strip()
             if any(bad in raw_name_l for bad in ["facebook.com", "instagram.com", "google.com", "youtube.com", "linkedin.com", "twitter.com"]) or raw_name_l in ["facebook", "instagram", "google", "meta"]:
                 logger.info(f"TaskDiscover: Discarding generic platform candidate '{raw_name}'")
                 continue
 
-            if DeduplicationEngine.is_generic_platform(raw_domain) or DeduplicationEngine.is_directory_or_aggregator(raw_domain, raw_name):
+            if raw_domain and (DeduplicationEngine.is_generic_platform(raw_domain) or DeduplicationEngine.is_directory_or_aggregator(raw_domain, raw_name)):
                 logger.info(f"TaskDiscover: Discarding directory/aggregator platform candidate '{raw_name}' ({raw_domain})")
                 continue
 
@@ -216,6 +228,8 @@ async def handle_discover_businesses(
                 "industry": industry,
                 "location": location,
                 "auto_mail_enabled": payload.get("auto_mail_enabled", True),
+                "analyze_website": payload.get("analyze_website", False),
+                "use_company_kb": payload.get("use_company_kb", True),
                 "positive_keywords": val_plan.get("positive_keywords", []),
                 "negative_keywords": val_plan.get("negative_keywords", []),
             },
@@ -296,48 +310,70 @@ async def _execute_research_and_qualify(
 
     logger.info(f"Researching & Qualifying: {business_name} ({business_type}) [Depth: {depth}]")
 
-    website_data = {}
-    if not domain and business_name:
-        try:
-            from app.services.openclaw_client import LiveResearchEngine
-            resolved_dom = await LiveResearchEngine.resolve_domain_for_business(business_name, location)
-            if resolved_dom:
-                domain = resolved_dom
-                logger.info(f"Resolved live domain for {business_name}: {domain}")
-        except Exception as e:
-            logger.debug(f"Domain resolution error for {business_name}: {e}")
+    analyze_website = payload.get("analyze_website", False)
+    current_phone = payload.get("phone")
+    current_email = payload.get("email")
 
-    if domain:
-        target_url = f"https://{domain}"
-        try:
-            website_data = await openclaw_client.run_skill(
-                "website-research",
-                {"url": target_url, "canonical_name": business_name, "location": location}
-            )
-        except Exception as e:
-            logger.warning(f"OpenClaw website research fallback for {domain}: {e}")
-            website_data = {
-                "url": target_url,
-                "status": 500,
-                "is_accessible": False,
-                "title": business_name,
-                "mobile_responsive": None,
-                "has_whatsapp": False,
-                "has_online_booking": False,
-                "has_contact_form": False,
-                "broken_links_count": 0,
-                "extracted_phone": payload.get("phone"),
-                "extracted_email": payload.get("email"),
-                "facebook_url": None,
-                "instagram_url": None,
-                "linkedin_url": None,
-                "cms_platform": "Unknown",
-                "has_meta_pixel": False,
-                "has_google_analytics": False,
-                "contact_person": None,
-                "contact_title": None,
-                "rendered_by": "fallback",
-            }
+    website_data = {
+        "url": f"https://{domain}" if domain else None,
+        "is_accessible": True if domain else False,
+        "title": business_name,
+        "extracted_phone": current_phone,
+        "extracted_email": current_email,
+        "facebook_url": None,
+        "instagram_url": None,
+        "linkedin_url": None,
+        "cms_platform": "Unknown",
+        "has_meta_pixel": False,
+        "has_google_analytics": False,
+        "contact_person": None,
+        "contact_title": None,
+        "rendered_by": "direct" if domain else "none",
+    }
+
+    if analyze_website:
+        # Full deep technical website audit mode (when user explicitly checked the box)
+        if not domain and business_name:
+            try:
+                from app.services.openclaw_client import LiveResearchEngine
+                resolved_dom = await LiveResearchEngine.resolve_domain_for_business(business_name, location)
+                if resolved_dom:
+                    domain = resolved_dom
+                    logger.info(f"Resolved live domain for {business_name}: {domain}")
+            except Exception as e:
+                logger.debug(f"Domain resolution error for {business_name}: {e}")
+
+        if domain:
+            target_url = f"https://{domain}"
+            try:
+                website_data = await openclaw_client.run_skill(
+                    "website-research",
+                    {"url": target_url, "canonical_name": business_name, "location": location}
+                )
+            except Exception as e:
+                logger.warning(f"OpenClaw website research fallback for {domain}: {e}")
+    else:
+        # Social & Software Demo Mode (DEFAULT): Skip heavy website audit!
+        if domain and (not current_phone or not current_email):
+            logger.info(f"TaskResearch: analyze_website=False. Fetching lightweight contact info for '{business_name}'...")
+            try:
+                light_data = await openclaw_client.run_skill(
+                    "website-research",
+                    {"url": f"https://{domain}", "canonical_name": business_name, "location": location, "lightweight": True}
+                )
+                if light_data.get("extracted_phone") and not current_phone:
+                    website_data["extracted_phone"] = light_data["extracted_phone"]
+                if light_data.get("extracted_email") and not current_email:
+                    website_data["extracted_email"] = light_data["extracted_email"]
+                for k in ["facebook_url", "instagram_url", "linkedin_url"]:
+                    if light_data.get(k):
+                        website_data[k] = light_data[k]
+            except Exception as e:
+                logger.debug(f"Lightweight contact check notice for {domain}: {e}")
+        else:
+            if domain and current_phone and current_email:
+                logger.info(f"TaskResearch: Direct contacts already present. SKIPPING website scraping completely for '{business_name}'!")
+
 
     current_phone = website_data.get("extracted_phone") or payload.get("phone")
     current_email = website_data.get("extracted_email") or payload.get("email")
@@ -378,57 +414,73 @@ async def _execute_research_and_qualify(
     ]
     detected_pids = []
 
-    if website_data.get("mobile_responsive") is False:
-        detected_pids.append(37)
-        evidence_records.append({
-            "parameter_id": 37,
-            "source_url": f"https://{domain}",
-            "source_type": "website",
-            "evidence_text": "Public website layout breaks on mobile viewports; horizontal scrolling observed.",
-            "status": "STRONG",
-            "classification": "OBSERVABLE",
-            "confidence": 0.95,
-            "recency_weight": 100,
-        })
+    if analyze_website:
+        if website_data.get("mobile_responsive") is False:
+            detected_pids.append(37)
+            evidence_records.append({
+                "parameter_id": 37,
+                "source_url": f"https://{domain}",
+                "source_type": "website",
+                "evidence_text": "Public website layout breaks on mobile viewports; horizontal scrolling observed.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.95,
+                "recency_weight": 100,
+            })
 
-    if website_data.get("has_whatsapp") is False:
-        detected_pids.append(43)
-        evidence_records.append({
-            "parameter_id": 43,
-            "source_url": f"https://{domain}/contact",
-            "source_type": "website",
-            "evidence_text": "No click-to-WhatsApp link or widget found on public website.",
-            "status": "STRONG",
-            "classification": "OBSERVABLE",
-            "confidence": 0.90,
-            "recency_weight": 100,
-        })
+        if website_data.get("has_whatsapp") is False:
+            detected_pids.append(43)
+            evidence_records.append({
+                "parameter_id": 43,
+                "source_url": f"https://{domain}/contact",
+                "source_type": "website",
+                "evidence_text": "No click-to-WhatsApp link or widget found on public website.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.90,
+                "recency_weight": 100,
+            })
 
-    if website_data.get("has_online_booking") is False and is_appointment_niche(business_type, business_name):
-        detected_pids.append(44)
-        evidence_records.append({
-            "parameter_id": 44,
-            "source_url": f"https://{domain}",
-            "source_type": "website",
-            "evidence_text": "No automated appointment scheduling system found on public portal.",
-            "status": "STRONG",
-            "classification": "OBSERVABLE",
-            "confidence": 0.88,
-            "recency_weight": 100,
-        })
+        if website_data.get("has_online_booking") is False and is_appointment_niche(business_type, business_name):
+            detected_pids.append(44)
+            evidence_records.append({
+                "parameter_id": 44,
+                "source_url": f"https://{domain}",
+                "source_type": "website",
+                "evidence_text": "No automated appointment scheduling system found on public portal.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.88,
+                "recency_weight": 100,
+            })
 
-    if website_data.get("broken_links_count", 0) > 1:
-        detected_pids.append(36)
-        evidence_records.append({
-            "parameter_id": 36,
-            "source_url": f"https://{domain}",
-            "source_type": "website",
-            "evidence_text": f"Outdated web assets detected with {website_data.get('broken_links_count')} broken link references.",
-            "status": "STRONG",
-            "classification": "OBSERVABLE",
-            "confidence": 0.92,
-            "recency_weight": 100,
-        })
+        if website_data.get("broken_links_count", 0) > 1:
+            detected_pids.append(36)
+            evidence_records.append({
+                "parameter_id": 36,
+                "source_url": f"https://{domain}",
+                "source_type": "website",
+                "evidence_text": f"Outdated web assets detected with {website_data.get('broken_links_count')} broken link references.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.92,
+                "recency_weight": 100,
+            })
+    else:
+        # Social & Software Demo Mode: If no website, highlight opportunity to launch branded web portal
+        if not domain:
+            detected_pids.append(34)
+            evidence_records.append({
+                "parameter_id": 34,
+                "source_url": gmaps_url,
+                "source_type": "social_directory",
+                "evidence_text": f"No official standalone website detected: {business_name} relies on social media and local listings.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.95,
+                "recency_weight": 100,
+            })
+
 
     if not website_data.get("extracted_phone") and not payload.get("phone"):
         detected_pids.append(41)
@@ -485,44 +537,60 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    if website_data.get("has_meta_pixel") is False and website_data.get("is_accessible"):
-        detected_pids.append(5)
-        evidence_records.append({
-            "parameter_id": 5,
-            "source_url": f"https://{domain}" if domain else gsearch_url,
-            "source_type": "website",
-            "evidence_text": "No Meta (Facebook/Instagram) retargeting pixel detected in public website source code.",
-            "status": "STRONG",
-            "classification": "OBSERVABLE",
-            "confidence": 0.93,
-            "recency_weight": 100,
-        })
+    if analyze_website:
+        if website_data.get("has_meta_pixel") is False and website_data.get("is_accessible"):
+            detected_pids.append(5)
+            evidence_records.append({
+                "parameter_id": 5,
+                "source_url": f"https://{domain}" if domain else gsearch_url,
+                "source_type": "website",
+                "evidence_text": "No Meta (Facebook/Instagram) retargeting pixel detected in public website source code.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.93,
+                "recency_weight": 100,
+            })
 
-    if website_data.get("has_google_analytics") is False and website_data.get("is_accessible"):
-        detected_pids.append(47)
-        evidence_records.append({
-            "parameter_id": 47,
-            "source_url": f"https://{domain}" if domain else gsearch_url,
-            "source_type": "website",
-            "evidence_text": "No Google Analytics (GA4) visitor tracking detected in public website source code.",
-            "status": "STRONG",
-            "classification": "OBSERVABLE",
-            "confidence": 0.90,
-            "recency_weight": 100,
-        })
+        if website_data.get("has_google_analytics") is False and website_data.get("is_accessible"):
+            detected_pids.append(47)
+            evidence_records.append({
+                "parameter_id": 47,
+                "source_url": f"https://{domain}" if domain else gsearch_url,
+                "source_type": "website",
+                "evidence_text": "No Google Analytics (GA4) visitor tracking detected in public website source code.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.90,
+                "recency_weight": 100,
+            })
 
-    if not domain or website_data.get("is_accessible") is False:
-        detected_pids.append(34)
-        evidence_records.append({
-            "parameter_id": 34,
-            "source_url": f"https://{domain}" if domain else gsearch_url,
-            "source_type": "website",
-            "evidence_text": f"No active public website or web portal detected for {business_name} in target market ({location})." if not domain else f"Public website domain for {business_name} timed out or failed to resolve HTTP requests.",
-            "status": "STRONG",
-            "classification": "OBSERVABLE",
-            "confidence": 0.95,
-            "recency_weight": 100,
-        })
+        if not domain or website_data.get("is_accessible") is False:
+            detected_pids.append(34)
+            evidence_records.append({
+                "parameter_id": 34,
+                "source_url": f"https://{domain}" if domain else gsearch_url,
+                "source_type": "website",
+                "evidence_text": f"No active public website or web portal detected for {business_name} in target market ({location})." if not domain else f"Public website domain for {business_name} timed out or failed to resolve HTTP requests.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.95,
+                "recency_weight": 100,
+            })
+    else:
+        # Social Presence & Google Maps Mode: Check Maps rating score and social communication
+        raw_r = payload.get("rating") or payload.get("rating_score")
+        if raw_r is not None:
+            detected_pids.append(2)
+            evidence_records.append({
+                "parameter_id": 2,
+                "source_url": gmaps_url,
+                "source_type": "google_maps",
+                "evidence_text": f"Google Maps rating recorded at {raw_r}★ for {business_name}.",
+                "status": "PASS" if float(raw_r) >= 4.0 else "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.95,
+                "recency_weight": 100,
+            })
 
     try:
         ollama_analysis = await ollama_client.analyze(
@@ -744,6 +812,7 @@ async def _execute_research_and_qualify(
             metadata_json=payload,
             company_kb=kb_dict,
             use_company_kb=use_kb,
+            analyze_website=analyze_website,
         )
 
         if gate_res.get("fit_tier") == "DROPPED":
@@ -849,3 +918,4 @@ async def _execute_research_and_qualify(
     })
 
     return {"status": "SUCCESS", "tier": tier, "score": final_score, "is_qualified": is_qualified}
+
