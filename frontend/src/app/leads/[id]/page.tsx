@@ -234,10 +234,10 @@ export default function LeadDetailPage() {
   const renderedOutreach = emailTemplate && lead
     ? renderEmailTemplate(emailTemplate, lead, personaSignatures)
     : {
-        subject: `Quick inquiry regarding ${lead?.business_name || "your office"} in ${lead?.address || "your area"}`,
-        body: `Hello ${lead?.contact_person || lead?.business_name || "there"},\n\nI recently came across ${lead?.business_name || "your business"} located in ${lead?.address || "your area"}. We noticed ${leadGapText}.\n\nWould you be open to a quick 3-minute discussion or a sample preview prepared for your business?`,
-        fullEmail: "",
-      };
+      subject: `Quick inquiry regarding ${lead?.business_name || "your office"} in ${lead?.address || "your area"}`,
+      body: `Hi ${lead?.contact_person || (lead?.business_name ? `Team ${lead.business_name}` : "Team")},\n\nI recently came across ${lead?.business_name || "your business"} located in ${lead?.address || "your area"}. We noticed ${leadGapText}.\n\nWould you be open to a quick 3-minute discussion or a sample preview prepared for your business?`,
+      fullEmail: "",
+    };
 
   const activeSubject = isEditingDraft ? customDraftSubject : renderedOutreach.subject;
   const activeBody = isEditingDraft ? customDraftBody : renderedOutreach.body;
@@ -357,107 +357,23 @@ export default function LeadDetailPage() {
           <div>
             <div className="flex items-center gap-3">
               <h2 className="text-2xl font-bold text-white">{lead.business_name}</h2>
-              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                lead.tier === "Strong Potential"
+              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${lead.tier === "Strong Potential"
                   ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                   : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-              }`}>
+                }`}>
                 {lead.tier}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              {lead.domain && (
-                <a
-                  href={`https://${lead.domain}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-2 py-0.5 rounded text-xs font-mono bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 inline-flex items-center gap-1 transition"
-                  title="Open Official Website"
-                >
-                  <Globe className="w-3 h-3 text-sky-400" />
-                  <span>https://{lead.domain}</span>
-                  <ExternalLink className="w-2.5 h-2.5" />
-                </a>
-              )}
-
+            {lead.domain && (
               <a
-                href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || lead.city || ''}`)}`}
+                href={`https://${lead.domain}`}
                 target="_blank"
                 rel="noreferrer"
-                className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1 transition"
-                title="View Exact Business Location on Google Maps"
+                className="text-xs text-sky-400 font-mono hover:underline inline-flex items-center gap-1 mt-1"
               >
-                <MapPin className="w-3 h-3 text-amber-400" /> Maps
+                https://{lead.domain} <ExternalLink className="w-3 h-3" />
               </a>
-
-              {lead.facebook_url ? (
-                <a
-                  href={lead.facebook_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-2 py-0.5 rounded text-xs font-medium bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 inline-flex items-center gap-1 transition shadow-sm"
-                  title="Open Official Facebook Page"
-                >
-                  <Facebook className="w-3 h-3 text-blue-400" /> Facebook
-                </a>
-              ) : (
-                <a
-                  href={`https://www.facebook.com/search/top?q=${encodeURIComponent(lead.business_name || '')}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-2 py-0.5 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 inline-flex items-center gap-1 transition"
-                  title="Search Facebook for Company"
-                >
-                  <Facebook className="w-3 h-3 text-slate-400" /> FB Search
-                </a>
-              )}
-
-              {lead.meta_ads_url && (
-                <a
-                  href={lead.meta_ads_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-2 py-0.5 rounded text-xs font-medium bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 inline-flex items-center gap-1 transition shadow-sm"
-                  title="Open Live Meta Ad Library Proof"
-                >
-                  <Megaphone className="w-3 h-3 text-purple-400" /> Meta Ads
-                </a>
-              )}
-
-              {lead.instagram_url && (
-                <a
-                  href={lead.instagram_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-2 py-0.5 rounded text-xs font-medium bg-pink-500/15 hover:bg-pink-500/25 text-pink-300 border border-pink-500/30 inline-flex items-center gap-1 transition shadow-sm"
-                  title="Open Official Instagram Profile"
-                >
-                  <Instagram className="w-3 h-3 text-pink-400" /> Instagram
-                </a>
-              )}
-
-              {lead.linkedin_url && (
-                <a
-                  href={lead.linkedin_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-2 py-0.5 rounded text-xs font-medium bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 inline-flex items-center gap-1 transition shadow-sm"
-                  title="Open LinkedIn Company/Founder Profile"
-                >
-                  <Linkedin className="w-3 h-3 text-sky-400" /> LinkedIn
-                </a>
-              )}
-
-              <a
-                href={lead.google_search_url || `https://www.google.com/search?q=${encodeURIComponent(lead.business_name || '')}`}
-                target="_blank"
-                rel="noreferrer"
-                className="px-2 py-0.5 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 inline-flex items-center gap-1 transition"
-                title="Search on Google"
-              >
-                <Search className="w-3 h-3 text-slate-400" /> Google Search
-              </a>
-            </div>
+            )}
           </div>
 
           <div className="text-right">
@@ -468,28 +384,13 @@ export default function LeadDetailPage() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs">
           <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
-                <Phone className="w-3 h-3 text-sky-400" /> Phone
-              </span>
-              {lead.phone_verified && (
-                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                  ✓ Verified
-                </span>
-              )}
-            </div>
+            <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+              <Phone className="w-3 h-3 text-sky-400" /> Phone
+            </span>
             <div className="text-slate-200 font-mono">
               {lead.phone ? (
                 <div className="space-y-1">
-                  <a href={`tel:${lead.phone}`} className="hover:text-sky-400 hover:underline block truncate">{lead.phone}</a>
-                  {lead.secondary_phone && (
-                    <div className="text-[10px] text-slate-400 flex items-center gap-1 truncate">
-                      <span className="text-slate-500">Alt:</span>
-                      <a href={`tel:${lead.secondary_phone}`} className="hover:underline hover:text-sky-300 truncate">
-                        {lead.secondary_phone}
-                      </a>
-                    </div>
-                  )}
+                  <a href={`tel:${lead.phone}`} className="hover:text-sky-400 hover:underline">{lead.phone}</a>
                   <div>
                     <a
                       href={`https://wa.me/${lead.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
@@ -566,20 +467,12 @@ export default function LeadDetailPage() {
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
               <MapPin className="w-3 h-3 text-amber-400" /> Location & Maps
             </span>
-            <div className="text-slate-200">
-              <a
-                href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || lead.city || ''}`)}`}
-                target="_blank"
-                rel="noreferrer"
-                className="hover:text-amber-300 hover:underline block truncate"
-                title="Click to view exact location on Google Maps"
-              >
-                {lead.address || lead.city || "Target Metro Market"}
-              </a>
+            <div className="text-slate-200 truncate" title={lead.address || "Target Metro Market"}>
+              {lead.address || "Target Metro Market"}
             </div>
             <div className="flex items-center gap-2 pt-0.5 flex-wrap">
               <a
-                href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || lead.city || ''}`)}`}
+                href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || ''}`)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="text-[10px] text-amber-400 hover:text-amber-300 hover:underline inline-flex items-center gap-1 font-medium"
@@ -645,15 +538,14 @@ export default function LeadDetailPage() {
 
           <div className="flex items-center gap-2">
 
-            <div className={`px-3 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1.5 ${
-              lead.fit_tier === "HOT"
+            <div className={`px-3 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1.5 ${lead.fit_tier === "HOT"
                 ? "bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-sm shadow-rose-500/20"
                 : lead.fit_tier === "WARM"
-                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                : lead.fit_tier === "DROPPED"
-                ? "bg-slate-800 text-slate-400 border-slate-700"
-                : "bg-sky-500/20 text-sky-300 border-sky-500/40"
-            }`}>
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                  : lead.fit_tier === "DROPPED"
+                    ? "bg-slate-800 text-slate-400 border-slate-700"
+                    : "bg-sky-500/20 text-sky-300 border-sky-500/40"
+              }`}>
               {lead.fit_tier === "HOT" && <Flame className="w-3.5 h-3.5 fill-rose-400" />}
               {lead.fit_tier === "WARM" && <Sparkles className="w-3.5 h-3.5 text-amber-400" />}
               <span>{lead.fit_tier || "HOT"} LEAD</span>
@@ -753,11 +645,10 @@ export default function LeadDetailPage() {
               Live audit history of sent cold emails and direct client replies with AI sentiment classification.
             </p>
           </div>
-          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-            lead.deal_status === "HOT_LEAD" || lead.outreach_status === "REPLIED_HOT"
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${lead.deal_status === "HOT_LEAD" || lead.outreach_status === "REPLIED_HOT"
               ? "bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5"
               : "bg-sky-500/20 text-sky-300 border border-sky-500/30"
-          }`}>
+            }`}>
             {(lead.deal_status === "HOT_LEAD" || lead.outreach_status === "REPLIED_HOT") && (
               <Flame className="w-3.5 h-3.5 text-rose-400 fill-rose-400 animate-pulse" />
             )}
@@ -778,11 +669,10 @@ export default function LeadDetailPage() {
               return (
                 <div
                   key={log.id || idx}
-                  className={`p-4 rounded-xl border transition space-y-2.5 ${
-                    isReply
+                  className={`p-4 rounded-xl border transition space-y-2.5 ${isReply
                       ? "bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-slate-900/70 border-emerald-500/40 shadow-lg shadow-emerald-500/5"
                       : "bg-slate-900/60 border-slate-800"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between text-xs flex-wrap gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1152,11 +1042,10 @@ export default function LeadDetailPage() {
                   setMatrixViewMode("gaps");
                   setSelectedStatusFilter("ALL");
                 }}
-                className={`px-3 py-1.5 rounded-md font-semibold transition ${
-                  matrixViewMode === "gaps"
+                className={`px-3 py-1.5 rounded-md font-semibold transition ${matrixViewMode === "gaps"
                     ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
-                }`}
+                  }`}
               >
                 Gaps & Weaknesses ({lead.evidence?.length || 0})
               </button>
@@ -1165,11 +1054,10 @@ export default function LeadDetailPage() {
                   setMatrixViewMode("all135");
                   setSelectedStatusFilter("ALL");
                 }}
-                className={`px-3 py-1.5 rounded-md font-semibold transition flex items-center gap-1.5 ${
-                  matrixViewMode === "all135"
+                className={`px-3 py-1.5 rounded-md font-semibold transition flex items-center gap-1.5 ${matrixViewMode === "all135"
                     ? "bg-violet-600/30 text-violet-300 border border-violet-500/40 shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
-                }`}
+                  }`}
               >
                 <Sliders className="w-3 h-3" /> Full 135 Matrix
               </button>
@@ -1203,11 +1091,10 @@ export default function LeadDetailPage() {
               <button
                 key={st}
                 onClick={() => setSelectedStatusFilter(st)}
-                className={`px-2 py-1 rounded-md text-[10px] font-mono font-medium transition ${
-                  selectedStatusFilter === st
+                className={`px-2 py-1 rounded-md text-[10px] font-mono font-medium transition ${selectedStatusFilter === st
                     ? "bg-slate-700 text-white font-bold"
                     : "bg-slate-900/80 text-slate-400 hover:text-slate-200 border border-slate-800"
-                }`}
+                  }`}
               >
                 {st === "INTERNAL_CONFIDENTIAL" ? "INTERNAL" : st === "NOT_DETECTED" ? "NO GAP" : st}
               </button>
@@ -1232,15 +1119,14 @@ export default function LeadDetailPage() {
               return (
                 <div
                   key={idx}
-                  className={`p-4 rounded-xl bg-slate-900/60 border transition space-y-2 ${
-                    ev.status === "STRONG"
+                  className={`p-4 rounded-xl bg-slate-900/60 border transition space-y-2 ${ev.status === "STRONG"
                       ? "border-rose-900/40 hover:border-rose-700/60"
                       : ev.status === "WEAK"
-                      ? "border-amber-900/40 hover:border-amber-700/60"
-                      : ev.status === "PASS"
-                      ? "border-emerald-900/30 hover:border-emerald-700/50"
-                      : "border-slate-800/80 hover:border-slate-700/80"
-                  }`}
+                        ? "border-amber-900/40 hover:border-amber-700/60"
+                        : ev.status === "PASS"
+                          ? "border-emerald-900/30 hover:border-emerald-700/50"
+                          : "border-slate-800/80 hover:border-slate-700/80"
+                    }`}
                 >
                   <div className="flex items-start justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1256,17 +1142,16 @@ export default function LeadDetailPage() {
                         </span>
                       )}
                       <span
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase ${
-                          ev.status === "STRONG"
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase ${ev.status === "STRONG"
                             ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
                             : ev.status === "WEAK"
-                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                            : ev.status === "PASS"
-                            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                            : ev.status === "INTERNAL_CONFIDENTIAL"
-                            ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
-                            : "bg-slate-800 text-slate-400 border border-slate-700"
-                        }`}
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                              : ev.status === "PASS"
+                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                : ev.status === "INTERNAL_CONFIDENTIAL"
+                                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                                  : "bg-slate-800 text-slate-400 border border-slate-700"
+                          }`}
                       >
                         {ev.status === "STRONG" ? "STRONG GAP" : ev.status === "WEAK" ? "WEAK GAP" : ev.status}
                       </span>
@@ -1341,11 +1226,10 @@ export default function LeadDetailPage() {
                             {job.task_type}
                           </span>
                           <span
-                            className={`text-[10px] font-mono px-2 py-0.2 rounded ${
-                              job.status === "COMPLETED"
+                            className={`text-[10px] font-mono px-2 py-0.2 rounded ${job.status === "COMPLETED"
                                 ? "bg-emerald-500/20 text-emerald-300"
                                 : "bg-sky-500/20 text-sky-300"
-                            }`}
+                              }`}
                           >
                             {job.status}
                           </span>
@@ -1738,13 +1622,12 @@ export default function LeadDetailPage() {
       {toast && (
         <div className="fixed bottom-6 right-6 z-[100] animate-in fade-in slide-in-from-bottom-5 duration-300">
           <div
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-xl ${
-              toast.type === "success"
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-xl ${toast.type === "success"
                 ? "bg-slate-900/95 border-emerald-500/40 text-emerald-400 shadow-emerald-950/40"
                 : toast.type === "error"
-                ? "bg-slate-900/95 border-rose-500/40 text-rose-400 shadow-rose-950/40"
-                : "bg-slate-900/95 border-sky-500/40 text-sky-400 shadow-sky-950/40"
-            }`}
+                  ? "bg-slate-900/95 border-rose-500/40 text-rose-400 shadow-rose-950/40"
+                  : "bg-slate-900/95 border-sky-500/40 text-sky-400 shadow-sky-950/40"
+              }`}
           >
             {toast.type === "success" ? (
               <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />

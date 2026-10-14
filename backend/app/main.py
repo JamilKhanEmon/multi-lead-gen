@@ -380,6 +380,7 @@ async def lifespan(app: FastAPI):
                 try:
                     await conn.execute(text("ALTER TABLE persona_signatures ALTER COLUMN name DROP NOT NULL;"))
                     await conn.execute(text("ALTER TABLE persona_signatures ALTER COLUMN company DROP NOT NULL;"))
+                    await conn.execute(text("ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS usage_stats_json JSONB DEFAULT '{}'::jsonb;"))
                 except Exception:
                     pass
             except Exception as migration_err:

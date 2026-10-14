@@ -1168,7 +1168,10 @@ export function renderEmailTemplate(
   const sender_phone = template.sender_phone || "";
 
   const companyName = lead.business_name || "your company";
-  const contactPerson = lead.contact_person || "there";
+  const rawContact = (lead.contact_person || "").trim();
+  const contactPerson = (rawContact && !["there", "sir", "madam", "n/a", "none", "unknown", "team"].includes(rawContact.toLowerCase()))
+    ? rawContact
+    : (lead.business_name ? `Team ${lead.business_name}` : "Team");
   const location = lead.address || "your city";
   const website = lead.domain || "official website";
   const phone = lead.phone || "";
@@ -2244,6 +2247,29 @@ export async function fetchEmailThread(clientEmail: string): Promise<{
   }
 }
 
+export interface AIUsageModelStat {
+  provider: string;
+  model: string;
+  is_free: boolean;
+  tier_label: string;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  last_used_at?: string;
+}
+
+export interface AIUsageStats {
+  total_calls?: number;
+  total_tokens?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_cost_usd?: number;
+  last_call_at?: string;
+  by_model?: Record<string, AIUsageModelStat>;
+}
+
 export interface AISettings {
   id?: string;
   primary_provider: string;
@@ -2262,6 +2288,7 @@ export interface AISettings {
   has_custom_key: boolean;
   max_tokens: number;
   temperature: number;
+  usage_stats_json?: AIUsageStats;
   is_active: boolean;
 }
 
@@ -2321,6 +2348,22 @@ export async function updateAISettings(data: AISettingsUpdatePayload): Promise<A
   return res.json();
 }
 
+export async function resetAIUsageStats(): Promise<AISettings> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/ai-settings/reset-usage`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to reset AI usage metrics");
+  }
+  return res.json();
+}
+
 export async function testAIConnection(data: {
   provider: string;
   model: string;
@@ -2342,4 +2385,5 @@ export async function testAIConnection(data: {
   }
   return res.json();
 }
+
 

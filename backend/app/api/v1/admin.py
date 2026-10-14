@@ -970,6 +970,7 @@ async def get_ai_settings(
         has_custom_key=bool(cfg.custom_api_key),
         max_tokens=cfg.max_tokens,
         temperature=cfg.temperature,
+        usage_stats_json=cfg.usage_stats_json or {},
         is_active=cfg.is_active,
     )
 
@@ -1045,8 +1046,31 @@ async def update_ai_settings(
         has_custom_key=bool(cfg.custom_api_key),
         max_tokens=cfg.max_tokens,
         temperature=cfg.temperature,
+        usage_stats_json=cfg.usage_stats_json or {},
         is_active=cfg.is_active,
     )
+
+@router.post("/ai-settings/reset-usage", response_model=AISettingsResponse)
+async def reset_ai_usage_stats(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(AISettings).where(AISettings.is_active == True).order_by(AISettings.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    cfg = res.scalar_one_or_none()
+    if cfg:
+        cfg.usage_stats_json = {
+            "total_calls": 0,
+            "total_tokens": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_cost_usd": 0.0,
+            "last_call_at": None,
+            "by_model": {}
+        }
+        await db.commit()
+        await db.refresh(cfg)
+    return await get_ai_settings(db, admin_user)
 
 @router.post("/ai-settings/test", response_model=AITestResponse)
 async def test_ai_connection(

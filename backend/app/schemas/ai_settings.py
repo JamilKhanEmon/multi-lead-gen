@@ -24,6 +24,7 @@ class AISettingsResponse(BaseModel):
     
     max_tokens: int = 250
     temperature: float = 0.0
+    usage_stats_json: Optional[Dict[str, Any]] = None
     is_active: bool = True
 
     class Config:

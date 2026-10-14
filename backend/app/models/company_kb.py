@@ -8,6 +8,7 @@ from .base import Base, TimestampMixin, UUIDMixin
 DEFAULT_SERVICES: List[Dict[str, Any]] = []
 
 
+
 class CompanyKB(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "company_kb"
 

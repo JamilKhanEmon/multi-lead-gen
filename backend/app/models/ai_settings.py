@@ -30,4 +30,6 @@ class AISettings(Base, UUIDMixin, TimestampMixin):
     
     # Custom model aliases or metadata
     metadata_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, default=dict, nullable=True)
+    usage_stats_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, default=dict, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
