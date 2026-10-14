@@ -60,6 +60,15 @@ class LeadResponse(BaseModel):
     what_they_need: Optional[str] = None
     discovery_call_script: Optional[str] = None
     matched_service: Optional[str] = None
+    phone_verified: Optional[bool] = False
+    phone_sources: Optional[List[str]] = None
+    secondary_phone: Optional[str] = None
+    whatsapp_phone: Optional[str] = None
+    facebook_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    city: Optional[str] = None
+    meta_ads_url: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -18,6 +18,8 @@ import {
   MapPin,
   User,
   Linkedin,
+  Facebook,
+  Instagram,
   Globe,
   Code2,
   Cpu,
@@ -363,16 +365,99 @@ export default function LeadDetailPage() {
                 {lead.tier}
               </span>
             </div>
-            {lead.domain && (
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              {lead.domain && (
+                <a
+                  href={`https://${lead.domain}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2 py-0.5 rounded text-xs font-mono bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 inline-flex items-center gap-1 transition"
+                  title="Open Official Website"
+                >
+                  <Globe className="w-3 h-3 text-sky-400" />
+                  <span>https://{lead.domain}</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                </a>
+              )}
+
               <a
-                href={`https://${lead.domain}`}
+                href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || lead.city || ''}`)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-sky-400 font-mono hover:underline inline-flex items-center gap-1 mt-1"
+                className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1 transition"
+                title="View Exact Business Location on Google Maps"
               >
-                https://{lead.domain} <ExternalLink className="w-3 h-3" />
+                <MapPin className="w-3 h-3 text-amber-400" /> Maps
               </a>
-            )}
+
+              {lead.facebook_url ? (
+                <a
+                  href={lead.facebook_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2 py-0.5 rounded text-xs font-medium bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 inline-flex items-center gap-1 transition shadow-sm"
+                  title="Open Official Facebook Page"
+                >
+                  <Facebook className="w-3 h-3 text-blue-400" /> Facebook
+                </a>
+              ) : (
+                <a
+                  href={`https://www.facebook.com/search/top?q=${encodeURIComponent(lead.business_name || '')}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2 py-0.5 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 inline-flex items-center gap-1 transition"
+                  title="Search Facebook for Company"
+                >
+                  <Facebook className="w-3 h-3 text-slate-400" /> FB Search
+                </a>
+              )}
+
+              {lead.meta_ads_url && (
+                <a
+                  href={lead.meta_ads_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2 py-0.5 rounded text-xs font-medium bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 inline-flex items-center gap-1 transition shadow-sm"
+                  title="Open Live Meta Ad Library Proof"
+                >
+                  <Megaphone className="w-3 h-3 text-purple-400" /> Meta Ads
+                </a>
+              )}
+
+              {lead.instagram_url && (
+                <a
+                  href={lead.instagram_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2 py-0.5 rounded text-xs font-medium bg-pink-500/15 hover:bg-pink-500/25 text-pink-300 border border-pink-500/30 inline-flex items-center gap-1 transition shadow-sm"
+                  title="Open Official Instagram Profile"
+                >
+                  <Instagram className="w-3 h-3 text-pink-400" /> Instagram
+                </a>
+              )}
+
+              {lead.linkedin_url && (
+                <a
+                  href={lead.linkedin_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2 py-0.5 rounded text-xs font-medium bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 inline-flex items-center gap-1 transition shadow-sm"
+                  title="Open LinkedIn Company/Founder Profile"
+                >
+                  <Linkedin className="w-3 h-3 text-sky-400" /> LinkedIn
+                </a>
+              )}
+
+              <a
+                href={lead.google_search_url || `https://www.google.com/search?q=${encodeURIComponent(lead.business_name || '')}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-2 py-0.5 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 inline-flex items-center gap-1 transition"
+                title="Search on Google"
+              >
+                <Search className="w-3 h-3 text-slate-400" /> Google Search
+              </a>
+            </div>
           </div>
 
           <div className="text-right">
@@ -383,13 +468,28 @@ export default function LeadDetailPage() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs">
           <div className="space-y-1">
-            <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
-              <Phone className="w-3 h-3 text-sky-400" /> Phone
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+                <Phone className="w-3 h-3 text-sky-400" /> Phone
+              </span>
+              {lead.phone_verified && (
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                  ✓ Verified
+                </span>
+              )}
+            </div>
             <div className="text-slate-200 font-mono">
               {lead.phone ? (
                 <div className="space-y-1">
-                  <a href={`tel:${lead.phone}`} className="hover:text-sky-400 hover:underline">{lead.phone}</a>
+                  <a href={`tel:${lead.phone}`} className="hover:text-sky-400 hover:underline block truncate">{lead.phone}</a>
+                  {lead.secondary_phone && (
+                    <div className="text-[10px] text-slate-400 flex items-center gap-1 truncate">
+                      <span className="text-slate-500">Alt:</span>
+                      <a href={`tel:${lead.secondary_phone}`} className="hover:underline hover:text-sky-300 truncate">
+                        {lead.secondary_phone}
+                      </a>
+                    </div>
+                  )}
                   <div>
                     <a
                       href={`https://wa.me/${lead.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
@@ -466,12 +566,20 @@ export default function LeadDetailPage() {
             <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
               <MapPin className="w-3 h-3 text-amber-400" /> Location & Maps
             </span>
-            <div className="text-slate-200 truncate" title={lead.address || "Target Metro Market"}>
-              {lead.address || "Target Metro Market"}
+            <div className="text-slate-200">
+              <a
+                href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || lead.city || ''}`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-amber-300 hover:underline block truncate"
+                title="Click to view exact location on Google Maps"
+              >
+                {lead.address || lead.city || "Target Metro Market"}
+              </a>
             </div>
             <div className="flex items-center gap-2 pt-0.5 flex-wrap">
               <a
-                href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || ''}`)}`}
+                href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.business_name || ''} ${lead.address || lead.city || ''}`)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="text-[10px] text-amber-400 hover:text-amber-300 hover:underline inline-flex items-center gap-1 font-medium"

@@ -157,6 +157,18 @@ async def list_leads(
             else (biz.business_type if biz else "Commercial Entity")
         )
 
+        consensus = meta.get("contact_consensus") or {}
+        p_verified = consensus.get("phone_verified", False)
+        p_sources = consensus.get("phone_sources") or []
+        sec_phone = consensus.get("secondary_phone") or meta.get("secondary_phone")
+        wa_phone = consensus.get("whatsapp_phone") or meta.get("whatsapp_phone")
+        meta_ads = meta.get("meta_ads_url")
+        fb_url = meta.get("facebook_url") or getattr(biz, "facebook_url", None)
+        ig_url = meta.get("instagram_url") or getattr(biz, "instagram_url", None)
+        li_url = getattr(biz, "linkedin_url", None) or meta.get("linkedin_url")
+        loc_city = (loc.city if loc else None) or meta.get("city") or meta.get("location")
+        loc_addr = address or loc_city
+
         lead_items.append(
             LeadResponse(
                 id=l.id,
@@ -170,6 +182,15 @@ async def list_leads(
                 business_name=biz.canonical_name if biz else "Candidate Business",
                 domain=clean_dom,
                 phone=biz.phone if biz else None,
+                phone_verified=p_verified,
+                phone_sources=p_sources,
+                secondary_phone=sec_phone,
+                whatsapp_phone=wa_phone,
+                facebook_url=fb_url,
+                instagram_url=ig_url,
+                linkedin_url=li_url,
+                city=loc_city,
+                meta_ads_url=meta_ads,
                 email=resolved_email,
                 email_status=getattr(l, "email_status", None) or email_status,
                 verification_notes=getattr(l, "verification_notes", None),
@@ -179,7 +200,7 @@ async def list_leads(
                 last_contacted_at=getattr(l, "last_contacted_at", None),
                 contact_person=biz.contact_person if biz else None,
                 contact_title=biz.contact_title if biz else None,
-                address=address,
+                address=loc_addr,
                 business_type=btype,
                 google_maps_url=gmaps_url,
                 google_search_url=gsearch_url,
@@ -759,6 +780,7 @@ async def export_leads_json(
             "facebook_url": meta.get("facebook_url"),
             "instagram_url": meta.get("instagram_url"),
             "linkedin_url": biz.linkedin_url,
+            "meta_ads_url": meta.get("meta_ads_url") or f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q={urllib.parse.quote(biz.name)}&search_type=keyword_unordered&media_type=all",
             "tech_stack": {
                 "cms_platform": meta.get("cms_platform") or ("WordPress" if meta.get("is_wordpress") else ("Custom Web App" if clean_dom else "No Website")),
                 "has_meta_pixel": bool(meta.get("has_meta_pixel")),
@@ -1023,6 +1045,13 @@ async def get_lead_detail(
     except Exception:
         pass
 
+    consensus = meta.get("contact_consensus") or {}
+    p_verified = consensus.get("phone_verified", False)
+    p_sources = consensus.get("phone_sources") or []
+    sec_phone = consensus.get("secondary_phone") or meta.get("secondary_phone")
+    wa_phone = consensus.get("whatsapp_phone") or meta.get("whatsapp_phone")
+    meta_ads = meta.get("meta_ads_url")
+
     return LeadDetailResponse(
         id=lead.id,
         business_id=lead.business_id,
@@ -1030,6 +1059,11 @@ async def get_lead_detail(
         domain=clean_biz_dom,
         business_type=btype,
         phone=lead.business.phone if lead.business else None,
+        phone_verified=p_verified,
+        phone_sources=p_sources,
+        secondary_phone=sec_phone,
+        whatsapp_phone=wa_phone,
+        meta_ads_url=meta_ads,
         email=resolved_email,
         email_status=email_status,
         contact_person=lead.business.contact_person if lead.business else None,
