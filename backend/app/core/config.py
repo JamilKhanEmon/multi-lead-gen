@@ -86,10 +86,10 @@ class Settings(BaseSettings):
         description="Custom OpenAI-compatible base URL (e.g. local Ollama or vLLM)",
     )
     LLM_MAX_TOKENS: int = Field(
-        default=250,
+        default=800,
         ge=50,
-        le=2048,
-        description="Strict maximum token limit to prevent excessive token usage and costs",
+        le=4096,
+        description="Maximum token limit for LLM responses",
     )
     LLM_TEMPERATURE: float = Field(
         default=0.1,

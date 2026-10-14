@@ -206,11 +206,11 @@ class StrategyEngine:
         )
 
         try:
-            res = await ai_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+            res = await ai_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt, max_tokens=800)
             services = res.get("services")
             if isinstance(services, list) and len(services) >= 1:
                 formatted = []
-                for s in services[:4]:
+                for s in services[:6]:
                     if isinstance(s, dict) and s.get("name"):
                         formatted.append({
                             "name": str(s.get("name")).strip(),
@@ -242,6 +242,12 @@ class StrategyEngine:
                 "type": "software",
                 "description": f"Launch a dedicated high-converting web presence for {industry} businesses currently operating exclusively on social media.",
                 "offer_hook": "5-Minute Interactive Live Demo"
+            },
+            {
+                "name": f"{industry} Smart Inventory & Order Workflow Automation",
+                "type": "software",
+                "description": f"Streamline daily stock tracking, sales order processing, and customer billing for {industry} businesses.",
+                "offer_hook": "5-Minute Live Software Walkthrough"
             }
         ]
 
