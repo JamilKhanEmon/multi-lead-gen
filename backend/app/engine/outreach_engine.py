@@ -41,7 +41,7 @@ class OutreachEngine:
                 "I was researching top businesses in {city} and came across {company_name}.\n\n"
                 "While reviewing your website, I noticed a key growth opportunity regarding {primary_gap}.\n\n"
                 "We recently helped a similar company in your industry address this and increase their monthly inbound inquiries by over 30%.\n\n"
-                "Would you be open to a brief 5-minute chat this Thursday to see the free audit report we prepared for {company_name}?\n\n"
+                "Would you be open to a brief 5-minute chat sometime this week or early next week to see the free audit report we prepared for {company_name}?\n\n"
                 "Best regards,\n\n"
                 "{sender_name}\n"
                 "{sender_title}\n"
@@ -234,7 +234,7 @@ class OutreachEngine:
                 f"I was researching top businesses in {city} and came across {company_name}.\n\n"
                 f"We develop specialized systems and marketing solutions to help companies in your industry {value_pitch}.\n\n"
                 f"We currently have a ready 5-minute interactive live software demo showcasing exactly how this works.\n\n"
-                f"Would you be open to a brief 5-minute call this Thursday to {call_to_action}?\n\n"
+                f"Would you be open to a brief 5-minute call sometime this week or early next week to {call_to_action}?\n\n"
                 f"{sig_block}"
             )
 
