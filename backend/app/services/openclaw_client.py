@@ -804,13 +804,13 @@ class LiveResearchEngine:
             "goodfirms", "clutch", "crunchbase", "yellowpages", "bproperty", "bikroy", "justdial", "directory", "listing"
         }
 
-        parts = re.split(r'\||-|—|@|:', raw_title)
+        parts = re.split(r'\||-|—|@|:|,', raw_title)
         candidate_names = []
 
         for p in parts:
             clean = p.strip()
             clean_l = clean.lower()
-            if len(clean) >= 3 and not any(k in clean_l for k in [
+            if len(clean) >= 3 and len(clean) <= 80 and not any(k in clean_l for k in [
                 "best", "top", "ranked", "reviews", "directory", "directories", "listing", "listings",
                 "near me", "list", "guide", "2026", "2025", "home", "official", ".pdf",
                 "goodfirms", "clutch", "crunchbase", "bproperty", "bikroy"
@@ -820,9 +820,10 @@ class LiveResearchEngine:
                         candidate_names.append(clean)
 
         best_name = candidate_names[0] if candidate_names else dom_name
-        if best_name.lower() in GENERIC_STOP_WORDS or len(best_name) < 3:
+        if best_name.lower() in GENERIC_STOP_WORDS or len(best_name) < 3 or len(best_name) > 80:
             best_name = dom_name
 
+        best_name = best_name[:120].strip()
         return best_name, b_type
 
     @classmethod
