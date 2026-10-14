@@ -49,6 +49,7 @@ import {
   Layers,
   Building2,
   Briefcase,
+  Bot,
 } from "lucide-react";
 import {
   loginUser,
@@ -84,25 +85,136 @@ import {
   hasPermission,
   SMTPInboxItem,
   PersonaSignatureItem,
+  fetchAISettings,
+  updateAISettings,
+  resetAIUsageStats,
+  testAIConnection,
+  AISettings,
+  AITestResult,
 } from "@/lib/api";
+
+const PROVIDER_MODEL_PRESETS: Record<
+  string,
+  Array<{ id: string; name: string; tag: string; desc: string }>
+> = {
+  groq: [
+    {
+      id: "qwen/qwen3.8-27b",
+      name: "Qwen 27B (qwen/qwen3.8-27b)",
+      tag: "Verified Fast • 320ms",
+      desc: "Official active Groq model with perfect JSON adherence and zero geo hallucination",
+    },
+    {
+      id: "openai/gpt-oss-120b",
+      name: "GPT-OSS 120B (openai/gpt-oss-120b)",
+      tag: "Flagship 120B",
+      desc: "Official high-capacity 120B reasoning model hosted on Groq LPU hardware",
+    },
+    {
+      id: "openai/gpt-oss-20b",
+      name: "GPT-OSS 20B (openai/gpt-oss-20b)",
+      tag: "Ultra-Fast 20B",
+      desc: "Official lightweight reasoning model for instant sub-second tasks",
+    },
+    {
+      id: "llama-3.3-70b-versatile",
+      name: "Llama 3.3 70B Versatile",
+      tag: "Meta 70B",
+      desc: "Official Groq Meta Llama 3.3 model for deep sales copy and campaign reasoning",
+    },
+    {
+      id: "llama-3.1-8b-instant",
+      name: "Llama 3.1 8B Instant",
+      tag: "Fastest • 800 tps",
+      desc: "Official Groq Meta Llama 3.1 model for high-frequency low latency",
+    },
+  ],
+  openrouter: [
+    {
+      id: "google/gemini-2.0-flash-exp:free",
+      name: "Gemini 2.0 Flash (Free)",
+      tag: "Free • Flagship Google",
+      desc: "Google official flagship free model: high intelligence, multimodal, strict JSON",
+    },
+    {
+      id: "meta-llama/llama-3.3-70b-instruct:free",
+      name: "Llama 3.3 70B Instruct (Free)",
+      tag: "Free Flagship 70B",
+      desc: "Meta 70B flagship parameter model available 100% free on OpenRouter",
+    },
+    {
+      id: "deepseek/deepseek-chat:free",
+      name: "DeepSeek V3 (Free)",
+      tag: "Free • DeepSeek",
+      desc: "DeepSeek official V3 general chat & advanced instruction following",
+    },
+    {
+      id: "deepseek/deepseek-r1:free",
+      name: "DeepSeek R1 (Free)",
+      tag: "Free Reasoning",
+      desc: "DeepSeek state-of-the-art chain-of-thought logical reasoning",
+    },
+    {
+      id: "qwen/qwen-2.5-72b-instruct:free",
+      name: "Qwen 2.5 72B Instruct (Free)",
+      tag: "Free 72B",
+      desc: "Alibaba 72B model with exceptional multilingual & Asian geo precision",
+    },
+    {
+      id: "mistralai/mistral-7b-instruct:free",
+      name: "Mistral 7B Instruct (Free)",
+      tag: "Free • Fast",
+      desc: "Lightweight European open weights model on OpenRouter free tier",
+    },
+  ],
+  openai: [
+    {
+      id: "gpt-4o-mini",
+      name: "GPT-4o Mini",
+      tag: "Fast & Cheap",
+      desc: "Official OpenAI high-speed cost-efficient model",
+    },
+    {
+      id: "gpt-4o",
+      name: "GPT-4o (Omni)",
+      tag: "Flagship",
+      desc: "Official OpenAI flagship intelligence for complex enterprise sales",
+    },
+    {
+      id: "o3-mini",
+      name: "o3-mini",
+      tag: "Reasoning",
+      desc: "Official OpenAI advanced mathematical and logical reasoning",
+    },
+  ],
+  custom: [
+    {
+      id: "custom-model",
+      name: "Self-Hosted / Local LLM",
+      tag: "Custom",
+      desc: "Connects to any local Ollama, vLLM, or LM Studio endpoint",
+    },
+  ],
+};
 
 export default function AdminPortalPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [activeTab, setActiveTab] = useState<"users" | "modules" | "company_kb" | "template" | "inboxes">("modules");
+  const [activeTab, setActiveTab] = useState<"users" | "modules" | "company_kb" | "template" | "inboxes" | "ai_engine">("modules");
 
   const [companyKb, setCompanyKb] = useState<CompanyKB | null>(null);
   const [kbLoading, setKbLoading] = useState(false);
   const [kbSaving, setKbSaving] = useState(false);
   const [kbResetting, setKbResetting] = useState(false);
-  const [kbCompanyName, setKbCompanyName] = useState("Enterprise Solutions");
-  const [kbTagline, setKbTagline] = useState("10+ years of digital transformation & custom software engineering");
-  const [kbHeadquarters, setKbHeadquarters] = useState("Dhaka, Bangladesh");
+  const [kbCompanyName, setKbCompanyName] = useState("");
+  const [kbTagline, setKbTagline] = useState("");
+  const [kbHeadquarters, setKbHeadquarters] = useState("");
   const [kbPhone, setKbPhone] = useState("");
   const [kbEmail, setKbEmail] = useState("");
   const [kbWebsite, setKbWebsite] = useState("");
+  const [kbMasterNotes, setKbMasterNotes] = useState("");
   const [kbServices, setKbServices] = useState<ServiceCatalogItem[]>([]);
   const [kbIsActive, setKbIsActive] = useState(true);
   const [kbActionSuccess, setKbActionSuccess] = useState<string | null>(null);
@@ -120,6 +232,7 @@ export default function AdminPortalPage() {
         setKbPhone(data.contact_phone || "");
         setKbEmail(data.contact_email || "");
         setKbWebsite(data.website_url || "");
+        setKbMasterNotes(data.master_kb_notes || "");
         setKbServices(data.services_json || []);
         setKbIsActive(data.is_active ?? true);
       }
@@ -141,11 +254,12 @@ export default function AdminPortalPage() {
         contact_phone: kbPhone,
         contact_email: kbEmail,
         website_url: kbWebsite,
+        master_kb_notes: kbMasterNotes,
         services_json: kbServices,
         is_active: kbIsActive,
       });
       setCompanyKb(updated);
-      setKbActionSuccess("✓ Company Knowledge Base and Services saved successfully!");
+      setKbActionSuccess("✓ Company Knowledge Base saved successfully!");
       setTimeout(() => setKbActionSuccess(null), 4000);
     } catch (e: any) {
       setKbActionError(e.message || "Failed to update Company Knowledge Base");
@@ -156,14 +270,21 @@ export default function AdminPortalPage() {
   };
 
   const handleResetKBDefaults = async () => {
-    if (!confirm("Are you sure you want to reset all service offerings back to the 5 default core products?")) return;
+    if (!confirm("Are you sure you want to clear and reset the knowledge base?")) return;
     try {
       setKbResetting(true);
       setKbActionError(null);
       const reset = await resetCompanyKBDefaults();
       setCompanyKb(reset);
-      setKbServices(reset.services_json || []);
-      setKbActionSuccess("✓ Reverted services to 5 core default software products.");
+      setKbCompanyName("");
+      setKbTagline("");
+      setKbHeadquarters("");
+      setKbPhone("");
+      setKbEmail("");
+      setKbWebsite("");
+      setKbMasterNotes("");
+      setKbServices([]);
+      setKbActionSuccess("✓ Knowledge Base reset to clean state.");
       setTimeout(() => setKbActionSuccess(null), 4000);
     } catch (e: any) {
       setKbActionError(e.message || "Failed to reset defaults");
@@ -181,14 +302,18 @@ export default function AdminPortalPage() {
   };
 
   const handleAddService = () => {
-    const newKey = `custom_service_${Date.now()}`;
+    const newKey = `service_${Date.now()}`;
     setKbServices((prev) => [
       ...prev,
       {
         key: newKey,
-        name: "New Solution / Software Offering",
-        wedge: "Free Initial Gap Audit & Workflow Demo",
-        description: "Specialized service offering for businesses needing operational automation.",
+        name: "",
+        url: "",
+        target_industries: "",
+        wedge: "",
+        features: "",
+        solves_problems: "",
+        description: "",
       },
     ]);
   };
@@ -211,7 +336,7 @@ export default function AdminPortalPage() {
     username: "",
     password: "",
     from_email: "",
-    from_name: "Growth Team",
+    from_name: "",
     daily_limit: 30,
   });
   const [inboxSubmitting, setInboxSubmitting] = useState(false);
@@ -221,12 +346,8 @@ export default function AdminPortalPage() {
   const [showAddPersonaModal, setShowAddPersonaModal] = useState(false);
   const [editingPersonaId, setEditingPersonaId] = useState<string | null>(null);
   const [personaForm, setPersonaForm] = useState({
-    title: "Primary Signature",
-    raw_content: `Sincerely,
-test
-Senior Solutions Consultant, Multi-Lead Gen AI
-Email: contact@leadgen.local | Phone: +880 1700-000000
-https://leadgen.local`,
+    title: "",
+    raw_content: "",
     is_active: true,
   });
   const [personaSubmitting, setPersonaSubmitting] = useState(false);
@@ -237,6 +358,153 @@ https://leadgen.local`,
   const [purgeTarget, setPurgeTarget] = useState<"rejected_leads" | "search_runs" | "all_leads" | "factory_reset">("rejected_leads");
   const [purgeSubmitting, setPurgeSubmitting] = useState(false);
   const [purgeSuccessMsg, setPurgeSuccessMsg] = useState<string | null>(null);
+
+  // AI Engine & Model Settings State
+  const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiTesting, setAiTesting] = useState(false);
+  const [aiTestingTarget, setAiTestingTarget] = useState<"primary" | "fallback" | null>(null);
+  const [aiTestResult, setAiTestResult] = useState<AITestResult | null>(null);
+  const [aiSuccessMsg, setAiSuccessMsg] = useState<string | null>(null);
+  const [aiErrorMsg, setAiErrorMsg] = useState<string | null>(null);
+
+  const [primaryProvider, setPrimaryProvider] = useState<string>("groq");
+  const [primaryModel, setPrimaryModel] = useState<string>("qwen/qwen3.8-27b");
+  const [isCustomPrimaryModel, setIsCustomPrimaryModel] = useState(false);
+
+  const [enableFallback, setEnableFallback] = useState<boolean>(true);
+  const [fallbackProvider, setFallbackProvider] = useState<string>("openrouter");
+  const [fallbackModel, setFallbackModel] = useState<string>("meta-llama/llama-3.3-70b-instruct:free");
+  const [isCustomFallbackModel, setIsCustomFallbackModel] = useState(false);
+
+  const [groqKeyInput, setGroqKeyInput] = useState<string>("");
+  const [openrouterKeyInput, setOpenrouterKeyInput] = useState<string>("");
+  const [openaiKeyInput, setOpenaiKeyInput] = useState<string>("");
+  const [customKeyInput, setCustomKeyInput] = useState<string>("");
+  const [customBaseUrlInput, setCustomBaseUrlInput] = useState<string>("");
+
+  const [showGroqKey, setShowGroqKey] = useState(false);
+  const [showOpenrouterKey, setShowOpenrouterKey] = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
+  const [showCustomKey, setShowCustomKey] = useState(false);
+
+  const [maxTokensVal, setMaxTokensVal] = useState<number>(250);
+  const [tempVal, setTempVal] = useState<number>(0.0);
+
+  const loadAISettingsData = async () => {
+    try {
+      setAiLoading(true);
+      const data = await fetchAISettings();
+      if (data) {
+        setAiSettings(data);
+        setPrimaryProvider(data.primary_provider || "groq");
+        setPrimaryModel(data.primary_model || "qwen/qwen3.8-27b");
+        setEnableFallback(data.enable_fallback ?? true);
+        setFallbackProvider(data.fallback_provider || "openrouter");
+        setFallbackModel(data.fallback_model || "meta-llama/llama-3.3-70b-instruct:free");
+        setGroqKeyInput(data.groq_api_key_masked || "");
+        setOpenrouterKeyInput(data.openrouter_api_key_masked || "");
+        setOpenaiKeyInput(data.openai_api_key_masked || "");
+        setCustomKeyInput(data.custom_api_key_masked || "");
+        setCustomBaseUrlInput(data.custom_base_url || "");
+        setMaxTokensVal(data.max_tokens || 250);
+        setTempVal(data.temperature ?? 0.0);
+      }
+    } catch (e: any) {
+      console.warn("Could not load AI Settings:", e);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleSaveAISettings = async () => {
+    try {
+      setAiSaving(true);
+      setAiErrorMsg(null);
+      setAiSuccessMsg(null);
+
+      const payload = {
+        primary_provider: primaryProvider,
+        primary_model: primaryModel,
+        enable_fallback: enableFallback,
+        fallback_provider: fallbackProvider,
+        fallback_model: fallbackModel,
+        groq_api_key: groqKeyInput || undefined,
+        openrouter_api_key: openrouterKeyInput || undefined,
+        openai_api_key: openaiKeyInput || undefined,
+        custom_api_key: customKeyInput || undefined,
+        custom_base_url: customBaseUrlInput || undefined,
+        max_tokens: Number(maxTokensVal) || 250,
+        temperature: Number(tempVal) || 0.0,
+      };
+
+      const updated = await updateAISettings(payload);
+      setAiSettings(updated);
+      setAiSuccessMsg("AI Engine settings saved and activated in real-time across the platform! 🚀");
+      setTimeout(() => setAiSuccessMsg(null), 6000);
+    } catch (err: any) {
+      setAiErrorMsg(err.message || "Failed to save AI Settings");
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
+  const [aiResettingUsage, setAiResettingUsage] = useState(false);
+
+  const handleResetAIUsageStats = async () => {
+    if (!confirm("Are you sure you want to reset all token usage counters and billing metrics to zero?")) return;
+    try {
+      setAiResettingUsage(true);
+      const updated = await resetAIUsageStats();
+      setAiSettings(updated);
+      setAiSuccessMsg("AI Usage & Token metrics reset to zero.");
+      setTimeout(() => setAiSuccessMsg(null), 4000);
+    } catch (err: any) {
+      setAiErrorMsg(err.message || "Failed to reset AI usage metrics");
+    } finally {
+      setAiResettingUsage(false);
+    }
+  };
+
+  const handleTestConnection = async (target: "primary" | "fallback") => {
+    try {
+      setAiTesting(true);
+      setAiTestingTarget(target);
+      setAiTestResult(null);
+      setAiErrorMsg(null);
+
+      const isPrimary = target === "primary";
+      const provider = isPrimary ? primaryProvider : fallbackProvider;
+      const model = isPrimary ? primaryModel : fallbackModel;
+
+      let key = "";
+      if (provider === "groq") key = groqKeyInput;
+      else if (provider === "openrouter") key = openrouterKeyInput;
+      else if (provider === "openai") key = openaiKeyInput;
+      else if (provider === "custom") key = customKeyInput;
+
+      const res = await testAIConnection({
+        provider,
+        model,
+        api_key: key || undefined,
+        custom_base_url: customBaseUrlInput || undefined,
+      });
+
+      setAiTestResult(res);
+    } catch (err: any) {
+      setAiTestResult({
+        success: false,
+        latency_ms: 0,
+        provider: target === "primary" ? primaryProvider : fallbackProvider,
+        model: target === "primary" ? primaryModel : fallbackModel,
+        message: err.message || "Test call failed",
+      });
+    } finally {
+      setAiTesting(false);
+      setAiTestingTarget(null);
+    }
+  };
 
   const loadInboxMonitor = async () => {
     try {
@@ -250,7 +518,7 @@ https://leadgen.local`,
     }
   };
 
-  const handleSelectTab = (tab: "users" | "modules" | "company_kb" | "template" | "inboxes") => {
+  const handleSelectTab = (tab: "users" | "modules" | "company_kb" | "template" | "inboxes" | "ai_engine") => {
     setActiveTab(tab);
     if (typeof window !== "undefined") {
       sessionStorage.setItem("admin_active_tab", tab);
@@ -259,6 +527,8 @@ https://leadgen.local`,
       loadInboxMonitor();
     } else if (tab === "company_kb") {
       loadCompanyKBData();
+    } else if (tab === "ai_engine") {
+      loadAISettingsData();
     }
   };
 
@@ -305,6 +575,17 @@ https://leadgen.local`,
   const [resetPasswordSubmitting, setResetPasswordSubmitting] = useState(false);
   const [showResetPassEye, setShowResetPassEye] = useState(false);
 
+  // Admin Edit User Details (Email, Name, Role)
+  const [editDetailsUser, setEditDetailsUser] = useState<AuthUser | null>(null);
+  const [editDetailsForm, setEditDetailsForm] = useState({
+    full_name: "",
+    email: "",
+    role: "member",
+  });
+  const [editDetailsSubmitting, setEditDetailsSubmitting] = useState(false);
+  const [editDetailsError, setEditDetailsError] = useState<string | null>(null);
+  const [editDetailsSuccess, setEditDetailsSuccess] = useState<string | null>(null);
+
   const [template, setTemplate] = useState<EmailTemplate | null>(null);
   const [tplLoading, setTplLoading] = useState(false);
   const [tplSaving, setTplSaving] = useState(false);
@@ -313,12 +594,12 @@ https://leadgen.local`,
 
   const [subject, setSubject] = useState("Quick inquiry regarding your office in {{location}}");
   const [body, setBody] = useState("");
-  const [senderName, setSenderName] = useState("Jamil Khan");
-  const [senderTitle, setSenderTitle] = useState("Senior Solutions Consultant");
-  const [senderCompany, setSenderCompany] = useState("Multi-Lead Gen AI");
-  const [senderEmail, setSenderEmail] = useState("contact@leadgen.local");
-  const [senderPhone, setSenderPhone] = useState("+880 1700-000000");
-  const [senderWebsite, setSenderWebsite] = useState("https://leadgen.local");
+  const [senderName, setSenderName] = useState("");
+  const [senderTitle, setSenderTitle] = useState("");
+  const [senderCompany, setSenderCompany] = useState("");
+  const [senderEmail, setSenderEmail] = useState("");
+  const [senderPhone, setSenderPhone] = useState("");
+  const [senderWebsite, setSenderWebsite] = useState("");
   const [signOff, setSignOff] = useState("Sincerely,");
   const [signatureText, setSignatureText] = useState("");
   const [previewSample, setPreviewSample] = useState<"tropical" | "cafe" | "nowebsite">("tropical");
@@ -399,12 +680,12 @@ https://leadgen.local`,
             setTemplate(tpl);
             setSubject(tpl.subject || "Quick inquiry regarding your office in {{location}}");
             setBody(tpl.body || "");
-            setSenderName(tpl.sender_name || "Jamil Khan");
-            setSenderTitle(tpl.sender_title || "Senior Solutions Consultant");
-            setSenderCompany(tpl.sender_company || "Multi-Lead Gen AI");
-            setSenderEmail(tpl.sender_email || "contact@leadgen.local");
-            setSenderPhone(tpl.sender_phone || "+880 1700-000000");
-            setSenderWebsite(tpl.sender_website || "https://leadgen.local");
+            setSenderName(tpl.sender_name || "");
+            setSenderTitle(tpl.sender_title || "");
+            setSenderCompany(tpl.sender_company || "");
+            setSenderEmail(tpl.sender_email || "");
+            setSenderPhone(tpl.sender_phone || "");
+            setSenderWebsite(tpl.sender_website || "");
             setSignOff(tpl.sign_off || "Sincerely,");
             setSignatureText(tpl.signature_text || "");
           }
@@ -416,6 +697,7 @@ https://leadgen.local`,
       }
       loadTemplate();
       loadCompanyKBData();
+      loadAISettingsData();
     }
   }, [currentUser]);
 
@@ -561,15 +843,62 @@ https://leadgen.local`,
     }
   };
 
+  const handleOpenEditDetails = (u: AuthUser) => {
+    setEditDetailsUser(u);
+    setEditDetailsForm({
+      full_name: u.full_name || "",
+      email: u.email || "",
+      role: u.role || "member",
+    });
+    setEditDetailsError(null);
+    setEditDetailsSuccess(null);
+  };
+
+  const handleSaveUserDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editDetailsUser) return;
+    setEditDetailsError(null);
+    setEditDetailsSuccess(null);
+
+    if (!editDetailsForm.email || !editDetailsForm.email.includes("@")) {
+      setEditDetailsError("Please provide a valid email address.");
+      return;
+    }
+
+    setEditDetailsSubmitting(true);
+    try {
+      const updated = await updateUser(editDetailsUser.id, {
+        full_name: editDetailsForm.full_name,
+        email: editDetailsForm.email,
+        role: editDetailsForm.role,
+      });
+      setEditDetailsSuccess(`User details updated successfully for ${updated.email}!`);
+      if (currentUser && currentUser.id === editDetailsUser.id) {
+        setCurrentUser(updated);
+        localStorage.setItem("leadgen_user", JSON.stringify(updated));
+        window.dispatchEvent(new Event("auth_change"));
+      }
+      await loadUsersList();
+      setTimeout(() => {
+        setEditDetailsUser(null);
+        setEditDetailsSuccess(null);
+      }, 1200);
+    } catch (err: any) {
+      setEditDetailsError(err.message || "Failed to update user details");
+    } finally {
+      setEditDetailsSubmitting(false);
+    }
+  };
+
   const handleDeleteUser = async (u: AuthUser) => {
 
     if (u.role === "super_admin" && currentUser?.role !== "super_admin") {
-      alert("Security Violation: Admins are strictly prohibited from removing Super Administrators.");
+      setUserActionError("Security Violation: Admins are strictly prohibited from removing Super Administrators.");
       return;
     }
 
     if (u.id === currentUser?.id) {
-      alert("You cannot delete your own account.");
+      setUserActionError("You cannot delete your own account.");
       return;
     }
 
@@ -624,7 +953,7 @@ https://leadgen.local`,
       username: "",
       password: "",
       from_email: "",
-      from_name: "Growth Team",
+      from_name: "",
       daily_limit: 30,
     });
     setShowAddInboxModal(true);
@@ -646,7 +975,7 @@ https://leadgen.local`,
         username: "",
         password: "",
         from_email: "",
-        from_name: "Growth Team",
+        from_name: "",
         daily_limit: 30,
       });
       await loadInboxMonitor();
@@ -693,11 +1022,7 @@ https://leadgen.local`,
     const count = (inboxMonitorData?.persona_signatures?.length || 0) + 1;
     setPersonaForm({
       title: `Signature Note #${count}`,
-      raw_content: `Sincerely,
-test
-Senior Solutions Consultant, Multi-Lead Gen AI
-Email: contact@leadgen.local | Phone: +880 1700-000000
-https://leadgen.local`,
+      raw_content: "",
       is_active: true,
     });
     setShowAddPersonaModal(true);
@@ -783,35 +1108,35 @@ https://leadgen.local`,
 
   const sampleLeads = {
     tropical: {
-      company_name: "Apex Global Dental Group",
-      contact_person: "Dr. Sarah Miller",
-      location: "San Francisco, CA",
-      website: "apexdentalgroup.com",
-      phone: "+1 415-555-0199",
-      primary_gap: "Missing Meta advertising pixel and no Google Analytics tracking detected",
+      company_name: "{{Target Company}}",
+      contact_person: "{{Decision Maker}}",
+      location: "{{Target Location}}",
+      website: "{{Target Website}}",
+      phone: "{{Target Phone}}",
+      primary_gap: "{{Identified Growth Gap}}",
     },
     cafe: {
-      company_name: "The Artisan Roast Café",
-      contact_person: "David Clark",
-      location: "Austin, TX",
-      website: "artisanroast.com",
-      phone: "+1 512-555-0144",
-      primary_gap: "Missing mobile-responsive viewport and no direct online reservation system",
+      company_name: "{{Target Company}}",
+      contact_person: "{{Decision Maker}}",
+      location: "{{Target Location}}",
+      website: "{{Target Website}}",
+      phone: "{{Target Phone}}",
+      primary_gap: "{{Identified Growth Gap}}",
     },
     nowebsite: {
-      company_name: "Bay Area Premier Roofing",
-      contact_person: "Michael Johnson",
-      location: "Oakland, CA",
+      company_name: "{{Target Company}}",
+      contact_person: "{{Decision Maker}}",
+      location: "{{Target Location}}",
       website: "",
-      phone: "+1 510-555-0182",
-      primary_gap: "Zero digital website infrastructure; operating only through directory listings",
+      phone: "{{Target Phone}}",
+      primary_gap: "{{Identified Growth Gap}}",
     },
   };
 
   const activeSigs = inboxMonitorData?.persona_signatures?.filter((p) => p.is_active !== false) || [];
   const currentPreviewSig = activeSigs.length > 0
     ? (activeSigs[selectedPreviewSigIdx % activeSigs.length]?.raw_content || "")
-    : (signatureText || `Sincerely,\ntest\nSenior Solutions Consultant, Multi-Lead Gen AI\nEmail: contact@leadgen.local | Phone: +880 1700-000000\nhttps://leadgen.local`);
+    : (signatureText || "");
 
   const currentPreviewLead = sampleLeads[previewSample];
   const renderedPreview = renderEmailTemplate(
@@ -1029,6 +1354,21 @@ https://leadgen.local`,
             <span>Multi-SMTP 20x & Persona Monitor</span>
           </button>
         )}
+
+        {!isMember && (
+          <button
+            type="button"
+            onClick={() => handleSelectTab("ai_engine")}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
+              activeTab === "ai_engine"
+                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+            }`}
+          >
+            <Bot className="w-4 h-4 text-amber-400" />
+            <span>AI Engine & LLM Models</span>
+          </button>
+        )}
       </div>
 
       {userActionSuccess && (
@@ -1131,6 +1471,7 @@ https://leadgen.local`,
                       const canDelete = isSuperAdmin ? u.id !== currentUser.id : !isTargetSuper && !isTargetAdmin && u.id !== currentUser.id;
                       const canEditPerms = isSuperAdmin || (!isTargetSuper && !isTargetAdmin);
                       const canResetPass = isSuperAdmin || (!isTargetSuper && !isTargetAdmin);
+                      const canEditUser = isSuperAdmin || (!isTargetSuper && !isTargetAdmin);
 
                       return (
                         <tr key={u.id} className="hover:bg-slate-800/40 transition">
@@ -1230,6 +1571,18 @@ https://leadgen.local`,
 
                           <td className="py-4 px-4 text-right whitespace-nowrap">
                             <div className="inline-flex items-center gap-2">
+
+                              {canEditUser && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditDetails(u)}
+                                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-slate-700 text-xs font-medium flex items-center gap-1 transition cursor-pointer"
+                                  title={`Edit name, email, and role for ${u.email}`}
+                                >
+                                  <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Edit</span>
+                                </button>
+                              )}
 
                               {canEditPerms ? (
                                 <button
@@ -1339,7 +1692,7 @@ https://leadgen.local`,
                   required
                   value={createEmail}
                   onChange={(e) => setCreateEmail(e.target.value)}
-                  placeholder="user@leadgen.local"
+                  placeholder="user@company.com"
                   className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
                 />
               </div>
@@ -1841,6 +2194,110 @@ https://leadgen.local`,
         </div>
       )}
 
+      {editDetailsUser && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Edit User Profile</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    ID: {editDetailsUser.id.slice(0, 8)}...
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditDetailsUser(null)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {editDetailsError && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{editDetailsError}</span>
+              </div>
+            )}
+
+            {editDetailsSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0" />
+                <span>{editDetailsSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveUserDetails} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editDetailsForm.full_name}
+                  onChange={(e) => setEditDetailsForm({ ...editDetailsForm, full_name: e.target.value })}
+                  placeholder="e.g. Sarah Jenkins"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editDetailsForm.email}
+                  onChange={(e) => setEditDetailsForm({ ...editDetailsForm, email: e.target.value })}
+                  placeholder="user@company.com"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Role Level
+                </label>
+                <select
+                  value={editDetailsForm.role}
+                  onChange={(e) => setEditDetailsForm({ ...editDetailsForm, role: e.target.value })}
+                  disabled={!isSuperAdmin && editDetailsUser.role === "admin"}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-emerald-500 cursor-pointer disabled:opacity-50"
+                >
+                  {isSuperAdmin && <option value="super_admin">Super Admin (Master Access)</option>}
+                  <option value="admin">Admin (Team & Settings)</option>
+                  <option value="member">Team Member / Sales</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditDetailsUser(null)}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editDetailsSubmitting}
+                  className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer shadow-lg shadow-emerald-500/20"
+                >
+                  {editDetailsSubmitting ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {activeTab === "modules" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-200">
 
@@ -1925,23 +2382,26 @@ https://leadgen.local`,
                 </div>
               )}
 
-              {hasPermission(currentUser, "can_access_autopilot", false) ? (
+
+              {hasPermission(currentUser, "can_access_autopilot", false) && (
                 <Link
-                  href="/autopilot"
-                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-sky-600 to-indigo-600 hover:from-amber-400 hover:via-sky-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-sky-500/20"
+                  href="/replies"
+                  className="w-full py-2 px-4 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 hover:border-orange-400/50 text-orange-300 font-semibold text-xs flex items-center justify-center gap-2 transition"
                 >
-                  <Zap className="w-3.5 h-3.5 fill-current text-amber-300" />
-                  <span>Autonomous Cold Email & Autopilot</span>
+                  <span>📬</span>
+                  <span>Reply Intelligence</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
-              ) : (
-                <div
-                  title="Restricted: Only Super Admin can access Autonomous Outreach by default. Can be enabled via permissions filter."
-                  className="w-full py-2.5 px-4 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 font-medium text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none"
+              )}
+              {hasPermission(currentUser, "can_access_autopilot", false) && (
+                <Link
+                  href="/inbox"
+                  className="w-full py-2 px-4 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 hover:border-sky-400/50 text-sky-300 font-semibold text-xs flex items-center justify-center gap-2 transition"
                 >
-                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Autonomous Outreach (Super Admin Only)</span>
-                </div>
+                  <span>✉️</span>
+                  <span>Inbox Dashboard</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
               )}
             </div>
           </div>
@@ -1954,54 +2414,58 @@ https://leadgen.local`,
                 <div className="w-12 h-12 rounded-xl bg-pink-500/10 border border-pink-500/30 text-pink-400 flex items-center justify-center shadow-md shadow-pink-500/10">
                   <Megaphone className="w-6 h-6" />
                 </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
-                  <Lock className="w-3 h-3 text-amber-400" />
-                  <span>Coming Soon</span>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Module Active</span>
                 </div>
               </div>
 
               <div>
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <span>Meta Ads & Marketing Automation</span>
+                  <span>Meta Ads Funnel Engine</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Dedicated strictly to managing Facebook & Instagram marketing campaigns, ad sets, live pixel conversion tracking, and budgets.
+                  Manage Facebook & Instagram 2-step marketing funnels, AI video angles, and high-converting retargeting campaigns.
                 </p>
               </div>
 
               <div className="pt-3 border-t border-slate-800/80 space-y-2">
                 <div className="text-[11px] font-mono text-pink-400/90 font-semibold uppercase tracking-wider flex items-center justify-between">
-                  <span>META ADS FEATURES:</span>
-                  <span className="text-[10px] font-mono text-amber-400/90 font-normal flex items-center gap-1">
-                    <Lock className="w-2.5 h-2.5 text-amber-400" /> Module Locked
+                  <span>META ADS CAMPAIGN FEATURES:</span>
+                  <span className="text-[10px] font-mono text-emerald-400 font-normal flex items-center gap-1">
+                    ✓ Full System Unlocked
                   </span>
                 </div>
                 <ul className="space-y-1.5 text-xs text-slate-400">
                   <li className="flex items-start gap-2">
                     <span className="text-pink-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Multi-Campaign Orchestration:</strong> Create and manage cold traffic, lead form, and conversion campaigns.</span>
+                    <span><strong>2-Step Funnel Orchestration:</strong> Cold video awareness & targeted retargeting campaigns.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-pink-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Target Audience Precision:</strong> Target by geographic coordinates, verified radius, and industry interest.</span>
+                    <span><strong>AI Video Angles & Dynamic Copy:</strong> Generates high-converting hooks tailored to prospect pain points.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-pink-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Live Conversion Tracking:</strong> Direct sync with Meta Marketing API v21.0 and Conversions API (CAPI).</span>
+                    <span><strong>Dynamic Offer Architecture:</strong> Dynamically adapts to any business niche, target audience, and custom offer.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-pink-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Dynamic Creative Generator:</strong> AI produces tailored ad copy based on verified solvable gap parameters.</span>
+                    <span><strong>Direct WhatsApp / Web Funnel:</strong> Seamlessly routes qualified prospects directly to your booking or sales link.</span>
                   </li>
                 </ul>
               </div>
             </div>
 
             <div className="pt-6">
-              <div className="w-full py-2.5 px-4 rounded-xl bg-slate-850/80 text-amber-300 border border-amber-500/30 font-semibold text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none shadow-inner bg-slate-900">
-                <Lock className="w-3.5 h-3.5 text-amber-400" />
-                <span className="font-mono uppercase tracking-wider text-[11px]">Coming Soon</span>
-              </div>
+              <Link
+                href="/campaigns"
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-pink-600/20 transition group"
+              >
+                <Megaphone className="w-3.5 h-3.5 text-white" />
+                <span>Launch Meta Ads Funnel</span>
+                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition" />
+              </Link>
             </div>
           </div>
 
@@ -2015,7 +2479,7 @@ https://leadgen.local`,
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
                   <Lock className="w-3 h-3 text-amber-400" />
-                  <span>Coming Soon</span>
+                  <span>Module Locked</span>
                 </div>
               </div>
 
@@ -2024,42 +2488,45 @@ https://leadgen.local`,
                   <span>Autonomous Voice Outreach</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Dedicated strictly to automated phone outreach, natural multi-turn conversations, objection handling, and appointment booking.
+                  ElevenLabs Conversational Voice Agent with Voice Cloning, dynamic country-language adaptation, and Card 1 verified phone number dialing.
                 </p>
               </div>
 
               <div className="pt-3 border-t border-slate-800/80 space-y-2">
                 <div className="text-[11px] font-mono text-emerald-400/90 font-semibold uppercase tracking-wider flex items-center justify-between">
                   <span>VOICE OUTREACH FEATURES:</span>
-                  <span className="text-[10px] font-mono text-amber-400/90 font-normal flex items-center gap-1">
-                    <Lock className="w-2.5 h-2.5 text-amber-400" /> Module Locked
+                  <span className="text-[10px] font-mono text-amber-400 font-normal flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> Coming Soon
                   </span>
                 </div>
                 <ul className="space-y-1.5 text-xs text-slate-400">
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Automated Phone Dialing:</strong> AI voice caller initiates cold outreach to qualified business phone numbers.</span>
+                    <span><strong>Card 1 Real Phone Intake:</strong> Auto-syncs verified phone numbers & solvable website gaps directly to Ready for Call queue.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Multi-Turn Voice Dialogue:</strong> Answers company questions and overcomes pricing/timeline objections dynamically.</span>
+                    <span><strong>ElevenLabs Voice Cloning:</strong> Record or upload 1 minute of audio to call prospects in your exact personal voice.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Meeting Booking:</strong> Direct calendar slot reservation when the decision maker shows positive buying intent.</span>
+                    <span><strong>Multi-Lingual Country Routing:</strong> Automatically speaks Bengali (BD), English (US/UK), Arabic (Middle East), etc.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>Call Transcripts & Audio Playback:</strong> Full dialogue transcripts and audio review for every completed call.</span>
+                    <span><strong>Under 1.5-Min Consultative Closing:</strong> Mentions exact website flaw, handles objections, and books Google Meet / Zoom.</span>
                   </li>
                 </ul>
               </div>
             </div>
 
             <div className="pt-6">
-              <div className="w-full py-2.5 px-4 rounded-xl bg-slate-850/80 text-amber-300 border border-amber-500/30 font-semibold text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none shadow-inner bg-slate-900">
+              <div
+                title="Autonomous Voice Outreach is currently locked."
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 font-medium text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none"
+              >
                 <Lock className="w-3.5 h-3.5 text-amber-400" />
-                <span className="font-mono uppercase tracking-wider text-[11px]">Coming Soon</span>
+                <span>Launch Voice Outreach Hub (ElevenLabs AI Agent) — Locked</span>
               </div>
             </div>
           </div>
@@ -2154,7 +2621,7 @@ https://leadgen.local`,
                   type="text"
                   value={kbCompanyName}
                   onChange={(e) => setKbCompanyName(e.target.value)}
-                  placeholder="e.g. Enterprise Solutions / NiBiz Soft"
+                  placeholder="e.g. Acme Software / Your Agency Name"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                 />
               </div>
@@ -2206,7 +2673,7 @@ https://leadgen.local`,
                   type="text"
                   value={kbPhone}
                   onChange={(e) => setKbPhone(e.target.value)}
-                  placeholder="e.g. +880 1700-000000"
+                  placeholder="e.g. +1 555-0199"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                 />
               </div>
@@ -2224,6 +2691,31 @@ https://leadgen.local`,
                 />
               </div>
             </div>
+          </div>
+
+          {/* Master Knowledge Base (All-in-One Documentation Notebook) */}
+          <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-purple-400" />
+                <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                  Master Company Knowledge Base (All-in-One Documentation Notebook)
+                </span>
+              </div>
+              <span className="text-[10px] text-purple-300 font-mono bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20 self-start sm:self-auto">
+                Primary Master Document
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Write or paste all your company services, software features, landing links, pricing, and case studies here in plain text or bullet points. OpenClaw and the AI Decision Engine read this entire master document to ground cold pitch emails and match prospect weaknesses directly to your offerings.
+            </p>
+            <textarea
+              rows={8}
+              value={kbMasterNotes}
+              onChange={(e) => setKbMasterNotes(e.target.value)}
+              placeholder={`Write or paste all your services & business details here in one place...\n\nExample:\n• Real Estate Management Software (ERP): Complete solution with lead management, installment schedules, client portal, and automated SMS alerts. (Link: https://yourcompany.com/real-estate-software)\n• Custom CRM & Pipeline Automation: Captures leads directly from website into an active follow-up pipeline with WhatsApp notifications.\n• Modern Web & Mobile Development: Fast, mobile-responsive web portals launched in 7 days.\n• Cloud Accounting & Inventory ERP: End-to-end warehouse stock, billing, and financial reports.`}
+              className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 font-mono transition leading-relaxed"
+            />
           </div>
 
           <div className="p-5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-4">
@@ -2275,75 +2767,101 @@ https://leadgen.local`,
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
-                        Service Offering Name
+                        Service / Software Name
                       </label>
                       <input
                         type="text"
                         value={svc.name}
                         onChange={(e) => handleUpdateServiceField(idx, "name", e.target.value)}
-                        placeholder="e.g. Web Design & Development (Site in 7 Days)"
+                        placeholder="e.g. Real Estate Management Software / ERP"
                         className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                       />
                     </div>
 
                     <div>
                       <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
-                        Value Wedge Offer (Lead Hook)
+                        Landing Page / Direct URL
+                      </label>
+                      <input
+                        type="url"
+                        value={svc.url || ""}
+                        onChange={(e) => handleUpdateServiceField(idx, "url", e.target.value)}
+                        placeholder="e.g. https://yourcompany.com/real-estate-software/"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-sky-400 placeholder-slate-600 focus:outline-none focus:border-purple-500 transition font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
+                        Target Industries & Business Types
+                      </label>
+                      <input
+                        type="text"
+                        value={svc.target_industries || ""}
+                        onChange={(e) => handleUpdateServiceField(idx, "target_industries", e.target.value)}
+                        placeholder="e.g. Real Estate, Builders, Housing Agents, Construction"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-amber-300 placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
+                        Value Wedge Offer (Free Demo / Hook)
                       </label>
                       <input
                         type="text"
                         value={svc.wedge}
                         onChange={(e) => handleUpdateServiceField(idx, "wedge", e.target.value)}
-                        placeholder="e.g. High-Converting Mobile Landing Page / Website Revamp"
+                        placeholder="e.g. Free 5-Minute Live Demo of Real Estate CRM & Installment Flow"
                         className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
+                        Core Features & Modules
+                      </label>
+                      <input
+                        type="text"
+                        value={svc.features || ""}
+                        onChange={(e) => handleUpdateServiceField(idx, "features", e.target.value)}
+                        placeholder="e.g. Lead Management, Installment Schedules, Property Syndication, SMS Alerts"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
+                        Problems Solved (Triggers)
+                      </label>
+                      <input
+                        type="text"
+                        value={svc.solves_problems || ""}
+                        onChange={(e) => handleUpdateServiceField(idx, "solves_problems", e.target.value)}
+                        placeholder="e.g. Manual buyer follow-up leakage, installment confusion, untracked stock"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-rose-300 placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                       />
                     </div>
                   </div>
 
                   <div>
                     <label className="text-[10px] font-semibold text-slate-400 block mb-1 uppercase tracking-wider">
-                      Service Scope / Description
+                      Service Scope / Summary Description
                     </label>
                     <input
                       type="text"
                       value={svc.description}
                       onChange={(e) => handleUpdateServiceField(idx, "description", e.target.value)}
-                      placeholder="e.g. Custom modern responsive website with instant WhatsApp & lead capture forms."
+                      placeholder="e.g. Complete vertical software solution with automated workflows."
                       className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-300 placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                     />
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-purple-950/20 border border-purple-500/20 space-y-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-purple-300 uppercase tracking-wider">
-              <Sparkles className="w-4 h-4 text-purple-400" />
-              <span>Live Pitch Preview & Discovery Script Sandbox</span>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              When sales representatives open any hot lead dossier, or when the system drafts cold outreach emails, this is how your Company KB dynamically armors them:
-            </p>
-
-            <div className="p-3.5 rounded-lg bg-slate-950/80 border border-slate-800 font-mono text-[11px] text-slate-300 space-y-2">
-              <div className="text-slate-400">
-                <span className="text-purple-400 font-bold">1. OPENING EVIDENCE:</span> &quot;Hello, is this [Candidate Business]? I was reviewing your online presence in [City] and noticed orders and customer bookings are still being taken manually over phone calls...&quot;
-              </div>
-              <div className="text-slate-400">
-                <span className="text-sky-400 font-bold">2. DISCOVERY QUESTION:</span> &quot;How are you currently managing daily order tracking and repeat customer notifications?&quot;
-              </div>
-              <div className="text-emerald-400">
-                <span className="text-purple-400 font-bold">3. VALUE PITCH:</span> &quot;At <span className="text-white font-bold underline">{kbCompanyName || "our solutions team"}</span>, we specialize in solving this with our <span className="text-white font-bold underline">{kbServices[0]?.wedge || "High-Converting Solution"}</span>. Would you be open to a 5-minute preview of the custom audit report we prepared for [Candidate Business]?&quot;
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 text-[11px] text-slate-400 pt-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>
-                <strong>Optional Per Batch:</strong> In both <strong>/research</strong> and <strong>/autopilot</strong>, you can toggle &quot;Use Company KB &amp; Branded Pitch&quot; ON or OFF. Turning it OFF switches the engine into <strong>Generic AI Mode</strong> with zero company branding.
-              </span>
             </div>
           </div>
         </div>
@@ -2886,6 +3404,727 @@ https://leadgen.local`,
         </div>
       )}
 
+      {activeTab === "ai_engine" && (
+        <div className="rounded-2xl bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 p-6 sm:p-7 shadow-xl space-y-6 relative overflow-hidden animate-in fade-in duration-200">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500/20 to-orange-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                <Bot className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <span>Autonomous AI Engine & Model Control</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    Live Runtime Switching
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Configure primary and automated fallback LLMs, secure API keys, and test connections live. Takes effect instantly with zero server restarts.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={loadAISettingsData}
+                disabled={aiLoading}
+                className="px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                title="Reload settings from database"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${aiLoading ? "animate-spin" : ""}`} />
+                <span>Refresh</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAISettings}
+                disabled={aiSaving || aiLoading}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{aiSaving ? "Saving Settings..." : "Save AI Settings"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Feedback Messages */}
+          {aiSuccessMsg && (
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{aiSuccessMsg}</span>
+            </div>
+          )}
+          {aiErrorMsg && (
+            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-xs flex items-center gap-2 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{aiErrorMsg}</span>
+            </div>
+          )}
+
+          {/* Real-Time AI Token & Billing Meter */}
+          <div className="rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-800 p-5 space-y-4 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Activity className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-white tracking-wide">
+                      Real-Time AI Token & Billing Meter
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      LIVE METER
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Directly calculated from official billable tokens returned by Groq, OpenRouter & OpenAI
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetAIUsageStats}
+                  disabled={aiResettingUsage || aiLoading}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Reset usage counter to zero"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${aiResettingUsage ? "animate-spin" : ""}`} />
+                  <span>Reset Counter</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4 Metrics Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                <div className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                  <span>Total Tokens Used</span>
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                </div>
+                <div className="text-lg font-bold text-white font-mono">
+                  {(aiSettings?.usage_stats_json?.total_tokens || 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Total billable tokens
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                <div className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                  <span>Prompt / Input</span>
+                  <span className="text-[10px] font-mono text-sky-400">IN</span>
+                </div>
+                <div className="text-lg font-bold text-sky-400 font-mono">
+                  {(aiSettings?.usage_stats_json?.prompt_tokens || 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Input context tokens
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                <div className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                  <span>Completion / Output</span>
+                  <span className="text-[10px] font-mono text-purple-400">OUT</span>
+                </div>
+                <div className="text-lg font-bold text-purple-400 font-mono">
+                  {(aiSettings?.usage_stats_json?.completion_tokens || 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Generated reply tokens
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                <div className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                  <span>Total Cost (USD)</span>
+                  <span className="text-[10px] font-mono font-bold text-emerald-400">
+                    {(aiSettings?.usage_stats_json?.total_cost_usd || 0) === 0 ? "FREE" : "BILLED"}
+                  </span>
+                </div>
+                <div className="text-lg font-bold text-emerald-400 font-mono">
+                  ${(aiSettings?.usage_stats_json?.total_cost_usd || 0).toFixed(4)}
+                </div>
+                <div className="text-[10px] text-emerald-400/80">
+                  {(aiSettings?.usage_stats_json?.total_cost_usd || 0) === 0 ? "100% Free Tier (Groq / Free models)" : "Official provider charges"}
+                </div>
+              </div>
+            </div>
+
+            {/* Model Breakdown Table */}
+            {aiSettings?.usage_stats_json?.by_model && Object.keys(aiSettings.usage_stats_json.by_model).length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-slate-800/80">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 text-[11px]">
+                    <tr>
+                      <th className="py-2.5 px-3">Provider & Model</th>
+                      <th className="py-2.5 px-3">Tier</th>
+                      <th className="py-2.5 px-3 text-right">API Calls</th>
+                      <th className="py-2.5 px-3 text-right">In / Out Tokens</th>
+                      <th className="py-2.5 px-3 text-right">Total Tokens</th>
+                      <th className="py-2.5 px-3 text-right">Real Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                    {Object.values(aiSettings.usage_stats_json.by_model).map((m: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-slate-900/40 transition">
+                        <td className="py-2.5 px-3">
+                          <div className="font-sans font-medium text-white flex items-center gap-1.5">
+                            <span className="uppercase text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono font-bold">
+                              {m.provider}
+                            </span>
+                            <span className="truncate max-w-[220px]" title={m.model}>
+                              {m.model}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            m.is_free
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                              : "bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                          }`}>
+                            {m.is_free ? "FREE TIER" : "PAID TIER"}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-300">
+                          {m.calls?.toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-400 text-[10px]">
+                          <span className="text-sky-400">{m.prompt_tokens?.toLocaleString()}</span> /{" "}
+                          <span className="text-purple-400">{m.completion_tokens?.toLocaleString()}</span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-white">
+                          {m.total_tokens?.toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-emerald-400">
+                          ${(m.cost_usd || 0).toFixed(4)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-950/60 border border-slate-800/60 rounded-xl text-xs text-slate-400 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-slate-500" />
+                  <span>No AI inference calls recorded yet. Every research query or email drafted will be metered here automatically.</span>
+                </span>
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  Ready & Metered
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Warning Notice about Model Name Accuracy */}
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="font-semibold text-white">Model ID Accuracy Notice</div>
+              <div className="text-[11px] text-amber-200/80 leading-relaxed">
+                Please make sure the Model ID matches the provider's exact identifier (e.g.{" "}
+                <code className="text-amber-300 bg-amber-950/70 px-1 py-0.2 rounded font-mono">
+                  qwen/qwen3.8-27b
+                </code>{" "}
+                on Groq, or{" "}
+                <code className="text-amber-300 bg-amber-950/70 px-1 py-0.2 rounded font-mono">
+                  meta-llama/llama-3.3-70b-instruct:free
+                </code>{" "}
+                on OpenRouter). Any typo in the model name will cause the provider to return a 404 Model Not Found error. Use the <strong>Test Connection</strong> buttons below to verify before saving.
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Card 1: Primary AI Engine & Model */}
+            <div className="rounded-2xl bg-slate-950/70 border border-slate-800 p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">
+                    1
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Primary AI Engine & Model</h4>
+                    <p className="text-[11px] text-slate-400">First-priority engine called for all autonomous operations</p>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 uppercase">
+                  Active Primary
+                </span>
+              </div>
+
+              {/* Provider Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Select Primary Provider
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: "groq", name: "Groq", badge: "⚡ ~300ms" },
+                    { id: "openrouter", name: "OpenRouter", badge: "🌐 Free Models" },
+                    { id: "openai", name: "OpenAI", badge: "🟢 GPT-4o" },
+                    { id: "custom", name: "Custom", badge: "⚙️ Self-Hosted" },
+                  ].map((p) => {
+                    const isSelected = primaryProvider === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setPrimaryProvider(p.id);
+                          const presets = PROVIDER_MODEL_PRESETS[p.id] || [];
+                          if (presets.length > 0) {
+                            setPrimaryModel(presets[0].id);
+                            setIsCustomPrimaryModel(false);
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl text-left border transition cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? "bg-amber-500/10 border-amber-500/40 text-white shadow-xs"
+                            : "bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+                        }`}
+                      >
+                        <div className="text-xs font-bold">{p.name}</div>
+                        <div className="text-[10px] font-mono text-slate-400 mt-1">{p.badge}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Model Dropdown Selection */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Primary Model Selection
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomPrimaryModel(!isCustomPrimaryModel)}
+                    className="text-[11px] text-sky-400 hover:underline cursor-pointer"
+                  >
+                    {isCustomPrimaryModel ? "← Choose from Curated Presets" : "+ Enter Custom Model Name"}
+                  </button>
+                </div>
+
+                {!isCustomPrimaryModel ? (
+                  <select
+                    value={primaryModel}
+                    onChange={(e) => {
+                      if (e.target.value === "__custom__") {
+                        setIsCustomPrimaryModel(true);
+                      } else {
+                        setPrimaryModel(e.target.value);
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                  >
+                    {(PROVIDER_MODEL_PRESETS[primaryProvider] || []).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} [{m.tag}]
+                      </option>
+                    ))}
+                    <option value="__custom__">+ Enter Custom Model Name...</option>
+                  </select>
+                ) : (
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      value={primaryModel}
+                      onChange={(e) => setPrimaryModel(e.target.value)}
+                      placeholder="e.g. meta-llama/llama-3.3-70b-instruct:free or mistralai/mistral-7b"
+                      className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      Type the exact model identifier required by the provider.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Test Primary Connection Button */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => handleTestConnection("primary")}
+                  disabled={aiTesting}
+                  className="w-full py-2 px-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-amber-300 flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
+                >
+                  <Zap className={`w-3.5 h-3.5 ${aiTesting && aiTestingTarget === "primary" ? "animate-spin" : ""}`} />
+                  <span>
+                    {aiTesting && aiTestingTarget === "primary"
+                      ? `Testing ${primaryProvider.toUpperCase()} (${primaryModel})...`
+                      : `Test Primary Connection (${primaryProvider.toUpperCase()})`}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Card 2: Automatic Fallback Failover */}
+            <div className="rounded-2xl bg-slate-950/70 border border-slate-800 p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-xs">
+                    2
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Automated Fallback Failover</h4>
+                    <p className="text-[11px] text-slate-400">Instantly engaged if primary LLM throttles (429) or fails</p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableFallback}
+                    onChange={(e) => setEnableFallback(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-0 cursor-pointer"
+                  />
+                  <span className="font-semibold">{enableFallback ? "Enabled" : "Disabled"}</span>
+                </label>
+              </div>
+
+              {enableFallback ? (
+                <>
+                  {/* Fallback Provider Selection */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      Select Fallback Provider
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { id: "openrouter", name: "OpenRouter", badge: "🌐 Free Fallback" },
+                        { id: "groq", name: "Groq", badge: "⚡ Fast Backup" },
+                        { id: "openai", name: "OpenAI", badge: "🟢 GPT-4o" },
+                        { id: "custom", name: "Custom", badge: "⚙️ Local LLM" },
+                      ].map((p) => {
+                        const isSelected = fallbackProvider === p.id;
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setFallbackProvider(p.id);
+                              const presets = PROVIDER_MODEL_PRESETS[p.id] || [];
+                              if (presets.length > 0) {
+                                setFallbackModel(presets[0].id);
+                                setIsCustomFallbackModel(false);
+                              }
+                            }}
+                            className={`p-2.5 rounded-xl text-left border transition cursor-pointer flex flex-col justify-between ${
+                              isSelected
+                                ? "bg-sky-500/10 border-sky-500/40 text-white shadow-xs"
+                                : "bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+                            }`}
+                          >
+                            <div className="text-xs font-bold">{p.name}</div>
+                            <div className="text-[10px] font-mono text-slate-400 mt-1">{p.badge}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Fallback Model Selection */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-slate-300">
+                        Fallback Model Selection
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomFallbackModel(!isCustomFallbackModel)}
+                        className="text-[11px] text-sky-400 hover:underline cursor-pointer"
+                      >
+                        {isCustomFallbackModel ? "← Choose from Curated Presets" : "+ Enter Custom Model Name"}
+                      </button>
+                    </div>
+
+                    {!isCustomFallbackModel ? (
+                      <select
+                        value={fallbackModel}
+                        onChange={(e) => {
+                          if (e.target.value === "__custom__") {
+                            setIsCustomFallbackModel(true);
+                          } else {
+                            setFallbackModel(e.target.value);
+                          }
+                        }}
+                        className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-sky-500 font-mono"
+                      >
+                        {(PROVIDER_MODEL_PRESETS[fallbackProvider] || []).map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} [{m.tag}]
+                          </option>
+                        ))}
+                        <option value="__custom__">+ Enter Custom Model Name...</option>
+                      </select>
+                    ) : (
+                      <div className="space-y-1">
+                        <input
+                          type="text"
+                          value={fallbackModel}
+                          onChange={(e) => setFallbackModel(e.target.value)}
+                          placeholder="e.g. meta-llama/llama-3.3-70b-instruct:free"
+                          className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                        />
+                        <p className="text-[10px] text-slate-500">
+                          Type the exact model identifier for the fallback provider.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Test Fallback Connection Button */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleTestConnection("fallback")}
+                      disabled={aiTesting}
+                      className="w-full py-2 px-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-semibold text-sky-300 flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
+                    >
+                      <Zap className={`w-3.5 h-3.5 ${aiTesting && aiTestingTarget === "fallback" ? "animate-spin" : ""}`} />
+                      <span>
+                        {aiTesting && aiTestingTarget === "fallback"
+                          ? `Testing ${fallbackProvider.toUpperCase()} (${fallbackModel})...`
+                          : `Test Fallback Connection (${fallbackProvider.toUpperCase()})`}
+                      </span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="p-4 rounded-xl bg-slate-900/40 border border-dashed border-slate-800 text-center text-xs text-slate-500">
+                  Fallback failover is disabled. If the primary provider throttles or fails, LeadGen will use offline rule logic.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Diagnostic Test Result Box */}
+          {aiTestResult && (
+            <div
+              className={`p-4 rounded-xl border space-y-2 text-xs transition ${
+                aiTestResult.success
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                  : "bg-rose-500/10 border-rose-500/30 text-rose-300"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold">
+                  {aiTestResult.success ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-rose-400" />
+                  )}
+                  <span>
+                    Diagnostic Result: {aiTestResult.provider.toUpperCase()} ({aiTestResult.model})
+                  </span>
+                </div>
+                {aiTestResult.latency_ms > 0 && (
+                  <span className="font-mono text-[11px] px-2 py-0.5 rounded-full bg-slate-950/80 border border-slate-800 text-slate-200">
+                    Latency: {aiTestResult.latency_ms}ms
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] leading-relaxed">{aiTestResult.message}</p>
+              {aiTestResult.response_sample && (
+                <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-[10px] font-mono text-slate-300 overflow-x-auto">
+                  <span className="text-slate-500 block mb-1">// Response payload:</span>
+                  {JSON.stringify(aiTestResult.response_sample, null, 2)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Card 3: Provider API Keys */}
+          <div className="rounded-2xl bg-slate-950/70 border border-slate-800 p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-amber-400" />
+                <h4 className="text-sm font-bold text-white">Provider API Keys (Secure Vault)</h4>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Encrypted & Masked. Stored in DB with zero server restarts required
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              {/* Groq Key */}
+              <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/50 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-300 flex items-center gap-1.5">
+                    <span>Groq API Key</span>
+                    {aiSettings?.has_groq_key && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 font-mono">
+                        Active
+                      </span>
+                    )}
+                  </label>
+                  <span className="text-[10px] text-amber-400 font-mono">console.groq.com</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showGroqKey ? "text" : "password"}
+                    value={groqKeyInput}
+                    onChange={(e) => setGroqKeyInput(e.target.value)}
+                    placeholder="gsk_••••••••••••••••••••••••"
+                    className="w-full pr-9 pl-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowGroqKey(!showGroqKey)}
+                    className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300"
+                  >
+                    {showGroqKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* OpenRouter Key */}
+              <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/50 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-300 flex items-center gap-1.5">
+                    <span>OpenRouter API Key</span>
+                    {aiSettings?.has_openrouter_key && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 font-mono">
+                        Active
+                      </span>
+                    )}
+                  </label>
+                  <span className="text-[10px] text-sky-400 font-mono">openrouter.ai/keys</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showOpenrouterKey ? "text" : "password"}
+                    value={openrouterKeyInput}
+                    onChange={(e) => setOpenrouterKeyInput(e.target.value)}
+                    placeholder="sk-or-v1-••••••••••••••••"
+                    className="w-full pr-9 pl-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOpenrouterKey(!showOpenrouterKey)}
+                    className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300"
+                  >
+                    {showOpenrouterKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* OpenAI Key */}
+              <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/50 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-300 flex items-center gap-1.5">
+                    <span>OpenAI API Key (Optional)</span>
+                    {aiSettings?.has_openai_key && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 font-mono">
+                        Active
+                      </span>
+                    )}
+                  </label>
+                  <span className="text-[10px] text-emerald-400 font-mono">platform.openai.com</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showOpenaiKey ? "text" : "password"}
+                    value={openaiKeyInput}
+                    onChange={(e) => setOpenaiKeyInput(e.target.value)}
+                    placeholder="sk-proj-••••••••••••••••"
+                    className="w-full pr-9 pl-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                    className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300"
+                  >
+                    {showOpenaiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Base URL & Key */}
+              <div className="space-y-1.5 p-3 rounded-xl bg-slate-900/50 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-300">
+                    Custom Base URL (Ollama / vLLM / Local)
+                  </label>
+                  <span className="text-[10px] text-purple-400 font-mono">http://localhost:11434</span>
+                </div>
+                <input
+                  type="text"
+                  value={customBaseUrlInput}
+                  onChange={(e) => setCustomBaseUrlInput(e.target.value)}
+                  placeholder="http://localhost:11434"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Card 4: Hyperparameters */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-300">
+                Max Completion Tokens (Capped to conserve cost)
+              </label>
+              <input
+                type="number"
+                min="100"
+                max="500"
+                value={maxTokensVal}
+                onChange={(e) => setMaxTokensVal(Number(e.target.value))}
+                className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+              />
+              <p className="text-[10px] text-slate-500">
+                Default 250 tokens is optimal for geo lists and intent classification.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-300">
+                Temperature (0.0 for deterministic factual output)
+              </label>
+              <input
+                type="number"
+                min="0.0"
+                max="1.0"
+                step="0.1"
+                value={tempVal}
+                onChange={(e) => setTempVal(Number(e.target.value))}
+                className="w-full px-3.5 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+              />
+              <p className="text-[10px] text-slate-500">
+                0.0 produces zero hallucination for locations and business types.
+              </p>
+            </div>
+          </div>
+
+          {/* Bottom Save Bar */}
+          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+            <div className="text-xs text-slate-400">
+              Active configuration is cached in memory for sub-millisecond execution and persisted in PostgreSQL.
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveAISettings}
+              disabled={aiSaving || aiLoading}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              <span>{aiSaving ? "Saving Settings..." : "Save AI Settings 💾"}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {showAddInboxModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
@@ -3092,7 +4331,7 @@ https://leadgen.local`,
                   required
                   value={personaForm.raw_content}
                   onChange={(e) => setPersonaForm({ ...personaForm, raw_content: e.target.value })}
-                  placeholder={`Sincerely,\ntest\nSenior Solutions Consultant, Multi-Lead Gen AI\nEmail: contact@leadgen.local | Phone: +880 1700-000000\nhttps://leadgen.local`}
+                  placeholder="Paste or type your signature block here (e.g. Name, Title, Company, Phone, Email, Website)..."
                   className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono leading-relaxed resize-y"
                 />
                 <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">

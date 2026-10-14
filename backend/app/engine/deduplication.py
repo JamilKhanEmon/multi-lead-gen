@@ -19,10 +19,26 @@ GENERIC_PLATFORM_DOMAINS = {
     "reddit.com",
     "google.com", "maps.google.com", "goo.gl", "g.page", "g.co",
     "wikipedia.org", "wikimedia.org",
-    "yellowpages.com", "yellowpages.ca", "yelp.com",
+    "yellowpages.com", "yellowpages.ca", "yelp.com", "superpages.com", "dexknows.com", "manta.com",
     "apple.com", "microsoft.com", "github.com",
     "whatsapp.com", "wa.me", "telegram.org", "t.me",
-    "yahoo.com", "bing.com", "duckduckgo.com"
+    "yahoo.com", "bing.com", "duckduckgo.com",
+    # B2B Review & Agency Directories
+    "goodfirms.co", "clutch.co", "themanifest.com", "sortlist.com", "agencyanalytics.com",
+    "designrush.com", "upcity.com", "topfirms.co", "wadline.com",
+    # Corporate Databases, Marketplaces & Job Boards
+    "crunchbase.com", "zoominfo.com", "apollo.io", "pitchbook.com", "owler.com", "dnb.com",
+    "g2.com", "capterra.com", "trustpilot.com", "softwareadvice.com", "getapp.com", "trustradius.com",
+    "glassdoor.com", "indeed.com", "upwork.com", "fiverr.com", "freelancer.com", "toptal.com", "guru.com", "bdjobs.com",
+    "tripadvisor.com", "booking.com", "agoda.com", "expedia.com", "airbnb.com", "hotels.com",
+    "justdial.com", "sulekha.com", "indiamart.com", "tradeindia.com",
+    # Real Estate & Classified Listing Portals (Aggregators, not direct developers)
+    "bproperty.com", "bikroy.com", "bdstall.com", "daraz.com.bd", "daraz.com", "chaldal.com",
+    "zillow.com", "realtor.com", "redfin.com", "trulia.com", "magicbricks.com", "99acres.com", "housing.com",
+    "addressbazar.com", "infoisinfo.com.bd", "infoisinfo.com", "bdtradeinfo.com", "bd-directory.com", "yellowpages.com.bd", "bangladeshyellowpages.com",
+    # Media & Article Hubs
+    "medium.com", "quora.com", "forbes.com", "bloomberg.com", "businessinsider.com", "techcrunch.com",
+    "prothomalo.com", "thedailystar.net", "dhakatribune.com", "bdnews24.com"
 }
 
 class DeduplicationEngine:
@@ -45,6 +61,31 @@ class DeduplicationEngine:
         for plat in GENERIC_PLATFORM_DOMAINS:
             if cleaned == plat or cleaned.endswith("." + plat):
                 return True
+        return False
+
+    @classmethod
+    def is_directory_or_aggregator(cls, url_or_domain: Optional[str], title: str = "") -> bool:
+        if not url_or_domain:
+            return False
+        if cls.is_generic_platform(url_or_domain):
+            return True
+        u_lower = url_or_domain.lower()
+        t_lower = (title or "").lower()
+
+        dir_path_patterns = [
+            "/directory", "/directories", "/companies", "/company-list",
+            "/top-", "/best-", "/list-", "/listing", "/listings",
+            "/category/", "/categories/", "/search?", "/reviews/",
+            "/agencies/", "/rankings/", "/find/", "/compare/"
+        ]
+        if any(pat in u_lower for pat in dir_path_patterns):
+            return True
+
+        if any(w in t_lower for w in ["top 10", "top 20", "top 50", "best 10", "list of top", "directory of"]):
+            return True
+        if any(kw in t_lower for kw in ["goodfirms", "clutch", "crunchbase", "yellowpages", "bproperty", "bikroy", "justdial"]):
+            return True
+
         return False
 
     @staticmethod

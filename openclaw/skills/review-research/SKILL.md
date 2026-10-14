@@ -1,44 +1,55 @@
 ---
-name: review-research
-description: Analyzes public customer reviews to identify repeated complaint themes and owner response habits.
+name: "review-research"
+description: "Analyzes public Google Maps ratings, review sentiments, and customer service bottlenecks with 1-click human verification links."
 ---
 
-# Review Research Workflow
+# Review Research Workflow — Google Maps Reputation & Service Bottleneck Audit
 
 ## Purpose
-Examines public ratings and reviews across Google Maps and business directories to detect genuine, repeated customer pain points (e.g. communication delays, booking friction, delivery issues).
+Examines public ratings, review counts, and customer feedback across Google Maps and local business profiles to detect operational pain points (e.g. communication delays, front-desk chaos, manual booking bottlenecks) and provides 1-click proof links for human sales callers.
+
+## Core Directives & Hard Rules
+1. **Zero Dummy Data:** Never guess a rating or fake reviewer comments. Extract real numbers from the business's public Maps profile.
+2. **1-Click Proof Verification:** Every finding must provide the direct Google Maps profile search URL (`proof_link`) so a human caller can click and read the actual customer reviews before making a call.
+3. **Dual Interpretation Matrix:**
+   - **Low Rating (< 4.3★):** Customer sentiment highlights response delays, unanswered calls, or slow service. Pitch: Customer Service CRM & Reputation Management.
+   - **High Rating (> 4.5★ with 50+ reviews):** Business has massive local commercial demand, but relies on manual phone calls/paper registers. Pitch: Automated Client Intake, Cloud POS & Appointment Booking.
 
 ## Procedure
-1. Receive input `business_name`, `location`, and profile URL.
-2. Extract overall rating, total review count, and reviews published in the last 180 days.
-3. Identify recurring complaint themes across 1-star and 2-star reviews:
-   - "Unanswered phone calls" or "no reply to WhatsApp"
-   - "Delayed appointment confirmation"
-   - "Broken online system"
-4. Check owner response frequency to public reviews.
-5. Record exact quotation snippets and publication timestamps for evidence preservation.
 
-## Safety & Boundaries
-- Single negative reviews are marked as weak evidence (Level 1).
-- Repeated patterns (3+ independent reviewers citing the same friction) qualify as stronger evidence (Level 3).
-- Only public reviews are processed.
+### Step 1: Google Maps Profile Link Construction
+- Receive `business_name`, `location`, `rating`, and `review_count`.
+- Generate the direct Google Maps search and profile URL:
+  `https://www.google.com/maps/search/{encoded_name_and_location}`
+
+### Step 2: Rating & Sentiment Classification
+- **Case A: Rating < 4.3★ (`MAPS_RATING_GAP`)**
+  - Customer review sentiment indicates service response bottlenecks, phone reachability issues, or booking delays in the target market.
+  - *Proof:* Link directly to Maps listing.
+  - *Sales Angle:* "We noticed your Google Maps rating has dropped to {rating}★ with customers mentioning delays in phone response. Our automated intake system ensures no customer wait times."
+- **Case B: Rating >= 4.3★ with High Volume (`LOCAL_DEMAND_AUTOMATION_FIT`)**
+  - Strong commercial reputation ({rating}★ across {review_count} reviews), but inbound client intake and booking remain completely manual.
+  - *Proof:* Link directly to Maps listing.
+  - *Sales Angle:* "You have a top-rated reputation on Google Maps ({rating}★), but your team is handling all incoming inquiries through manual phone calls. Our software automates booking and client routing."
+
+### Step 3: Owner Response Habit Check
+- Check if negative or recent reviews receive official owner responses.
+- If owner response rate is zero or low, flag as unmanaged public reputation.
+
+### Step 4: Output Generation
+- Compile structured JSON output with the exact Google Maps URL as `proof_link`.
 
 ## Output Schema
 ```json
 {
-  "total_reviews": 48,
-  "average_rating": 3.7,
-  "repeated_complaint_themes": [
-    {
-      "theme": "slow_response_time",
-      "count": 5,
-      "sample_quotes": [
-        "Called three times to book an appointment with no answer.",
-        "Sent WhatsApp message last week and never got a reply."
-      ],
-      "recency_days": 18
-    }
-  ],
-  "owner_response_rate": 0.15
+  "business_name": "Sultans Dine Dhanmondi",
+  "location": "Dhanmondi, Dhaka",
+  "google_maps_url": "https://www.google.com/maps/search/Sultans%20Dine%20Dhanmondi",
+  "proof_link": "https://www.google.com/maps/search/Sultans%20Dine%20Dhanmondi",
+  "rating": 4.1,
+  "review_count": 840,
+  "evidence_tag": "MAPS_RATING_GAP",
+  "evidence_text": "Google Maps public rating stands at 4.1★ (840 reviews) with customer review sentiment indicating response bottlenecks. Proof: https://www.google.com/maps/search/Sultans%20Dine%20Dhanmondi",
+  "checked_live": true
 }
 ```

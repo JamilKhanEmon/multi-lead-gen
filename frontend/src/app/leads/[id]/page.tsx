@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { fetchLeadDetail, submitLeadFeedback, updateLeadDetails, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate, evaluateLeadFitGate } from "@/lib/api";
+import { fetchLeadDetail, submitLeadFeedback, updateLeadDetails, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate, evaluateLeadFitGate, fetchPersonaSignatures, PersonaSignatureItem } from "@/lib/api";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -18,6 +18,8 @@ import {
   MapPin,
   User,
   Linkedin,
+  Facebook,
+  Instagram,
   Globe,
   Code2,
   Cpu,
@@ -54,8 +56,17 @@ export default function LeadDetailPage() {
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    setToast({ type, message });
+    setTimeout(() => {
+      setToast((prev) => (prev?.message === message ? null : prev));
+    }, 4000);
+  };
 
   const [emailTemplate, setEmailTemplate] = useState<EmailTemplate | null>(null);
+  const [personaSignatures, setPersonaSignatures] = useState<PersonaSignatureItem[]>([]);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [customDraftSubject, setCustomDraftSubject] = useState("");
@@ -79,8 +90,9 @@ export default function LeadDetailPage() {
     try {
       const updated = await evaluateLeadFitGate(lead.id);
       setLead(updated);
+      showToast("Fit Gate evaluated successfully!", "success");
     } catch (err: any) {
-      alert("Fit Gate evaluation failed: " + err.message);
+      showToast("Fit Gate evaluation failed: " + err.message, "error");
     } finally {
       setIsEvaluatingFit(false);
     }
@@ -142,9 +154,9 @@ export default function LeadDetailPage() {
       });
       setLead(updated);
       setShowEditModal(false);
-      alert(approveForOutreach ? "✓ Lead updated and approved for Outreach Queue!" : "✓ Lead details updated successfully!");
+      showToast(approveForOutreach ? "Lead updated & approved for Outreach Queue!" : "Lead details updated successfully!", "success");
     } catch (err: any) {
-      alert("Failed to update lead: " + err.message);
+      showToast("Failed to update lead: " + err.message, "error");
     } finally {
       setIsSubmittingEdit(false);
     }
@@ -159,16 +171,21 @@ export default function LeadDetailPage() {
     fetchEmailTemplate()
       .then((tpl) => setEmailTemplate(tpl))
       .catch((e) => console.warn("Could not fetch global email template:", e));
+
+    fetchPersonaSignatures()
+      .then((p) => setPersonaSignatures(p || []))
+      .catch((e) => console.warn("Could not fetch persona signatures:", e));
   }, [leadId]);
 
   const handleFeedback = async (action: string) => {
     try {
       await submitLeadFeedback(leadId, action);
       setFeedbackSuccess(`Feedback '${action}' recorded.`);
+      showToast(`Feedback '${action}' recorded.`, "success");
       const updated = await fetchLeadDetail(leadId);
       setLead(updated);
     } catch (e: any) {
-      alert("Failed to submit feedback: " + e.message);
+      showToast("Failed to submit feedback: " + e.message, "error");
     }
   };
 
@@ -208,18 +225,19 @@ export default function LeadDetailPage() {
       await deleteLead(leadId);
       router.push("/leads");
     } catch (err: any) {
-      alert("Failed to delete lead: " + err.message);
+      showToast("Failed to delete lead: " + err.message, "error");
       setIsDeleting(false);
     }
   };
 
+  const leadGapText = lead?.why_they_need_us || lead?.primary_gap_summary || "growth opportunities in your digital client acquisition";
   const renderedOutreach = emailTemplate && lead
-    ? renderEmailTemplate(emailTemplate, lead)
+    ? renderEmailTemplate(emailTemplate, lead, personaSignatures)
     : {
-        subject: `Quick inquiry regarding your office in ${lead?.address || "your area"}`,
-        body: `Dear Sir,\n\nI recently came across ${lead?.business_name || "your business"} located in ${lead?.address || "your area"}. I noticed you do not currently have an official corporate website or modern client booking portal.\n\nWould you be open to a quick 3-minute discussion or a sample preview prepared for your business?\n\nSincerely,\nGrowth Team`,
-        fullEmail: "",
-      };
+      subject: `Quick inquiry regarding ${lead?.business_name || "your office"} in ${lead?.address || "your area"}`,
+      body: `Hi ${lead?.contact_person || (lead?.business_name ? `Team ${lead.business_name}` : "Team")},\n\nI recently came across ${lead?.business_name || "your business"} located in ${lead?.address || "your area"}. We noticed ${leadGapText}.\n\nWould you be open to a quick 3-minute discussion or a sample preview prepared for your business?`,
+      fullEmail: "",
+    };
 
   const activeSubject = isEditingDraft ? customDraftSubject : renderedOutreach.subject;
   const activeBody = isEditingDraft ? customDraftBody : renderedOutreach.body;
@@ -339,11 +357,10 @@ export default function LeadDetailPage() {
           <div>
             <div className="flex items-center gap-3">
               <h2 className="text-2xl font-bold text-white">{lead.business_name}</h2>
-              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                lead.tier === "Strong Potential"
+              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${lead.tier === "Strong Potential"
                   ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
                   : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-              }`}>
+                }`}>
                 {lead.tier}
               </span>
             </div>
@@ -377,7 +394,7 @@ export default function LeadDetailPage() {
                   <div>
                     <a
                       href={`https://wa.me/${lead.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
-                        `Hello ${lead.contact_person || lead.business_name}, I am reaching out from our business growth team regarding your business.`
+                        `Hello ${lead.contact_person || lead.business_name}, I am reaching out regarding your business.`
                       )}`}
                       target="_blank"
                       rel="noreferrer"
@@ -521,15 +538,14 @@ export default function LeadDetailPage() {
 
           <div className="flex items-center gap-2">
 
-            <div className={`px-3 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1.5 ${
-              lead.fit_tier === "HOT"
+            <div className={`px-3 py-1.5 rounded-xl border font-bold text-xs flex items-center gap-1.5 ${lead.fit_tier === "HOT"
                 ? "bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-sm shadow-rose-500/20"
                 : lead.fit_tier === "WARM"
-                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                : lead.fit_tier === "DROPPED"
-                ? "bg-slate-800 text-slate-400 border-slate-700"
-                : "bg-sky-500/20 text-sky-300 border-sky-500/40"
-            }`}>
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                  : lead.fit_tier === "DROPPED"
+                    ? "bg-slate-800 text-slate-400 border-slate-700"
+                    : "bg-sky-500/20 text-sky-300 border-sky-500/40"
+              }`}>
               {lead.fit_tier === "HOT" && <Flame className="w-3.5 h-3.5 fill-rose-400" />}
               {lead.fit_tier === "WARM" && <Sparkles className="w-3.5 h-3.5 text-amber-400" />}
               <span>{lead.fit_tier || "HOT"} LEAD</span>
@@ -612,7 +628,7 @@ export default function LeadDetailPage() {
           </div>
           <div className="text-xs text-slate-200 font-mono bg-slate-900/90 p-3.5 rounded-lg border border-slate-800/80 whitespace-pre-wrap leading-relaxed select-all">
             {lead.discovery_call_script || (
-              `1. OPENING EVIDENCE:\n   "Hello, is this ${lead.business_name}? I was reviewing your online presence and noticed you don't have an automated inquiry capture form on your website."\n\n2. DISCOVERY QUESTION (Wait for their answer):\n   "How are you currently tracking inbound client inquiries and follow-ups right now?"\n\n3. VALUE PITCH (${lead.matched_service || "Digital Growth Solutions"}):\n   "Our growth solutions team specializes in solving this with quick setup. Would you be open to a 5-minute preview of the custom audit report we prepared for ${lead.business_name}?"`
+              `1. OPENING EVIDENCE:\n   "Hello, is this ${lead.business_name}? I was reviewing your online presence and noticed: ${lead.why_they_need_us || lead.primary_gap_summary || "solvable gaps in online visibility"}.\n\n2. DISCOVERY QUESTION (Wait for their answer):\n   "How are you currently handling inbound client acquisition and follow-ups right now?"\n\n3. VALUE PITCH (${lead.matched_service || ""}):\n   "We specialize in solving this with quick setup. Would you be open to a 5-minute preview of the custom audit report we prepared for ${lead.business_name}?"`
             )}
           </div>
         </div>
@@ -629,11 +645,10 @@ export default function LeadDetailPage() {
               Live audit history of sent cold emails and direct client replies with AI sentiment classification.
             </p>
           </div>
-          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-            lead.deal_status === "HOT_LEAD" || lead.outreach_status === "REPLIED_HOT"
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${lead.deal_status === "HOT_LEAD" || lead.outreach_status === "REPLIED_HOT"
               ? "bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5"
               : "bg-sky-500/20 text-sky-300 border border-sky-500/30"
-          }`}>
+            }`}>
             {(lead.deal_status === "HOT_LEAD" || lead.outreach_status === "REPLIED_HOT") && (
               <Flame className="w-3.5 h-3.5 text-rose-400 fill-rose-400 animate-pulse" />
             )}
@@ -654,11 +669,10 @@ export default function LeadDetailPage() {
               return (
                 <div
                   key={log.id || idx}
-                  className={`p-4 rounded-xl border transition space-y-2.5 ${
-                    isReply
+                  className={`p-4 rounded-xl border transition space-y-2.5 ${isReply
                       ? "bg-gradient-to-r from-emerald-950/40 via-slate-900/90 to-slate-900/70 border-emerald-500/40 shadow-lg shadow-emerald-500/5"
                       : "bg-slate-900/60 border-slate-800"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between text-xs flex-wrap gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1028,11 +1042,10 @@ export default function LeadDetailPage() {
                   setMatrixViewMode("gaps");
                   setSelectedStatusFilter("ALL");
                 }}
-                className={`px-3 py-1.5 rounded-md font-semibold transition ${
-                  matrixViewMode === "gaps"
+                className={`px-3 py-1.5 rounded-md font-semibold transition ${matrixViewMode === "gaps"
                     ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
-                }`}
+                  }`}
               >
                 Gaps & Weaknesses ({lead.evidence?.length || 0})
               </button>
@@ -1041,11 +1054,10 @@ export default function LeadDetailPage() {
                   setMatrixViewMode("all135");
                   setSelectedStatusFilter("ALL");
                 }}
-                className={`px-3 py-1.5 rounded-md font-semibold transition flex items-center gap-1.5 ${
-                  matrixViewMode === "all135"
+                className={`px-3 py-1.5 rounded-md font-semibold transition flex items-center gap-1.5 ${matrixViewMode === "all135"
                     ? "bg-violet-600/30 text-violet-300 border border-violet-500/40 shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
-                }`}
+                  }`}
               >
                 <Sliders className="w-3 h-3" /> Full 135 Matrix
               </button>
@@ -1079,11 +1091,10 @@ export default function LeadDetailPage() {
               <button
                 key={st}
                 onClick={() => setSelectedStatusFilter(st)}
-                className={`px-2 py-1 rounded-md text-[10px] font-mono font-medium transition ${
-                  selectedStatusFilter === st
+                className={`px-2 py-1 rounded-md text-[10px] font-mono font-medium transition ${selectedStatusFilter === st
                     ? "bg-slate-700 text-white font-bold"
                     : "bg-slate-900/80 text-slate-400 hover:text-slate-200 border border-slate-800"
-                }`}
+                  }`}
               >
                 {st === "INTERNAL_CONFIDENTIAL" ? "INTERNAL" : st === "NOT_DETECTED" ? "NO GAP" : st}
               </button>
@@ -1108,15 +1119,14 @@ export default function LeadDetailPage() {
               return (
                 <div
                   key={idx}
-                  className={`p-4 rounded-xl bg-slate-900/60 border transition space-y-2 ${
-                    ev.status === "STRONG"
+                  className={`p-4 rounded-xl bg-slate-900/60 border transition space-y-2 ${ev.status === "STRONG"
                       ? "border-rose-900/40 hover:border-rose-700/60"
                       : ev.status === "WEAK"
-                      ? "border-amber-900/40 hover:border-amber-700/60"
-                      : ev.status === "PASS"
-                      ? "border-emerald-900/30 hover:border-emerald-700/50"
-                      : "border-slate-800/80 hover:border-slate-700/80"
-                  }`}
+                        ? "border-amber-900/40 hover:border-amber-700/60"
+                        : ev.status === "PASS"
+                          ? "border-emerald-900/30 hover:border-emerald-700/50"
+                          : "border-slate-800/80 hover:border-slate-700/80"
+                    }`}
                 >
                   <div className="flex items-start justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1132,17 +1142,16 @@ export default function LeadDetailPage() {
                         </span>
                       )}
                       <span
-                        className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase ${
-                          ev.status === "STRONG"
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase ${ev.status === "STRONG"
                             ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
                             : ev.status === "WEAK"
-                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                            : ev.status === "PASS"
-                            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                            : ev.status === "INTERNAL_CONFIDENTIAL"
-                            ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
-                            : "bg-slate-800 text-slate-400 border border-slate-700"
-                        }`}
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                              : ev.status === "PASS"
+                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                : ev.status === "INTERNAL_CONFIDENTIAL"
+                                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                                  : "bg-slate-800 text-slate-400 border border-slate-700"
+                          }`}
                       >
                         {ev.status === "STRONG" ? "STRONG GAP" : ev.status === "WEAK" ? "WEAK GAP" : ev.status}
                       </span>
@@ -1217,11 +1226,10 @@ export default function LeadDetailPage() {
                             {job.task_type}
                           </span>
                           <span
-                            className={`text-[10px] font-mono px-2 py-0.2 rounded ${
-                              job.status === "COMPLETED"
+                            className={`text-[10px] font-mono px-2 py-0.2 rounded ${job.status === "COMPLETED"
                                 ? "bg-emerald-500/20 text-emerald-300"
                                 : "bg-sky-500/20 text-sky-300"
-                            }`}
+                              }`}
                           >
                             {job.status}
                           </span>
@@ -1490,7 +1498,7 @@ export default function LeadDetailPage() {
                   type="text"
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
-                  placeholder="e.g. +8801700000000"
+                  placeholder="e.g. +1 555-0199"
                   className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                 />
               </div>
@@ -1606,6 +1614,35 @@ export default function LeadDetailPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sleek Floating Glassmorphic Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[100] animate-in fade-in slide-in-from-bottom-5 duration-300">
+          <div
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl backdrop-blur-xl ${toast.type === "success"
+                ? "bg-slate-900/95 border-emerald-500/40 text-emerald-400 shadow-emerald-950/40"
+                : toast.type === "error"
+                  ? "bg-slate-900/95 border-rose-500/40 text-rose-400 shadow-rose-950/40"
+                  : "bg-slate-900/95 border-sky-500/40 text-sky-400 shadow-sky-950/40"
+              }`}
+          >
+            {toast.type === "success" ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            ) : toast.type === "error" ? (
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+            ) : (
+              <Sparkles className="w-5 h-5 text-sky-400 shrink-0" />
+            )}
+            <span className="text-xs font-semibold text-slate-100">{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       )}

@@ -10,10 +10,28 @@ from app.api.deps import get_db, get_current_user
 from app.core.config import settings
 from app.models.research import ResearchRun, ResearchJob
 from app.models.audit import User
-from app.schemas.research import ResearchRunCreate, ResearchRunResponse, ResearchJobResponse
+from app.schemas.research import ResearchRunCreate, ResearchRunResponse, ResearchJobResponse, StrategyPreviewRequest
+from app.engine.strategy_engine import StrategyEngine
+from app.services.ai_client import AIClient
 import redis.asyncio as aioredis
 
 router = APIRouter(prefix="/research", tags=["Research"])
+
+@router.post("/preview")
+async def preview_research_strategy(
+    data: StrategyPreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ai_client = AIClient()
+    preview = await StrategyEngine.generate_strategy_preview(
+        db_session=db,
+        industry=data.industry.strip(),
+        location=data.location.strip(),
+        analyze_website=data.analyze_website,
+        ai_client=ai_client,
+    )
+    return preview
 
 @router.post("", response_model=ResearchRunResponse, status_code=status.HTTP_201_CREATED)
 async def create_research_run(
@@ -62,8 +80,11 @@ async def create_research_run(
             "depth": data.depth,
             "target_services": data.target_services,
             "business_type_override": data.business_type_override,
+            "company_limit": data.company_limit if data.company_limit is not None else 0,
             "auto_mail_enabled": data.auto_mail_enabled,
             "use_company_kb": data.use_company_kb,
+            "analyze_website": data.analyze_website,
+            "sub_areas": data.sub_areas,
         },
     )
     db.add(job)

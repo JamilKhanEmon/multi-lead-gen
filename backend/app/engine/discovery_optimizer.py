@@ -2,7 +2,7 @@ import re
 import urllib.parse
 from typing import Dict, Any, List, Tuple, Optional
 from app.core.logging import logger
-from app.services.ollama_client import OllamaClient, OllamaClientError
+from app.services.ai_client import AIClient, AIClientError
 
 class DiscoveryOptimizer:
 
@@ -12,6 +12,8 @@ class DiscoveryOptimizer:
         "salon", "barber",
         "cemetery", "graveyard", "place of worship",
         "courier", "bus station",
+        "directory", "directories", "listing", "listings",
+        "goodfirms", "clutch", "crunchbase", "bproperty", "bikroy"
     ]
 
     @classmethod
@@ -28,7 +30,7 @@ class DiscoveryOptimizer:
         ind_clean = industry.strip()
 
         try:
-            ollama = OllamaClient(timeout=8.0)
+            ai = AIClient(timeout=8.0)
             system_prompt = (
                 "You are an expert B2B Lead Generation Discovery Query Optimizer.\n"
                 "Given any target industry and any location worldwide, generate broad, high-coverage search queries, "
@@ -44,7 +46,7 @@ class DiscoveryOptimizer:
                 f"Ensure queries target all active commercial businesses, firms, clinics, or agencies in this area, NOT residential areas or random shops."
             )
 
-            result = await ollama.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+            result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
             if (
                 isinstance(result, dict)
                 and "search_queries" in result
@@ -57,6 +59,8 @@ class DiscoveryOptimizer:
                 result["negative_keywords"] = neg
                 result["industry"] = ind_clean
                 result["location"] = full_loc
+                result["city"] = city.strip()
+                result["country"] = country.strip()
                 result["sub_city"] = sub_city.strip()
                 return result
         except Exception as e:
@@ -74,11 +78,17 @@ class DiscoveryOptimizer:
         sub_city: str = "",
     ) -> Dict[str, Any]:
         ind_lower = industry.lower().strip()
-        loc_parts = [p for p in [sub_city, city, country] if p]
+        loc_parts = []
+        for p in [sub_city, city, country]:
+            p_clean = p.strip()
+            if p_clean and not any(p_clean.lower() == existing.lower() for existing in loc_parts):
+                loc_parts.append(p_clean)
         loc_str = ", ".join(loc_parts) if loc_parts else (location.strip() or f"{city} {country}".strip() or "local")
 
-        city_target = f"{city} {country}".strip() or loc_str
-        sub_target = f"{sub_city} {city}".strip() if sub_city else loc_str
+        city_target = f"{city} {country}".strip() if city.lower() != country.lower() else city.strip()
+        if not city_target:
+            city_target = loc_str
+        sub_target = f"{sub_city} {city}".strip() if (sub_city and sub_city.lower() != city.lower()) else (sub_city or city_target)
 
         queries = [
             f"{industry} {sub_target} official website",
@@ -97,6 +107,7 @@ class DiscoveryOptimizer:
         return {
             "industry": industry,
             "location": loc_str,
+            "country": country.strip(),
             "city": city.strip(),
             "sub_city": sub_city.strip(),
             "search_queries": queries,
@@ -116,16 +127,45 @@ class DiscoveryOptimizer:
         if len(name) < 3:
             return False, "Business name is too short"
 
-        GENERIC_PLATFORMS = {"facebook", "facebook.com", "instagram", "google", "meta", "twitter", "linkedin", "youtube", "tiktok", "whatsapp"}
-        if name_lower in GENERIC_PLATFORMS:
+        from app.engine.deduplication import DeduplicationEngine
+        if DeduplicationEngine.is_generic_platform(domain) or DeduplicationEngine.is_generic_platform(name_lower):
             return False, f"Candidate is a generic platform entity ({name}), not an actual business."
+        if DeduplicationEngine.is_directory_or_aggregator(domain, name) or DeduplicationEngine.is_directory_or_aggregator(candidate.get("website") or "", snippet):
+            return False, f"Candidate is a directory/aggregator platform ({domain}), not a direct business."
         if any(bad in name_lower for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "google.com/maps", "twitter.com"]):
             return False, f"Candidate name is a social media / platform URL: '{name}'"
 
+        target_country = (plan.get("country") or "").lower().strip()
+        target_location = (plan.get("location") or "").lower().strip()
+        is_bd_target = "bangladesh" in target_country or "bd" in target_country or "bangladesh" in target_location or "bd" in target_location
+
+        if is_bd_target:
+            # 1. Reject explicit foreign national ccTLDs (keep .com, .net, .org, .bd, .io, .co intact)
+            FOREIGN_NATIONAL_TLDS = (".kg", ".np", ".in", ".pk", ".ru", ".lk", ".bt", ".mm", ".co.in", ".com.np", ".com.pk")
+            clean_dom = domain.split("/")[0].split("?")[0]
+            if any(clean_dom.endswith(tld) for tld in FOREIGN_NATIONAL_TLDS):
+                return False, f"Domain '{domain}' has foreign country ccTLD incompatible with target Bangladesh."
+
+            # 2. Reject candidates whose snippet or address explicitly specifies another country/city without BD context
+            FOREIGN_EXPLICIT_REGIONS = [
+                "kathmandu", "nepal", "kyrgyzstan", "bishkek", "mumbai", "delhi", "kolkata",
+                "chennai", "bangalore", "lahore", "karachi", "islamabad"
+            ]
+            full_snippet_text = f"{snippet} {cand_address} {name_lower}"
+            bd_tokens = ["bangladesh", "dhaka", "sylhet", "chittagong", "chattogram", "rajshahi", "khulna", "barishal", "rangpur", "gazipur", "narayanganj", "comilla", "bogra", "uttara", "gulshan", "banani", "dhanmondi"]
+            has_bd_token = any(tok in full_snippet_text for tok in bd_tokens)
+            if not has_bd_token:
+                for f_reg in FOREIGN_EXPLICIT_REGIONS:
+                    if f_reg in full_snippet_text:
+                        return False, f"Candidate snippet explicitly references foreign region '{f_reg}'."
+
         req_sub_city = (plan.get("sub_city") or "").lower().strip()
         req_city = (plan.get("city") or "").lower().strip()
-        if cand_address and req_city and len(req_city) >= 3:
-            cand_full_loc = f"{cand_address} {snippet} {candidate.get('location', '')}".lower()
+        cand_full_loc = f"{cand_address} {snippet} {candidate.get('location', '')}".lower()
+        if cand_address and req_sub_city and len(req_sub_city) >= 3:
+            if req_sub_city not in cand_full_loc:
+                return False, f"Candidate address '{cand_address}' does not match requested area '{req_sub_city}'"
+        elif cand_address and req_city and len(req_city) >= 3:
             if req_city not in cand_full_loc and req_sub_city not in cand_full_loc:
                 return False, f"Candidate location does not match target city '{req_city}'"
 
@@ -169,29 +209,28 @@ class DiscoveryOptimizer:
         heading_l = (heading or "").lower()
         full_text = f"{business_name_l} {domain_l} {page_title_l} {meta_desc_l} {heading_l}"
 
+        from app.engine.deduplication import DeduplicationEngine
+        if DeduplicationEngine.is_generic_platform(domain) or DeduplicationEngine.is_directory_or_aggregator(domain, business_name):
+            return False, f"Entity is an aggregator or directory platform: '{domain}'"
+
+        if DeduplicationEngine.is_directory_or_aggregator(f"https://{domain}", page_title):
+            return False, f"Page title or domain indicates a directory/aggregator platform: '{page_title}'"
+
         if negative_keywords:
             for neg in negative_keywords:
                 neg_l = neg.lower().strip()
                 if len(neg_l) >= 4 and neg_l in full_text:
-                    return False, f"Matched AI negative filter: '{neg}'"
+                    return False, f"Matched dynamic negative filter: '{neg}'"
 
-        if ind_phrase and len(ind_phrase) >= 4 and ind_phrase in full_text:
-            return True, f"Full industry phrase verified: '{ind_phrase}'"
-        if ind_clean.replace(" ", "") in domain_l or ind_phrase.replace(" ", "") in domain_l:
-            return True, f"Official domain matches industry: '{domain_l}'"
-
-        if positive_keywords:
-            for pos in positive_keywords:
-                pos_l = pos.lower().strip()
-                if len(pos_l) >= 4 and pos_l in full_text:
-                    return True, f"Dynamic AI industry keyword matched: '{pos}'"
-
+        # AI Semantic Verification before heuristic matching
         if ollama_client and (page_title or meta_description or business_name):
             try:
                 system_prompt = (
                     "You are a strict, objective B2B industry classification expert. "
                     "Analyze the given business name, domain, website title, and meta description. "
-                    "Determine whether this company genuinely belongs to or provides services in the target industry. "
+                    "Determine whether this company is genuinely a direct operating business/firm in the target industry, "
+                    "OR if it is a directory, review platform, marketplace, article listicle, job portal, or unrelated business. "
+                    "CRITICAL: If it is a directory, aggregator, review site (like GoodFirms, Clutch, Yelp), or blog, return is_relevant: false. "
                     "Respond ONLY with a JSON object: {\"is_relevant\": true/false, \"reason\": \"<under 10 words>\"}"
                 )
                 user_prompt = (
@@ -201,7 +240,7 @@ class DiscoveryOptimizer:
                     f"Website Title: {page_title[:150]}\n"
                     f"Website Description: {meta_description[:250]}\n"
                     f"Heading: {heading[:100]}\n"
-                    f"Does this business legitimately operate in or provide products/services for '{target_industry}'?"
+                    f"Is this entity a direct commercial company in '{target_industry}' (NOT a directory, aggregator, or review portal)?"
                 )
                 res = await ollama_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
                 if isinstance(res, dict) and "is_relevant" in res:
@@ -210,6 +249,17 @@ class DiscoveryOptimizer:
                     return is_rel, reason
             except Exception as e:
                 logger.debug(f"Dynamic AI semantic verification notice: {e}")
+
+        if ind_phrase and len(ind_phrase) >= 4 and ind_phrase in full_text:
+            return True, f"Direct dynamic industry keyword matched: '{ind_phrase}'"
+        if ind_clean.replace(" ", "") in domain_l or ind_phrase.replace(" ", "") in domain_l:
+            return True, f"Official domain matches industry: '{domain_l}'"
+
+        if positive_keywords:
+            for pos in positive_keywords:
+                pos_l = pos.lower().strip()
+                if len(pos_l) >= 4 and pos_l in full_text:
+                    return True, f"Dynamic AI industry keyword matched: '{pos}'"
 
         INDUSTRY_SYNONYMS = {
             "real estate": ["realtor", "realty", "property", "properties", "apartment", "apartments", "housing", "developer", "builders", "flat", "land", "estate", "brokerage", "leasing"],
@@ -239,7 +289,7 @@ class DiscoveryOptimizer:
         for tok in target_tokens:
             stem = tok[:-1] if len(tok) > 4 and tok.endswith('s') else tok
             if tok in full_text or (len(stem) >= 4 and stem in full_text):
-                return True, f"Root industry stem matched: '{tok}'"
+                return True, f"Direct dynamic industry keyword matched: '{tok}'"
 
         if domain and (page_title or meta_description):
             return True, "General commercial relevance"

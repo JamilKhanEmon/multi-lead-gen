@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -17,6 +23,7 @@ services:
       retries: 5
     networks:
       - leadgen_network
+    logging: *default-logging
 
   redis:
     image: redis:7-alpine
@@ -32,6 +39,7 @@ services:
       retries: 5
     networks:
       - leadgen_network
+    logging: *default-logging
 
   backend:
     build:
@@ -60,15 +68,12 @@ services:
       OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL}
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
       OPENCLAW_WEBHOOK_TOKEN: ${OPENCLAW_WEBHOOK_TOKEN}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
       RESEARCH_TIMEOUT_SECONDS: ${RESEARCH_TIMEOUT_SECONDS:-120}
       MAX_RETRY_ATTEMPTS: ${MAX_RETRY_ATTEMPTS:-5}
       META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
       META_AD_ACCOUNT_ID: ${META_AD_ACCOUNT_ID:-}
       META_PAGE_ID: ${META_PAGE_ID:-}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,6 +81,7 @@ services:
         condition: service_healthy
     networks:
       - leadgen_network
+    logging: *default-logging
 
   worker:
     build:
@@ -101,15 +107,12 @@ services:
       OPENCLAW_GATEWAY_URL: ${OPENCLAW_GATEWAY_URL}
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
       OPENCLAW_WEBHOOK_TOKEN: ${OPENCLAW_WEBHOOK_TOKEN}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
       RESEARCH_TIMEOUT_SECONDS: ${RESEARCH_TIMEOUT_SECONDS:-120}
       MAX_RETRY_ATTEMPTS: ${MAX_RETRY_ATTEMPTS:-5}
       META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
       META_AD_ACCOUNT_ID: ${META_AD_ACCOUNT_ID:-}
       META_PAGE_ID: ${META_PAGE_ID:-}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -121,6 +124,7 @@ services:
       disable: true
     networks:
       - leadgen_network
+    logging: *default-logging
 
   frontend:
     build:
@@ -141,6 +145,7 @@ services:
       - backend
     networks:
       - leadgen_network
+    logging: *default-logging
 
 volumes:
   pgdata:

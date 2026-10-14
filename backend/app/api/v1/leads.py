@@ -78,11 +78,8 @@ async def list_leads(
     if deal_status:
         stmt = stmt.where(Lead.deal_status == deal_status)
 
-    stmt = stmt.order_by(desc(Lead.final_score)).offset(skip).limit(limit)
-    res = await db.execute(stmt)
-    leads = res.scalars().all()
-
     try:
+        from sqlalchemy import or_
         cleanup_stmt = select(Lead).join(Business).where(
             (Business.canonical_name.ilike("%facebook.com%")) |
             (Business.canonical_name.ilike("%instagram.com%")) |
@@ -94,7 +91,11 @@ async def list_leads(
             (Business.canonical_name == "Facebook") |
             (Business.canonical_name == "facebook") |
             (Business.canonical_name == "Google") |
-            (Business.canonical_name == "google")
+            (Business.canonical_name == "google") |
+            (Lead.tier == "Rejected") |
+            (Lead.outreach_status == "NO_EMAIL") |
+            (Business.email.is_(None)) |
+            (Business.email == "")
         )
         c_res = await db.execute(cleanup_stmt)
         bad_leads = c_res.scalars().all()
@@ -105,10 +106,14 @@ async def list_leads(
     except Exception:
         pass
 
+    stmt = stmt.order_by(desc(Lead.final_score)).offset(skip).limit(limit)
+    res = await db.execute(stmt)
+    leads = res.scalars().all()
+
     lead_items = []
     for l in leads:
         biz = l.business
-        if not biz:
+        if not biz or not biz.email or not biz.email.strip() or l.tier == "Rejected" or l.outreach_status == "NO_EMAIL":
             continue
         biz_name_l = (biz.canonical_name or "").lower().strip()
         biz_dom_l = (biz.domain or "").lower().strip()
@@ -122,26 +127,11 @@ async def list_leads(
 
         meta = (biz.metadata_json or {}) if biz else {}
         has_scraped_email = bool(meta.get("extracted_email") or (biz.email and not biz.email.startswith("contact@")))
-        if biz.email:
-            resolved_email = biz.email
-            email_status = "VERIFIED" if has_scraped_email else "SUGGESTED"
-        elif clean_dom and not DeduplicationEngine.is_generic_platform(clean_dom):
-            resolved_email = f"contact@{clean_dom}"
-            email_status = "SUGGESTED"
-        else:
-            resolved_email = None
-            email_status = "NOT_FOUND"
-
-        if not biz.email and resolved_email:
-            biz.email = resolved_email
+        resolved_email = biz.email.strip()
+        email_status = "VERIFIED" if has_scraped_email else "SUGGESTED"
 
         has_contact = bool(biz.phone or resolved_email)
-        if l.is_qualified and not has_contact:
-            l.is_qualified = False
-            if l.tier != "Rejected":
-                l.tier = "Rejected"
-
-        if is_qualified is True and not has_contact:
+        if not resolved_email:
             continue
 
         loc = biz.locations[0] if (biz and biz.locations) else None
@@ -167,6 +157,18 @@ async def list_leads(
             else (biz.business_type if biz else "Commercial Entity")
         )
 
+        consensus = meta.get("contact_consensus") or {}
+        p_verified = consensus.get("phone_verified", False)
+        p_sources = consensus.get("phone_sources") or []
+        sec_phone = consensus.get("secondary_phone") or meta.get("secondary_phone")
+        wa_phone = consensus.get("whatsapp_phone") or meta.get("whatsapp_phone")
+        meta_ads = meta.get("meta_ads_url")
+        fb_url = meta.get("facebook_url") or getattr(biz, "facebook_url", None)
+        ig_url = meta.get("instagram_url") or getattr(biz, "instagram_url", None)
+        li_url = getattr(biz, "linkedin_url", None) or meta.get("linkedin_url")
+        loc_city = (loc.city if loc else None) or meta.get("city") or meta.get("location")
+        loc_addr = address or loc_city
+
         lead_items.append(
             LeadResponse(
                 id=l.id,
@@ -180,6 +182,15 @@ async def list_leads(
                 business_name=biz.canonical_name if biz else "Candidate Business",
                 domain=clean_dom,
                 phone=biz.phone if biz else None,
+                phone_verified=p_verified,
+                phone_sources=p_sources,
+                secondary_phone=sec_phone,
+                whatsapp_phone=wa_phone,
+                facebook_url=fb_url,
+                instagram_url=ig_url,
+                linkedin_url=li_url,
+                city=loc_city,
+                meta_ads_url=meta_ads,
                 email=resolved_email,
                 email_status=getattr(l, "email_status", None) or email_status,
                 verification_notes=getattr(l, "verification_notes", None),
@@ -189,7 +200,7 @@ async def list_leads(
                 last_contacted_at=getattr(l, "last_contacted_at", None),
                 contact_person=biz.contact_person if biz else None,
                 contact_title=biz.contact_title if biz else None,
-                address=address,
+                address=loc_addr,
                 business_type=btype,
                 google_maps_url=gmaps_url,
                 google_search_url=gsearch_url,
@@ -399,13 +410,14 @@ async def export_leads_csv(
         ai_weaknesses = ", ".join(exp.get("weaknesses", [])) if isinstance(exp.get("weaknesses"), list) else str(exp.get("weaknesses") or "")
 
         email_subj = f"Quick inquiry regarding {biz.canonical_name if biz else 'your office'} in {address or 'your area'}"
+        tailored_sol = f" ({suggested_services_str})" if suggested_services_str else ""
         email_body = (
             f"Hello {biz.contact_person or 'Team'},\n\n"
             f"I recently reviewed {biz.canonical_name if biz else 'your business'} in {address or 'your city'}. "
             f"We noticed that {l.primary_gap_summary or 'there are major growth opportunities in your online presence'}. "
-            f"We have prepared tailored solutions ({suggested_services_str or 'Digital Growth System'}) that could help resolve this.\n\n"
+            f"We have prepared tailored solutions{tailored_sol} that could help resolve this.\n\n"
             f"Would you be open to a quick 3-minute discussion this week?\n\n"
-            f"Best regards,\nGrowth Team"
+            f"Best regards"
         )
 
         passed_params = []
@@ -768,6 +780,7 @@ async def export_leads_json(
             "facebook_url": meta.get("facebook_url"),
             "instagram_url": meta.get("instagram_url"),
             "linkedin_url": biz.linkedin_url,
+            "meta_ads_url": meta.get("meta_ads_url") or f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q={urllib.parse.quote(biz.name)}&search_type=keyword_unordered&media_type=all",
             "tech_stack": {
                 "cms_platform": meta.get("cms_platform") or ("WordPress" if meta.get("is_wordpress") else ("Custom Web App" if clean_dom else "No Website")),
                 "has_meta_pixel": bool(meta.get("has_meta_pixel")),
@@ -792,7 +805,7 @@ async def export_leads_json(
                     f"We noticed that {l.primary_gap_summary or 'there are major growth opportunities in your online presence'}. "
                     f"We have prepared tailored solutions that could help resolve this.\n\n"
                     f"Would you be open to a quick 3-minute discussion this week?\n\n"
-                    f"Best regards,\nGrowth Team"
+                    f"Best regards"
                 ),
             },
             "metadata": meta,
@@ -999,6 +1012,7 @@ async def get_lead_detail(
         if lead.run and hasattr(lead.run, "use_company_kb"):
             use_kb = bool(lead.run.use_company_kb)
 
+        analyze_web = bool(getattr(lead.run, "analyze_website", False)) if lead.run else bool(meta.get("analyze_website", False))
         kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
 
         gate_res = FitGateEngine.evaluate_candidate(
@@ -1013,6 +1027,7 @@ async def get_lead_detail(
             metadata_json=meta,
             company_kb=kb_dict,
             use_company_kb=use_kb,
+            analyze_website=analyze_web,
         )
         fit_t = gate_res["fit_tier"]
         why_us = gate_res["why_they_need_us"]
@@ -1030,6 +1045,13 @@ async def get_lead_detail(
     except Exception:
         pass
 
+    consensus = meta.get("contact_consensus") or {}
+    p_verified = consensus.get("phone_verified", False)
+    p_sources = consensus.get("phone_sources") or []
+    sec_phone = consensus.get("secondary_phone") or meta.get("secondary_phone")
+    wa_phone = consensus.get("whatsapp_phone") or meta.get("whatsapp_phone")
+    meta_ads = meta.get("meta_ads_url")
+
     return LeadDetailResponse(
         id=lead.id,
         business_id=lead.business_id,
@@ -1037,6 +1059,11 @@ async def get_lead_detail(
         domain=clean_biz_dom,
         business_type=btype,
         phone=lead.business.phone if lead.business else None,
+        phone_verified=p_verified,
+        phone_sources=p_sources,
+        secondary_phone=sec_phone,
+        whatsapp_phone=wa_phone,
+        meta_ads_url=meta_ads,
         email=resolved_email,
         email_status=email_status,
         contact_person=lead.business.contact_person if lead.business else None,
@@ -1237,7 +1264,13 @@ async def update_lead_details(
         lead.matched_service = data.matched_service.strip()
 
     if data.approve_for_outreach is True:
-        lead.outreach_status = "READY_FOR_OUTREACH"
+        has_already_sent = bool(lead.followup_step and lead.followup_step > 0) or bool(lead.last_contacted_at)
+        has_replied = lead.outreach_status in ("REPLIED_HOT", "REPLIED_NEUTRAL", "DISCARDED")
+        if not has_already_sent and not has_replied:
+            lead.outreach_status = "READY_FOR_OUTREACH"
+        elif has_already_sent and not has_replied:
+            lead.outreach_status = "SENT"
+
         lead.tier = "Strong Potential"
         lead.is_qualified = True
         if lead.email_status == "NEEDS_REVIEW" or not lead.email_status:
@@ -1276,6 +1309,7 @@ async def evaluate_lead_fit_gate(
     if lead.run and hasattr(lead.run, "use_company_kb"):
         use_kb = bool(lead.run.use_company_kb)
 
+    analyze_web = bool(getattr(lead.run, "analyze_website", False)) if lead.run else bool(meta.get("analyze_website", False))
     kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
 
     gate_res = FitGateEngine.evaluate_candidate(
@@ -1290,6 +1324,7 @@ async def evaluate_lead_fit_gate(
         metadata_json=meta,
         company_kb=kb_dict,
         use_company_kb=use_kb,
+        analyze_website=analyze_web,
     )
     lead.fit_tier = gate_res["fit_tier"]
     lead.why_they_need_us = gate_res["why_they_need_us"]
@@ -1318,7 +1353,9 @@ async def dispatch_staggered_outreach(
     else:
         stmt = stmt.where(
             Lead.outreach_status.in_(["READY_FOR_OUTREACH", "HOLD", "PENDING"]),
-            Lead.is_qualified == True
+            Lead.is_qualified == True,
+            Lead.followup_step == 0,
+            Lead.last_contacted_at.is_(None)
         )
 
     res = await db.execute(stmt)
@@ -1329,7 +1366,7 @@ async def dispatch_staggered_outreach(
             "status": "COMPLETED",
             "dispatched_count": 0,
             "results": [],
-            "message": "No valid leads found to dispatch."
+            "message": "No valid uncontacted leads found to dispatch."
         }
 
     from app.models.email_template import PersonaSignature, EmailTemplate
@@ -1354,6 +1391,14 @@ async def dispatch_staggered_outreach(
         if not biz or not biz.email:
             continue
 
+        # Strict Safety Guard: Never re-dispatch to leads already sent or replied
+        if (lead.followup_step and lead.followup_step > 0) or lead.last_contacted_at:
+            logger.info(f"[Outreach Guard] Skipping '{biz.canonical_name}' - already contacted.")
+            continue
+        if lead.outreach_status in ("SENT", "FOLLOWUP_SENT", "REPLIED_HOT", "REPLIED_NEUTRAL", "DISCARDED"):
+            logger.info(f"[Outreach Guard] Skipping '{biz.canonical_name}' - status is '{lead.outreach_status}'.")
+            continue
+
         recipient = biz.email.strip()
         subject, body = OutreachEngine.render_email(
             step=1,
@@ -1364,6 +1409,9 @@ async def dispatch_staggered_outreach(
                 "website": getattr(biz, "domain", ""),
                 "industry": getattr(biz, "business_type", ""),
                 "primary_gap": lead.primary_gap_summary,
+                "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
+                "what_they_need": getattr(lead, "what_they_need", None) or "",
+                "matched_service": getattr(lead, "matched_service", None) or "",
                 "personas": active_personas,
                 "custom_template": active_tpl
             }
@@ -1387,8 +1435,9 @@ async def dispatch_staggered_outreach(
                 step=1,
                 recipient_email=recipient,
                 subject=subject,
-                body_snippet=body[:300],
+                body_snippet=body,
                 status="SENT",
+                error_message=note,
                 sent_at=datetime.now(timezone.utc)
             )
             db.add(log)

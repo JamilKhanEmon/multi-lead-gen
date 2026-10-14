@@ -45,11 +45,21 @@ export interface Lead {
   deal_status?: "COLD" | "IN_PIPELINE" | "HOT_LEAD" | "CLOSED_WON" | "CLOSED_LOST";
   followup_step?: number;
   last_contacted_at?: string;
+  outreach_notes?: string;
   contact_person?: string;
   contact_title?: string;
   address?: string;
   google_maps_url?: string;
   google_search_url?: string;
+  facebook_url?: string;
+  instagram_url?: string;
+  linkedin_url?: string;
+  city?: string;
+  meta_ads_url?: string;
+  phone_verified?: boolean;
+  phone_sources?: string[];
+  secondary_phone?: string;
+  whatsapp_phone?: string;
   latitude?: number;
   longitude?: number;
   fit_tier?: "HOT" | "WARM" | "COLD" | "DROPPED" | string;
@@ -220,6 +230,37 @@ export async function evaluateLeadFitGate(id: string): Promise<any> {
   return res.json();
 }
 
+export interface StrategyPreview {
+  industry: string;
+  target_location: string;
+  analyze_website: boolean;
+  mode_label: string;
+  sub_areas: Array<{ name: string; checked: boolean }>;
+  search_queries: string[];
+  matched_services: Array<{ name: string; type: string; description: string; offer_hook: string }>;
+  demo_offer: string;
+  total_areas_count: number;
+}
+
+export async function previewResearchStrategy(data: {
+  industry: string;
+  location: string;
+  country?: string;
+  city?: string;
+  analyze_website?: boolean;
+}): Promise<StrategyPreview> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/research/preview`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to generate strategy preview");
+  return res.json();
+}
+
 export async function createResearchRun(data: {
   industry: string;
   country?: string;
@@ -231,6 +272,8 @@ export async function createResearchRun(data: {
   business_type_override?: string;
   auto_mail_enabled?: boolean;
   use_company_kb?: boolean;
+  analyze_website?: boolean;
+  sub_areas?: string[];
 }): Promise<ResearchRun> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -243,6 +286,8 @@ export async function createResearchRun(data: {
       company_limit: data.company_limit ?? 0,
       auto_mail_enabled: data.auto_mail_enabled ?? true,
       use_company_kb: data.use_company_kb ?? true,
+      analyze_website: data.analyze_website ?? false,
+      sub_areas: data.sub_areas ?? [],
     }),
   });
   if (!res.ok) throw new Error("Failed to start research run");
@@ -587,6 +632,17 @@ export interface VoiceKnowledgeBase {
   office_hours_end: string;
   is_active: boolean;
   objections_json: Array<{ trigger: string; counter: string }>;
+  voice_provider?: string;
+  elevenlabs_api_key?: string;
+  elevenlabs_api_key_configured?: boolean;
+  elevenlabs_voice_id?: string;
+  elevenlabs_model_id?: string;
+  cloned_voice_id?: string;
+  cloned_voice_name?: string;
+  cloned_voice_sample_url?: string;
+  auto_call_enabled?: boolean;
+  max_daily_calls?: number;
+  country_language_map?: Record<string, string>;
   created_at?: string;
   updated_at?: string;
 }
@@ -598,9 +654,12 @@ export interface VoiceCallQueueItem {
   contact_title?: string;
   company_name: string;
   phone: string;
+  country?: string;
+  language?: string;
   exact_problem: string;
-  status: "READY" | "IN_PROGRESS" | "MEETING_BOOKED" | "CALL_DONE" | "FAILED";
+  status: "READY" | "IN_PROGRESS" | "MEETING_BOOKED" | "CALL_DONE" | "FAILED" | "INTERESTED" | string;
   selected_for_call: boolean;
+  call_attempts?: number;
   meeting_link?: string;
   meeting_time?: string;
   last_called_at?: string;
@@ -615,6 +674,8 @@ export interface VoiceCallLog {
   company_name: string;
   contact_person: string;
   call_duration_seconds: number;
+  language_used?: string;
+  recording_url?: string;
   transcript_json: Array<{ speaker: string; text: string; timestamp_ms?: number }>;
   sentiment: string;
   meeting_booked: boolean;
@@ -695,12 +756,15 @@ export async function sendVoiceDialogueTurn(payload: {
   client_name?: string;
   company_name?: string;
   exact_problem?: string;
+  language?: string;
 }): Promise<{
   agent_reply_text: string;
   meeting_booked: boolean;
   meeting_link?: string;
   meeting_time?: string;
   detected_intent: string;
+  language?: string;
+  audio_base64?: string;
 }> {
   const res = await fetch(`${API_BASE}/voice-agent/dialogue-turn`, {
     method: "POST",
@@ -752,6 +816,79 @@ export async function checkOfficeHours(): Promise<{
   const res = await fetch(`${API_BASE}/voice-agent/office-hours`);
   if (!res.ok) throw new Error("Failed to check office hours");
   return res.json();
+}
+
+export async function syncLeadsFromCard1(): Promise<{ success: boolean; synced_count: number; message: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/voice-agent/sync-card1-leads`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) throw new Error("Failed to sync leads from Card 1");
+  return res.json();
+}
+
+export async function cloneUserVoice(voiceName: string, audioBlobOrFile: Blob | File): Promise<{
+  success: boolean;
+  voice_id: string;
+  voice_name: string;
+  message: string;
+}> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const formData = new FormData();
+  formData.append("voice_name", voiceName);
+  formData.append("audio_file", audioBlobOrFile, "voice_sample.webm");
+
+  const res = await fetch(`${API_BASE}/voice-agent/clone-voice`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Voice cloning failed");
+  }
+  return res.json();
+}
+
+export async function fetchAvailableVoices(): Promise<Array<{
+  voice_id: string;
+  name: string;
+  category: string;
+  labels: Record<string, any>;
+  preview_url?: string;
+}>> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/voice-agent/voices`, { headers, cache: "no-store" });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function synthesizeTTSAudio(text: string, voiceId?: string): Promise<Blob> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const formData = new FormData();
+  formData.append("text", text);
+  if (voiceId) formData.append("voice_id", voiceId);
+
+  const res = await fetch(`${API_BASE}/voice-agent/tts`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!res.ok) throw new Error("TTS synthesis failed");
+  return res.blob();
 }
 
 export interface DashboardPermissions {
@@ -991,41 +1128,57 @@ export async function updateEmailTemplate(
 
 export function renderEmailTemplate(
   template: Partial<EmailTemplate>,
-  lead: Partial<Lead>
+  lead: Partial<Lead>,
+  personaSignatures?: PersonaSignatureItem[]
 ): { subject: string; body: string; fullEmail: string } {
-  const sender_name = template.sender_name || "Growth Advisory Team";
-  const sender_title = template.sender_title || "Solutions Specialist";
-  const sender_company = template.sender_company || "Multi-Lead Gen AI";
-  const sender_email = template.sender_email || "contact@leadgen.local";
-  const sender_phone = template.sender_phone || "+880 1700-000000";
-  const sender_website = template.sender_website || "https://leadgen.local";
-  const sign_off = template.sign_off || "Sincerely,";
-
   let sig = "";
-  if (template.signature_text && template.signature_text.trim()) {
+  const activePersonas = (personaSignatures || []).filter((p) => p.is_active);
+  if (activePersonas.length > 0) {
+    const bizKey = lead.business_name || lead.domain || "company";
+    let hash = 0;
+    for (let i = 0; i < bizKey.length; i++) {
+      hash = (hash << 5) - hash + bizKey.charCodeAt(i);
+      hash |= 0;
+    }
+    const p = activePersonas[Math.abs(hash) % activePersonas.length];
+    sig = (p.raw_content || "").trim();
+  } else if (template.signature_text && template.signature_text.trim()) {
     sig = template.signature_text.trim();
   } else {
-    const parts = [sign_off];
-    let nameLine = sender_name;
-    if (sender_title) nameLine += `\n${sender_title}`;
-    if (sender_company) nameLine += `, ${sender_company}`;
-    parts.push(nameLine);
+    const parts: string[] = [];
+    if (template.sign_off) parts.push(template.sign_off);
+    let nameLine = template.sender_name || "";
+    if (template.sender_title) nameLine += (nameLine ? `\n${template.sender_title}` : template.sender_title);
+    if (template.sender_company) nameLine += (nameLine ? `, ${template.sender_company}` : template.sender_company);
+    if (nameLine) parts.push(nameLine);
 
     const contactParts: string[] = [];
-    if (sender_email) contactParts.push(`Email: ${sender_email}`);
-    if (sender_phone) contactParts.push(`Phone: ${sender_phone}`);
+    if (template.sender_email) contactParts.push(`Email: ${template.sender_email}`);
+    if (template.sender_phone) contactParts.push(`Phone: ${template.sender_phone}`);
     if (contactParts.length) parts.push(contactParts.join(" | "));
 
-    if (sender_website) parts.push(sender_website);
-    sig = parts.join("\n");
+    if (template.sender_website) parts.push(template.sender_website);
+    sig = parts.join("\n").trim();
   }
 
+  const sender_name = template.sender_name || "";
+  const sender_title = template.sender_title || "";
+  const sender_company = template.sender_company || "";
+  const sender_email = template.sender_email || "";
+  const sender_phone = template.sender_phone || "";
+
   const companyName = lead.business_name || "your company";
-  const contactPerson = lead.contact_person || "Sir/Madam";
+  const rawContact = (lead.contact_person || "").trim();
+  const contactPerson = (rawContact && !["there", "sir", "madam", "n/a", "none", "unknown", "team"].includes(rawContact.toLowerCase()))
+    ? rawContact
+    : (lead.business_name ? `Team ${lead.business_name}` : "Team");
   const location = lead.address || "your city";
   const website = lead.domain || "official website";
   const phone = lead.phone || "";
   const primaryGap = lead.primary_gap_summary ? ` (${lead.primary_gap_summary})` : "";
+  const whyTheyNeedUs = (lead as any).why_they_need_us || primaryGap || "";
+  const whatTheyNeed = (lead as any).what_they_need || "";
+  const matchedService = (lead as any).matched_service || "";
 
   const replacements: Record<string, string> = {
     "{{company_name}}": companyName,
@@ -1037,12 +1190,19 @@ export function renderEmailTemplate(
     "{{domain}}": website,
     "{{phone}}": phone,
     "{{primary_gap}}": primaryGap,
+    "{{why_they_need_us}}": whyTheyNeedUs,
+    "{{what_they_need}}": whatTheyNeed,
+    "{{matched_service}}": matchedService,
     "{{signature}}": sig,
     "{{sender_name}}": sender_name,
     "{{sender_title}}": sender_title,
     "{{sender_company}}": sender_company,
     "{{sender_email}}": sender_email,
     "{{sender_phone}}": sender_phone,
+    "{company_name}": companyName,
+    "{contact_person}": contactPerson,
+    "{city}": location,
+    "{primary_gap}": lead.primary_gap_summary || "",
   };
 
   let renderedSubject = template.subject || "Quick inquiry regarding your office in {{location}}";
@@ -1099,6 +1259,7 @@ export async function createUser(data: {
 export async function updateUser(
   userId: string,
   data: Partial<{
+    email: string;
     full_name: string;
     role: string;
     is_active: boolean;
@@ -1120,6 +1281,36 @@ export async function updateUser(
     throw new Error(err.detail || "Failed to update user account");
   }
   return res.json();
+}
+
+export async function changeEmail(
+  newEmail: string,
+  password: string
+): Promise<{ status: string; message: string; email: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/auth/change-email`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      new_email: newEmail,
+      password: password,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to change email address");
+  }
+  const data = await res.json();
+  const storedUser = getStoredUser();
+  if (storedUser) {
+    storedUser.email = data.email;
+    localStorage.setItem("leadgen_user", JSON.stringify(storedUser));
+    window.dispatchEvent(new Event("auth_change"));
+  }
+  return data;
 }
 
 export async function changePassword(
@@ -1614,10 +1805,27 @@ export async function simulateLeadReply(leadId: string, replyText: string): Prom
   return res.json();
 }
 
+export async function triggerInboxSync(): Promise<{ status: string; processed_count?: number; message: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/inbox/sync`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) throw new Error("Failed to sync inbox");
+  return res.json();
+}
+
 export interface ServiceCatalogItem {
   key: string;
   name: string;
+  url?: string;
+  target_industries?: string;
   wedge: string;
+  features?: string;
+  solves_problems?: string;
   description: string;
 }
 
@@ -1629,6 +1837,7 @@ export interface CompanyKB {
   contact_phone?: string | null;
   contact_email?: string | null;
   website_url?: string | null;
+  master_kb_notes?: string | null;
   services_json: ServiceCatalogItem[];
   is_active: boolean;
   created_at?: string;
@@ -1682,3 +1891,499 @@ export async function resetCompanyKBDefaults(): Promise<CompanyKB> {
   }
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// Conversational Lead Qualification & Meta Chatbot API
+// ---------------------------------------------------------------------------
+
+export interface ConversationMessage {
+  id: string;
+  conversation_id: string;
+  sender_type: "USER" | "AI" | "HUMAN_AGENT";
+  sender_name?: string;
+  message_type: string;
+  content: string;
+  media_url?: string;
+  detected_sentiment?: string;
+  created_at: string;
+}
+
+export interface ConversationItem {
+  id: string;
+  platform: "whatsapp" | "messenger" | "instagram" | "web_widget" | string;
+  external_sender_id: string;
+  sender_name?: string;
+  sender_phone?: string;
+  sender_email?: string;
+  detected_language?: string;
+  status: "ACTIVE" | "QUALIFIED" | "DISQUALIFIED" | "HUMAN_TAKEOVER" | "CLOSED" | string;
+  ai_enabled: boolean;
+  qualification_score: number;
+  extracted_data: Record<string, any>;
+  lead_id?: string;
+  last_message_text?: string;
+  last_message_at?: string;
+  unread_count: number;
+  is_favorite: boolean;
+  created_at: string;
+}
+
+export interface ConversationDetail extends ConversationItem {
+  messages: ConversationMessage[];
+}
+
+export interface ChatbotConfig {
+  id: string;
+  business_name: string;
+  industry: string;
+  country: string;
+  currency_symbol: string;
+  currency_code: string;
+  tagline: string;
+  description: string;
+  services_json: Array<{ name: string; description: string; price?: string }>;
+  faqs_json: Array<{ question: string; answer: string }>;
+  qualification_fields_json: Array<{ key: string; label: string; prompt: string; required: boolean }>;
+  master_ai_enabled: boolean;
+  auto_detect_language: boolean;
+  ai_tone: string;
+  custom_instructions?: string;
+  meta_verify_token?: string;
+  meta_page_access_token?: string;
+  whatsapp_phone_number_id?: string;
+  updated_at?: string;
+}
+
+export async function fetchConversations(
+  statusFilter?: string,
+  platformFilter?: string,
+  search?: string
+): Promise<ConversationItem[]> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const params = new URLSearchParams();
+  if (statusFilter && statusFilter !== "ALL") params.append("status", statusFilter);
+  if (platformFilter && platformFilter !== "ALL") params.append("platform", platformFilter);
+  if (search && search.trim()) params.append("search", search.trim());
+
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetch(`${API_BASE}/conversations${query}`, { headers, cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch conversations");
+  return res.json();
+}
+
+export async function fetchConversationDetail(id: string): Promise<ConversationDetail> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/conversations/${id}`, { headers, cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to load conversation details");
+  return res.json();
+}
+
+export async function sendHumanMessage(
+  id: string,
+  content: string,
+  senderName: string = "Agent"
+): Promise<{ status: string; message_id: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/conversations/${id}/messages`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ content, sender_name: senderName }),
+  });
+  if (!res.ok) throw new Error("Failed to send message");
+  return res.json();
+}
+
+export async function toggleHumanTakeover(
+  id: string,
+  aiEnabled: boolean
+): Promise<{ ai_enabled: boolean; status: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/conversations/${id}/takeover`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ ai_enabled: aiEnabled }),
+  });
+  if (!res.ok) throw new Error("Failed to toggle takeover");
+  return res.json();
+}
+
+export async function updateConversationStatus(
+  id: string,
+  newStatus: string
+): Promise<{ status: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/conversations/${id}/status`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ status: newStatus }),
+  });
+  if (!res.ok) throw new Error("Failed to update status");
+  return res.json();
+}
+
+export async function convertConversationToLead(
+  id: string
+): Promise<{ message: string; lead_id: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/conversations/${id}/convert-lead`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) throw new Error("Failed to convert to lead");
+  return res.json();
+}
+
+export async function fetchChatbotConfig(): Promise<ChatbotConfig> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/conversations/config`, { headers, cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch chatbot config");
+  return res.json();
+}
+
+export async function updateChatbotConfig(
+  payload: Partial<ChatbotConfig>
+): Promise<{ message: string; master_ai_enabled: boolean }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/conversations/config`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Failed to update chatbot config");
+  return res.json();
+}
+
+export async function simulateChatMessage(payload: {
+  platform: string;
+  external_sender_id?: string;
+  sender_name?: string;
+  message_text: string;
+}): Promise<{
+  conversation_id: string;
+  detected_language: string;
+  status: string;
+  qualification_score: number;
+  extracted_data: Record<string, any>;
+  lead_id?: string;
+  ai_reply: string | null;
+}> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/conversations/simulate`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("Simulation failed");
+  return res.json();
+}
+
+export interface ReplyEntry {
+  id: string;
+  lead_id: string | null;
+  company_name: string;
+  contact_person: string | null;
+  client_email: string;
+  campaign_subject: string;
+  reply_text: string;
+  reply_snippet: string;
+  ai_label: "HOT_LEAD" | "NEUTRAL" | "REJECTED" | string;
+  analyzed_by?: "OPENCLAW" | "RULE_LOGIC" | string;
+  deal_status: string | null;
+  outreach_status: string | null;
+  replied_at: string | null;
+  step: number;
+}
+
+export async function fetchReplies(filter?: "hot" | "neutral" | "rejected"): Promise<ReplyEntry[]> {
+  try {
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const url = filter
+      ? `${API_BASE}/autopilot/replies?filter=${filter}`
+      : `${API_BASE}/autopilot/replies`;
+    const res = await fetch(url, { cache: "no-store", headers });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch (err) {
+    console.warn("fetchReplies error:", err);
+    return [];
+  }
+}
+
+export interface InboxMessage {
+  id: string;
+  imap_seq: string;
+  account_email: string;
+  account_id: string;
+  from_email: string;
+  from_raw: string;
+  to: string;
+  subject: string;
+  body: string;
+  snippet: string;
+  date: string | null;
+  is_unread: boolean;
+  in_reply_to: string;
+  message_id: string;
+  is_reply: boolean;
+}
+
+export async function fetchInboxMessages(limit = 50): Promise<{
+  status: string;
+  accounts: string[];
+  total: number;
+  messages: InboxMessage[];
+}> {
+  try {
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/autopilot/inbox/messages?limit=${limit}`, {
+      cache: "no-store",
+      headers,
+    });
+    if (!res.ok) return { status: "error", accounts: [], total: 0, messages: [] };
+    return await res.json();
+  } catch (err) {
+    console.warn("fetchInboxMessages error:", err);
+    return { status: "error", accounts: [], total: 0, messages: [] };
+  }
+}
+
+export async function deleteInboxMessage(accountId: string, imapSeq: string): Promise<{ status: string; message: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/autopilot/inbox/delete`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ account_id: accountId, imap_seq: imapSeq }),
+  });
+  if (!res.ok) throw new Error("Failed to delete email");
+  return res.json();
+}
+
+export async function sendManualReply(payload: {
+  to_email: string;
+  subject: string;
+  body: string;
+  account_id?: string;
+}): Promise<{ status: string; message: string; note: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/autopilot/inbox/reply`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to send reply");
+  }
+  return res.json();
+}
+
+export interface ThreadMessage {
+  direction: "inbound" | "outbound";
+  from?: string;
+  to?: string;
+  subject: string;
+  body: string;
+  snippet: string;
+  sent_at: string | null;
+  ai_label?: string;
+  analyzed_by?: "OPENCLAW" | "RULE_LOGIC" | string;
+  status?: string;
+  step: number;
+  company_name?: string;
+}
+
+export async function fetchEmailThread(clientEmail: string): Promise<{
+  client_email: string;
+  total: number;
+  thread: ThreadMessage[];
+}> {
+  try {
+    const token = getStoredToken();
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(
+      `${API_BASE}/autopilot/inbox/thread?client_email=${encodeURIComponent(clientEmail)}`,
+      { cache: "no-store", headers }
+    );
+    if (!res.ok) return { client_email: clientEmail, total: 0, thread: [] };
+    return await res.json();
+  } catch {
+    return { client_email: clientEmail, total: 0, thread: [] };
+  }
+}
+
+export interface AIUsageModelStat {
+  provider: string;
+  model: string;
+  is_free: boolean;
+  tier_label: string;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  last_used_at?: string;
+}
+
+export interface AIUsageStats {
+  total_calls?: number;
+  total_tokens?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_cost_usd?: number;
+  last_call_at?: string;
+  by_model?: Record<string, AIUsageModelStat>;
+}
+
+export interface AISettings {
+  id?: string;
+  primary_provider: string;
+  primary_model: string;
+  enable_fallback: boolean;
+  fallback_provider?: string | null;
+  fallback_model?: string | null;
+  groq_api_key_masked?: string | null;
+  openrouter_api_key_masked?: string | null;
+  openai_api_key_masked?: string | null;
+  custom_api_key_masked?: string | null;
+  custom_base_url?: string | null;
+  has_groq_key: boolean;
+  has_openrouter_key: boolean;
+  has_openai_key: boolean;
+  has_custom_key: boolean;
+  max_tokens: number;
+  temperature: number;
+  usage_stats_json?: AIUsageStats;
+  is_active: boolean;
+}
+
+export interface AISettingsUpdatePayload {
+  primary_provider: string;
+  primary_model: string;
+  enable_fallback: boolean;
+  fallback_provider?: string | null;
+  fallback_model?: string | null;
+  groq_api_key?: string | null;
+  openrouter_api_key?: string | null;
+  openai_api_key?: string | null;
+  custom_api_key?: string | null;
+  custom_base_url?: string | null;
+  max_tokens?: number;
+  temperature?: number;
+}
+
+export interface AITestResult {
+  success: boolean;
+  latency_ms: number;
+  provider: string;
+  model: string;
+  message: string;
+  response_sample?: any;
+}
+
+export async function fetchAISettings(): Promise<AISettings> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/ai-settings`, {
+    headers,
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error("Failed to fetch AI Settings");
+  }
+  return res.json();
+}
+
+export async function updateAISettings(data: AISettingsUpdatePayload): Promise<AISettings> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/ai-settings`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update AI Settings");
+  }
+  return res.json();
+}
+
+export async function resetAIUsageStats(): Promise<AISettings> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/ai-settings/reset-usage`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to reset AI usage metrics");
+  }
+  return res.json();
+}
+
+export async function testAIConnection(data: {
+  provider: string;
+  model: string;
+  api_key?: string;
+  custom_base_url?: string;
+}): Promise<AITestResult> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/admin/ai-settings/test`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to test AI connection");
+  }
+  return res.json();
+}
+
+

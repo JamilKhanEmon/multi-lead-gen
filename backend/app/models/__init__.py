@@ -11,6 +11,8 @@ from .voice_agent import VoiceKnowledgeBase, VoiceCallQueueItem, VoiceCallLog
 from .email_template import EmailTemplate, SMTPInbox, PersonaSignature
 from .autopilot import AutopilotCampaign, EmailOutreachLog
 from .company_kb import CompanyKB, DEFAULT_SERVICES
+from .conversation import ChatbotConfig, Conversation, ConversationMessage, DEFAULT_QUALIFICATION_FIELDS
+from .ai_settings import AISettings
 
 __all__ = [
     "Base",
@@ -20,6 +22,10 @@ __all__ = [
     "EmailOutreachLog",
     "CompanyKB",
     "DEFAULT_SERVICES",
+    "ChatbotConfig",
+    "Conversation",
+    "ConversationMessage",
+    "DEFAULT_QUALIFICATION_FIELDS",
     "Business",
     "BusinessLocation",
     "Parameter",
@@ -50,5 +56,6 @@ __all__ = [
     "EmailTemplate",
     "SMTPInbox",
     "PersonaSignature",
+    "AISettings",
 ]
 

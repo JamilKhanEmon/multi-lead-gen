@@ -62,7 +62,7 @@ async def autonomous_outreach_scheduler():
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
     import os
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone, timedelta
 
     logger.info("Started Autonomous Anti-Spam Email Outreach Background Daemon.")
 
@@ -75,14 +75,6 @@ async def autonomous_outreach_scheduler():
             async with AsyncSessionLocal() as session:
                 if not await OutreachEngine.is_smtp_configured(db=session):
                     continue
-                stmt = (
-                    select(Lead)
-                    .options(selectinload(Lead.business))
-                    .where(Lead.outreach_status == "READY_FOR_OUTREACH", Lead.is_qualified == True)
-                    .limit(5)
-                )
-                res = await session.execute(stmt)
-                ready_leads = res.scalars().all()
 
                 from app.models.email_template import PersonaSignature, EmailTemplate
                 p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
@@ -95,6 +87,21 @@ async def autonomous_outreach_scheduler():
                 t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
                 t_res = await session.execute(t_stmt)
                 active_tpl = t_res.scalar_one_or_none()
+
+                # ── 1. Initial Outreach (Step 1): Uncontacted Ready Leads ──────
+                stmt = (
+                    select(Lead)
+                    .options(selectinload(Lead.business))
+                    .where(
+                        Lead.outreach_status == "READY_FOR_OUTREACH",
+                        Lead.is_qualified == True,
+                        Lead.followup_step == 0,
+                        Lead.last_contacted_at.is_(None)
+                    )
+                    .limit(5)
+                )
+                res = await session.execute(stmt)
+                ready_leads = res.scalars().all()
 
                 for idx, lead in enumerate(ready_leads):
                     biz = lead.business
@@ -127,6 +134,9 @@ async def autonomous_outreach_scheduler():
                             "website": getattr(biz, "domain", ""),
                             "industry": getattr(biz, "business_type", ""),
                             "primary_gap": lead.primary_gap_summary,
+                            "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
+                            "what_they_need": getattr(lead, "what_they_need", None) or "",
+                            "matched_service": getattr(lead, "matched_service", None) or "",
                             "personas": active_personas,
                             "custom_template": active_tpl
                         }
@@ -147,16 +157,114 @@ async def autonomous_outreach_scheduler():
                             step=1,
                             recipient_email=recipient,
                             subject=subject,
-                            body_snippet=body[:300],
+                            body_snippet=body,
                             status="SENT",
+                            error_message=note,
                             sent_at=datetime.now(timezone.utc)
                         )
                         session.add(log)
                         await session.commit()
-                        logger.info(f"[AUTONOMOUS OUTREACH DAEMON] Dispatched lead email to {recipient} ({biz.canonical_name}).")
+                        logger.info(f"[AUTONOMOUS OUTREACH DAEMON] Dispatched Step 1 email to {recipient} ({biz.canonical_name}).")
 
                     if idx < len(ready_leads) - 1:
-                        import random
+                        await asyncio.sleep(random.uniform(45, 90))
+
+                # ── 2. Automated Follow-up Cadence (Step 2 and Step 3) with Reply Kill-Switch ──
+                now_utc = datetime.now(timezone.utc)
+                followup_cutoff = now_utc - timedelta(days=3)
+
+                followup_stmt = (
+                    select(Lead)
+                    .options(selectinload(Lead.business))
+                    .where(
+                        Lead.outreach_status == "SENT",
+                        Lead.deal_status.notin_(["HOT_LEAD", "CLOSED_LOST", "WON"]),
+                        Lead.followup_step.in_([1, 2]),
+                        Lead.last_contacted_at <= followup_cutoff,
+                        Lead.is_qualified == True
+                    )
+                    .limit(5)
+                )
+                followup_leads = (await session.execute(followup_stmt)).scalars().all()
+
+                for f_idx, f_lead in enumerate(followup_leads):
+                    f_biz = f_lead.business
+                    if not f_biz or not f_biz.email:
+                        continue
+
+                    # STRICT KILL-SWITCH: Verify prospect has never replied
+                    reply_check_stmt = select(EmailOutreachLog.id).where(
+                        EmailOutreachLog.lead_id == f_lead.id,
+                        EmailOutreachLog.status.in_(["REPLIED", "MANUAL_REPLY_SENT", "UNSUBSCRIBED"])
+                    ).limit(1)
+                    has_replied = (await session.execute(reply_check_stmt)).scalar_one_or_none() is not None
+                    if has_replied or f_lead.outreach_status in ("REPLIED_HOT", "REPLIED_NEUTRAL", "DISCARDED"):
+                        logger.info(f"[FOLLOW-UP KILL-SWITCH] Skipping '{f_biz.canonical_name}' - client has already replied.")
+                        continue
+
+                    target_step = f_lead.followup_step + 1
+                    if target_step > 3:
+                        continue
+
+                    f_meta = f_biz.metadata_json or {}
+                    f_target_city = f_meta.get("city") or f_biz.address or ""
+                    f_target_country = f_meta.get("country") or ""
+                    f_loc = f_biz.locations[0] if (f_biz.locations and len(f_biz.locations) > 0) else None
+                    f_lat = f_loc.latitude if f_loc else f_meta.get("latitude")
+                    f_lon = f_loc.longitude if f_loc else f_meta.get("longitude")
+
+                    is_valid_time, reason = OutreachEngine.is_within_target_business_hours(
+                        lat=f_lat,
+                        lon=f_lon,
+                        country=f_target_country,
+                        city=f_target_city
+                    )
+                    if not is_valid_time:
+                        continue
+
+                    f_recipient = f_biz.email.strip()
+                    f_subject, f_body = OutreachEngine.render_email(
+                        step=target_step,
+                        lead_data={
+                            "company_name": f_biz.canonical_name,
+                            "contact_person": f_biz.contact_person or "Executive",
+                            "city": f_target_city or "",
+                            "website": getattr(f_biz, "domain", ""),
+                            "industry": getattr(f_biz, "business_type", ""),
+                            "primary_gap": f_lead.primary_gap_summary,
+                            "why_they_need_us": getattr(f_lead, "why_they_need_us", None) or f_lead.primary_gap_summary,
+                            "what_they_need": getattr(f_lead, "what_they_need", None) or "",
+                            "matched_service": getattr(f_lead, "matched_service", None) or "",
+                            "personas": active_personas,
+                            "custom_template": active_tpl
+                        }
+                    )
+                    f_success, f_note = await OutreachEngine.dispatch_smtp_email(
+                        recipient_email=f_recipient,
+                        subject=f_subject,
+                        body=f_body,
+                        dry_run=False,
+                        db=session
+                    )
+                    if f_success:
+                        f_lead.followup_step = target_step
+                        f_lead.outreach_status = "SENT"
+                        f_lead.last_contacted_at = datetime.now(timezone.utc)
+                        f_log = EmailOutreachLog(
+                            lead_id=f_lead.id,
+                            step=target_step,
+                            recipient_email=f_recipient,
+                            subject=f_subject,
+                            body_snippet=f_body,
+                            status="SENT",
+                            error_message=f_note,
+                            sent_at=datetime.now(timezone.utc)
+                        )
+                        session.add(f_log)
+                        await session.commit()
+                        logger.info(f"[AUTONOMOUS OUTREACH DAEMON] Dispatched Step {target_step} follow-up to {f_recipient} ({f_biz.canonical_name}).")
+
+                    if f_idx < len(followup_leads) - 1:
                         await asyncio.sleep(random.uniform(45, 90))
         except asyncio.CancelledError:
             break
@@ -164,45 +272,67 @@ async def autonomous_outreach_scheduler():
             logger.error(f"[OUTREACH DAEMON] Loop error: {err}")
             await asyncio.sleep(60)
 
-async def autonomous_campaign_discovery_loop():
-    from app.engine.autopilot_runner import AutopilotRunner
-    from app.models.autopilot import AutopilotCampaign
-    from app.db.session import AsyncSessionLocal
-    from sqlalchemy import select
-    from datetime import datetime, timezone, timedelta
 
-    logger.info("Started Autonomous Continuous Campaign Discovery Daemon.")
-    await asyncio.sleep(60)
+
+async def autonomous_imap_sync_loop():
+    from app.services.imap_sync_service import IMAPInboxSyncService
+    from app.db.session import AsyncSessionLocal
+
+    logger.info("Started Autonomous Real-Time Inbound IMAP Email Sync Daemon.")
+    await asyncio.sleep(20)
 
     while True:
         try:
             async with AsyncSessionLocal() as session:
-                stmt = select(AutopilotCampaign).where(
-                    AutopilotCampaign.is_active == True,
-                    AutopilotCampaign.status == "IDLE"
-                )
-                res = await session.execute(stmt)
-                active_campaigns = res.scalars().all()
-
-                for camp in active_campaigns:
-                    should_run = not camp.last_run_at or (datetime.now(timezone.utc) - camp.last_run_at) > timedelta(hours=3)
-                    if should_run:
-                        logger.info(f"[AUTONOMOUS DISCOVERY DAEMON] Scheduled run starting for campaign '{camp.name}'...")
-                        try:
-                            await AutopilotRunner.run_campaign_batch(
-                                db=session,
-                                campaign=camp,
-                                batch_size=15
-                            )
-                        except Exception as ce:
-                            logger.error(f"[AUTONOMOUS DISCOVERY DAEMON] Error running '{camp.name}': {ce}")
-
-            await asyncio.sleep(900)
+                processed = await IMAPInboxSyncService.process_incoming_replies(session)
+                if processed > 0:
+                    logger.info(f"[IMAP SYNC] Processed {processed} inbound reply(ies).")
+            poll_interval = getattr(settings, "IMAP_POLL_INTERVAL_SECONDS", 180)
+            await asyncio.sleep(poll_interval)
         except asyncio.CancelledError:
             break
-        except Exception as err:
-            logger.error(f"[AUTONOMOUS DISCOVERY DAEMON] Daemon error: {err}")
-            await asyncio.sleep(120)
+        except Exception as e:
+            logger.warning(f"[IMAP SYNC DAEMON] Error during sync: {e}. Retrying in 60s...")
+            await asyncio.sleep(60)
+
+async def autonomous_log_cleanup_daemon():
+    """
+    Lightweight background task to periodically cap log files and clean temporary
+    files to prevent disk space exhaustion on VPS deployments.
+    Runs every 4 hours.
+    """
+    import os
+    import glob
+
+    logger.info("Started Autonomous VPS Log & Storage Optimization Daemon.")
+    await asyncio.sleep(60)
+
+    while True:
+        try:
+            base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+            log_dir = os.path.join(base_dir, "logs")
+            max_bytes = 10 * 1024 * 1024  # 10 MB limit per file
+
+            if os.path.exists(log_dir):
+                for log_file in glob.glob(os.path.join(log_dir, "*.log")):
+                    try:
+                        size = os.path.getsize(log_file)
+                        if size > max_bytes:
+                            with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+                                lines = f.readlines()
+                            keep = lines[-3000:] if len(lines) > 3000 else lines
+                            with open(log_file, "w", encoding="utf-8") as f:
+                                f.writelines(keep)
+                            logger.info(f"[STORAGE OPTIMIZER] Truncated {os.path.basename(log_file)} from {round(size/1024/1024, 1)}MB to latest 3,000 lines.")
+                    except Exception as fe:
+                        logger.debug(f"[STORAGE OPTIMIZER] Error checking {log_file}: {fe}")
+
+            await asyncio.sleep(14400)  # Check every 4 hours
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.debug(f"[STORAGE OPTIMIZER] Cycle note: {e}")
+            await asyncio.sleep(3600)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -211,6 +341,10 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             from sqlalchemy import text
+            try:
+                await conn.execute(text("ALTER TABLE businesses ALTER COLUMN canonical_name TYPE TEXT;"))
+            except Exception:
+                pass
             for col in ["phone", "email", "contact_person", "contact_title", "address", "linkedin_url"]:
                 try:
                     await conn.execute(text(f"ALTER TABLE businesses ADD COLUMN IF NOT EXISTS {col} VARCHAR;"))
@@ -239,12 +373,14 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_global_template BOOLEAN DEFAULT TRUE;"))
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
                 await conn.execute(text("ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
+                await conn.execute(text("ALTER TABLE company_kb ADD COLUMN IF NOT EXISTS master_kb_notes TEXT;"))
                 
                 await conn.execute(text("ALTER TABLE persona_signatures ADD COLUMN IF NOT EXISTS title VARCHAR(150) DEFAULT 'Primary Signature';"))
                 await conn.execute(text("ALTER TABLE persona_signatures ADD COLUMN IF NOT EXISTS raw_content TEXT;"))
                 try:
                     await conn.execute(text("ALTER TABLE persona_signatures ALTER COLUMN name DROP NOT NULL;"))
                     await conn.execute(text("ALTER TABLE persona_signatures ALTER COLUMN company DROP NOT NULL;"))
+                    await conn.execute(text("ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS usage_stats_json JSONB DEFAULT '{}'::jsonb;"))
                 except Exception:
                     pass
             except Exception as migration_err:
@@ -271,11 +407,13 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Database table initialization warning: {e}")
     listener_task = asyncio.create_task(redis_event_listener())
     outreach_daemon_task = asyncio.create_task(autonomous_outreach_scheduler())
-    discovery_daemon_task = asyncio.create_task(autonomous_campaign_discovery_loop())
+    imap_sync_task = asyncio.create_task(autonomous_imap_sync_loop())
+    log_cleanup_task = asyncio.create_task(autonomous_log_cleanup_daemon())
     yield
     listener_task.cancel()
     outreach_daemon_task.cancel()
-    discovery_daemon_task.cancel()
+    imap_sync_task.cancel()
+    log_cleanup_task.cancel()
     logger.info("Shutdown complete.")
 
 app = FastAPI(

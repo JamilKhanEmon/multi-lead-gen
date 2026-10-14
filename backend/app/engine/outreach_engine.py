@@ -9,6 +9,24 @@ from typing import Dict, Any, Optional, Tuple, List
 
 from app.core.logging import logger
 
+class ClassificationResult(tuple):
+    """
+    Tuple subclass (label, reason) that also exposes .source ('OPENCLAW' | 'RULE_LOGIC').
+    Maintains 100% backward compatibility with 2-element tuple unpacking:
+      label, reason = await OutreachEngine.classify_reply_sentiment(...)
+    while allowing callers to read res.source for dashboard display.
+    """
+    label: str
+    reason: str
+    source: str
+
+    def __new__(cls, label: str, reason: str, source: str = "OPENCLAW"):
+        instance = super().__new__(cls, (label, reason))
+        instance.label = label
+        instance.reason = reason
+        instance.source = source
+        return instance
+
 class OutreachEngine:
 
     INBOX_STATS = {}
@@ -60,22 +78,20 @@ class OutreachEngine:
         }
     }
 
-    POSITIVE_KEYWORDS = [
-        "interested", "tell me more", "call", "schedule", "pricing", "quote",
-        "meeting", "send details", "let's talk", "lets talk", "sure", "sounds good",
-        "yes", "demo", "cost", "more info", "available", "zoom"
-    ]
-
-    NEGATIVE_KEYWORDS = [
-        "unsubscribe", "remove", "stop", "not interested", "dont contact",
-        "don't contact", "leave me alone", "spam", "wrong person", "cease"
-    ]
+    # ── LLM-based classification — no keyword lists needed ──────────────────
 
     @classmethod
     def render_email(cls, step: int, lead_data: Dict[str, Any]) -> Tuple[str, str]:
         company_name = lead_data.get("company_name") or "Your Team"
-        contact_person = lead_data.get("contact_person") or "there"
-        city = lead_data.get("city") or "your area"
+        raw_contact = str(lead_data.get("contact_person") or "").strip()
+        if raw_contact and raw_contact.lower() not in ["there", "sir", "madam", "n/a", "none", "unknown", "team"]:
+            contact_person = raw_contact
+        else:
+            contact_person = f"Team {company_name}"
+
+        raw_city = str(lead_data.get("city") or lead_data.get("location") or lead_data.get("address") or "").strip()
+        has_real_city = bool(raw_city and raw_city.lower() not in ["your area", "your city", "your office in your city", "n/a", "none", "unknown", ""])
+        city = raw_city if has_real_city else ""
         primary_gap = lead_data.get("primary_gap") or "optimizing your online presence and client acquisition"
         industry = (lead_data.get("industry") or lead_data.get("business_type") or "").lower()
 
@@ -88,9 +104,9 @@ class OutreachEngine:
                 if not raw_sig and (p.get("name") or p.get("title")):
                     raw_sig = f"{p.get('name', '')}\n{p.get('title', '')}\n{p.get('company', '')}".strip()
                 sig_block = raw_sig.strip()
-                sender_name = p.get("name") or "Growth Team"
-                sender_title = p.get("title") or "Solutions Specialist"
-                sender_company = p.get("company") or os.getenv("COMPANY_NAME", "Enterprise Solutions")
+                sender_name = p.get("name") or ""
+                sender_title = p.get("title") or ""
+                sender_company = p.get("company") or os.getenv("COMPANY_NAME", "")
             else:
                 raw_sig = getattr(p, "raw_content", "") or ""
                 if not raw_sig and hasattr(p, "render_signature"):
@@ -98,14 +114,17 @@ class OutreachEngine:
                 elif not raw_sig and (getattr(p, "name", None) or getattr(p, "title", None)):
                     raw_sig = f"{getattr(p, 'name', '')}\n{getattr(p, 'title', '')}\n{getattr(p, 'company', '')}".strip()
                 sig_block = raw_sig.strip()
-                sender_name = getattr(p, "name", "Growth Team")
-                sender_title = getattr(p, "title", "Solutions Specialist")
-                sender_company = getattr(p, "company", os.getenv("COMPANY_NAME", "Enterprise Solutions"))
+                sender_name = getattr(p, "name", "")
+                sender_title = getattr(p, "title", "")
+                sender_company = getattr(p, "company", os.getenv("COMPANY_NAME", ""))
         else:
-            sender_name = lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or "Growth Team"
-            sender_title = lead_data.get("sender_title") or "Solutions Specialist"
-            sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or "Enterprise Solutions"
-            sig_block = lead_data.get("signature_text") or f"Sincerely,\n{sender_name}\n{sender_title}, {sender_company}"
+            sender_name = lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or ""
+            if str(sender_name).strip().lower() == "test":
+                sender_name = ""
+            sender_title = lead_data.get("sender_title") or ""
+            sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or ""
+            sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
+            sig_block = lead_data.get("signature_text") or ("\n".join(sig_lines) if sig_lines else "")
 
         custom_tpl = lead_data.get("custom_template")
         if custom_tpl and step == 1:
@@ -115,26 +134,43 @@ class OutreachEngine:
             if not sig_block and hasattr(custom_tpl, "render_signature"):
                 sig_block = custom_tpl.render_signature()
 
+            if not sig_block or sig_block.strip().lower() == "test":
+                sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
+                sig_block = "\n".join(sig_lines) if sig_lines else ""
+
+            # Clean location in subject/body if no real city is detected
+            if not has_real_city:
+                subj = subj.replace(" in {{location}}", f" - {company_name}").replace(" in {city}", f" - {company_name}")
+                subj = subj.replace("{{location}}", company_name).replace("{city}", company_name)
+                bdy = bdy.replace(" located in {{location}}", "").replace(" in {{location}}", "")
+                bdy = bdy.replace(" located in {city}", "").replace(" in {city}", "")
+                bdy = bdy.replace("{{location}}", company_name).replace("{city}", company_name)
+            else:
+                subj = subj.replace("{{location}}", city).replace("{city}", city)
+                bdy = bdy.replace("{{location}}", city).replace("{city}", city)
+
+            # Prevent robotic "Dear there" greeting leaks
+            bdy = bdy.replace("Dear there,", f"Hi {contact_person},").replace("Dear there", f"Hi {contact_person}")
+            bdy = bdy.replace("Dear {{contact_person}}", f"Hi {contact_person}")
+
             replacements = {
                 "{{company_name}}": company_name,
                 "{{business_name}}": company_name,
                 "{{contact_person}}": contact_person,
-                "{{location}}": city,
-                "{{address}}": city,
+                "{{address}}": city or company_name,
                 "{{website}}": lead_data.get("website") or "",
                 "{{domain}}": lead_data.get("website") or "",
                 "{{phone}}": lead_data.get("phone") or "",
                 "{{primary_gap}}": f" ({primary_gap})" if primary_gap else "",
                 "{{why_they_need_us}}": lead_data.get("why_they_need_us") or primary_gap,
-                "{{what_they_need}}": lead_data.get("what_they_need") or "Modern Lead Funnel & CRM",
-                "{{matched_service}}": lead_data.get("matched_service") or "Enterprise Solutions",
+                "{{what_they_need}}": lead_data.get("what_they_need") or "",
+                "{{matched_service}}": lead_data.get("matched_service") or "",
                 "{{signature}}": sig_block,
                 "{{sender_name}}": sender_name,
                 "{{sender_title}}": sender_title,
                 "{{sender_company}}": sender_company,
                 "{company_name}": company_name,
                 "{contact_person}": contact_person,
-                "{city}": city,
                 "{primary_gap}": primary_gap,
                 "{sender_name}": sender_name,
                 "{sender_title}": sender_title,
@@ -143,42 +179,51 @@ class OutreachEngine:
             for tag, val in replacements.items():
                 subj = subj.replace(tag, str(val))
                 bdy = bdy.replace(tag, str(val))
+            
+            # Post-cleanup: Remove accidental double placeholders or punctuation
+            subj = subj.replace("in your city", company_name).replace("your city", company_name).strip()
+            bdy = bdy.replace("in your city", f"in {city}" if has_real_city else "").replace("..).", ".)")
             return subj, bdy
 
         if any(w in industry for w in ["dental", "clinic", "health", "medical", "doctor", "care"]):
             value_pitch = "increase direct patient bookings and modernize your digital inquiry capture"
-            call_to_action = f"preview the patient acquisition audit we prepared specifically for {company_name}"
+        matched_svc = lead_data.get("matched_service") or ""
+        has_no_website = bool("Zero official website" in str(primary_gap) or "NO_WEBSITE" in str(lead_data.get("why_they_need_us") or ""))
+
+        if has_no_website:
+            value_pitch = f"launch a high-converting branded website and automated client inquiry portal tailored for your {industry or 'business'}"
+            call_to_action = f"see the live interactive software demo and portal prototype we modeled for {company_name}"
+        elif any(w in industry for w in ["clinic", "doctor", "dental", "dentist", "healthcare", "therapy"]):
+            value_pitch = f"streamline patient bookings and automate appointment coordination with {matched_svc or 'custom clinic software'}"
+            call_to_action = f"see a 5-minute interactive live software demo and patient acquisition system for {company_name}"
         elif any(w in industry for w in ["real estate", "property", "developer", "realty", "builder"]):
-            value_pitch = "capture high-ticket property buyers and instantly qualify inquiry leads"
-            call_to_action = f"see the tailored property buyer funnel recommendations for {company_name}"
+            value_pitch = f"capture high-intent property buyers and automate lead follow-ups with {matched_svc or 'custom real estate CRM software'}"
+            call_to_action = f"walk through a 5-minute interactive live software demo and buyer acquisition funnel for {company_name}"
         elif any(w in industry for w in ["restaurant", "cafe", "food", "dining", "catering"]):
-            value_pitch = "drive direct table reservations and WhatsApp customer inquiries without intermediary commissions"
-            call_to_action = f"check out the digital reservation flow we modeled for {company_name}"
+            value_pitch = f"drive direct table reservations and WhatsApp customer inquiries with {matched_svc or 'automated ordering software'}"
+            call_to_action = f"check out the 5-minute live software demo we modeled for {company_name}"
         elif any(w in industry for w in ["roofing", "contractor", "plumbing", "hvac", "solar", "construction"]):
-            value_pitch = "convert local emergency searchers into high-margin estimate requests"
-            call_to_action = f"see the estimate capture analysis we put together for {company_name}"
-        elif any(w in industry for w in ["law", "legal", "attorney", "accounting", "consulting"]):
-            value_pitch = "enhance client trust and capture premium retainer consultations"
-            call_to_action = f"review the client intake optimization audit for {company_name}"
+            value_pitch = f"convert local project inquiries and automate quotes with {matched_svc or 'contractor management software'}"
+            call_to_action = f"see the 5-minute live software demonstration prepared for {company_name}"
         else:
-            value_pitch = "resolve key conversion bottlenecks and significantly increase your monthly inbound client inquiries"
-            call_to_action = f"see the free growth audit report we prepared for {company_name}"
+            value_pitch = f"automate client acquisition and eliminate manual operational delays with {matched_svc or 'specialized growth software'}"
+            call_to_action = f"review a brief 5-minute interactive live software demo prepared for {company_name}"
 
         if step == 2:
-            subject = f"Following up: Growth opportunity for {company_name}"
+            subject = f"Following up: Live Demo & Solution for {company_name}"
             body = (
                 f"Hi {contact_person},\n\n"
                 f"Just following up on my previous note regarding {company_name}. I know you're busy managing operations in {city}.\n\n"
-                f"Did you have a chance to review our observation regarding {primary_gap}?\n\n"
-                f"We help businesses in your space {value_pitch}. Happy to email over a concise 1-page summary if that's more convenient.\n\n"
+                f"We specialize in helping businesses in your space {value_pitch}.\n\n"
+                f"Would you be open to a quick 5-minute chat this week to walk through the live demo, or would you prefer a concise 1-page overview by email?\n\n"
                 f"{sig_block}"
             )
         elif step == 3:
             subject = f"Permission to close your file, {contact_person}?"
             body = (
                 f"Hi {contact_person},\n\n"
-                f"I haven't heard back, so I assume addressing {primary_gap} isn't an active priority for {company_name} right now.\n\n"
-                f"I won't take up any more of your time. If you ever want to explore modernizing this in the future to {value_pitch}, feel free to reach out anytime.\n\n"
+                f"I haven't heard back, so I assume modernizing systems to {value_pitch} isn't an active priority for {company_name} right now.\n\n"
+                f"I won't take up any more of your time. If you ever want to see the interactive demo in the future, feel free to reach out anytime.\n\n"
                 f"Wishing {company_name} continued success!\n\n"
                 f"{sig_block}"
             )
@@ -186,10 +231,10 @@ class OutreachEngine:
             subject = f"Quick question regarding {company_name} ({city})"
             body = (
                 f"Hi {contact_person},\n\n"
-                f"I was researching established businesses in {city} and came across {company_name}.\n\n"
-                f"While reviewing your digital touchpoints online, I noticed a key opportunity regarding {primary_gap}.\n\n"
-                f"We recently helped similar businesses in your industry {value_pitch} by over 30% within 48 hours.\n\n"
-                f"Would you be open to a brief 3-minute chat this week to {call_to_action}?\n\n"
+                f"I was researching top businesses in {city} and came across {company_name}.\n\n"
+                f"We develop specialized systems and marketing solutions to help companies in your industry {value_pitch}.\n\n"
+                f"We currently have a ready 5-minute interactive live software demo showcasing exactly how this works.\n\n"
+                f"Would you be open to a brief 5-minute call this Thursday to {call_to_action}?\n\n"
                 f"{sig_block}"
             )
 
@@ -304,6 +349,29 @@ class OutreachEngine:
         except Exception as e:
             logger.error(f"Error fetching active SMTP inboxes from DB: {e}")
 
+        # Seed in-memory INBOX_STATS from today's persistent DB logs
+        try:
+            from app.models.autopilot import EmailOutreachLog
+            now_utc = datetime.now(timezone.utc)
+            t_start = datetime(now_utc.year, now_utc.month, now_utc.day, tzinfo=timezone.utc)
+            s_stmt = select(EmailOutreachLog).where(
+                EmailOutreachLog.sent_at >= t_start,
+                EmailOutreachLog.status.in_(["SENT", "MANUAL_REPLY_SENT", "DELIVERED"])
+            )
+            if db is not None:
+                p_logs = (await db.execute(s_stmt)).scalars().all()
+            else:
+                from app.db.session import AsyncSessionLocal
+                async with AsyncSessionLocal() as s_sess:
+                    p_logs = (await s_sess.execute(s_stmt)).scalars().all()
+
+            for ib in raw_inboxes:
+                ib_str = str(ib.id)
+                db_c = sum(1 for l in p_logs if ib_str in (l.error_message or "") or (ib.from_email and ib.from_email.lower() in (l.error_message or "").lower()))
+                cls.INBOX_STATS[ib_str] = max(cls.INBOX_STATS.get(ib_str, 0), db_c)
+        except Exception:
+            pass
+
         available_inboxes = []
         for ib in raw_inboxes:
             sent_today = cls.INBOX_STATS.get(str(ib.id), 0)
@@ -347,12 +415,21 @@ class OutreachEngine:
     @classmethod
     def get_active_smtp_inboxes(cls) -> List[Dict[str, Any]]:
         inboxes = []
-        base_host = os.getenv("SMTP_HOST")
-        base_user = os.getenv("SMTP_USER")
-        base_pass = os.getenv("SMTP_PASSWORD")
-        base_port = int(os.getenv("SMTP_PORT", "587"))
-        base_from = os.getenv("SMTP_FROM_EMAIL", base_user or "outreach@leadgen.local")
-        base_name = os.getenv("SMTP_FROM_NAME", "Growth Team")
+        try:
+            from app.core.config import settings
+            base_host = settings.SMTP_HOST or os.getenv("SMTP_HOST")
+            base_user = settings.SMTP_USER or os.getenv("SMTP_USER")
+            base_pass = settings.SMTP_PASSWORD or os.getenv("SMTP_PASSWORD")
+            base_port = settings.SMTP_PORT or int(os.getenv("SMTP_PORT", "587"))
+            base_from = settings.SMTP_FROM_EMAIL or os.getenv("SMTP_FROM_EMAIL", base_user or "")
+            base_name = settings.SMTP_FROM_NAME or os.getenv("SMTP_FROM_NAME", "")
+        except Exception:
+            base_host = os.getenv("SMTP_HOST")
+            base_user = os.getenv("SMTP_USER")
+            base_pass = os.getenv("SMTP_PASSWORD")
+            base_port = int(os.getenv("SMTP_PORT", "587"))
+            base_from = os.getenv("SMTP_FROM_EMAIL", base_user or "")
+            base_name = os.getenv("SMTP_FROM_NAME", "")
 
         if base_host and base_user:
             inboxes.append({
@@ -371,8 +448,8 @@ class OutreachEngine:
             u = os.getenv(f"SMTP_USER_{i}")
             p = os.getenv(f"SMTP_PASSWORD_{i}")
             port = int(os.getenv(f"SMTP_PORT_{i}", "587"))
-            fe = os.getenv(f"SMTP_FROM_EMAIL_{i}", u or f"inbox{i}@leadgen.local")
-            fn = os.getenv(f"SMTP_FROM_NAME_{i}", os.getenv("SMTP_FROM_NAME", f"Growth Specialist #{i}"))
+            fe = os.getenv(f"SMTP_FROM_EMAIL_{i}", u or "")
+            fn = os.getenv(f"SMTP_FROM_NAME_{i}", os.getenv("SMTP_FROM_NAME", ""))
 
             if h and u:
                 inboxes.append({
@@ -395,17 +472,29 @@ class OutreachEngine:
         subject: str,
         body: str,
         dry_run: bool = False,
-        db: Optional[Any] = None
+        db: Optional[Any] = None,
+        account_id: Optional[str] = None
     ) -> Tuple[bool, str]:
         inboxes = await cls.get_active_inboxes(db=db)
+
+        if not inboxes:
+            inboxes = cls.get_active_smtp_inboxes()
 
         if dry_run or not inboxes:
             logger.info(f"[OUTREACH SIMULATOR] Dispatching to {recipient_email} | Subject: '{subject}' | (Simulated 200 OK)")
             await asyncio.sleep(0.5)
             return True, "Simulated delivery successful (Dry-Run Mode)"
 
-        # Randomly choose one active inbox from available inboxes for load balancing
-        selected_inbox = random.choice(inboxes)
+        selected_inbox = None
+        if account_id:
+            selected_inbox = next((ib for ib in inboxes if str(ib.get("id")) == str(account_id)), None)
+            if not selected_inbox:
+                selected_inbox = next((ib for ib in inboxes if str(ib.get("from_email")) == str(account_id) or str(ib.get("user")) == str(account_id)), None)
+
+        # Sequential Round-Robin sequence to preserve sender reputation across inboxes
+        if not selected_inbox and inboxes:
+            selected_inbox = inboxes[cls._inbox_index % len(inboxes)]
+            cls._inbox_index = (cls._inbox_index + 1) % len(inboxes)
 
         smtp_host = selected_inbox["host"]
         smtp_port = selected_inbox["port"]
@@ -446,18 +535,96 @@ class OutreachEngine:
         return await loop.run_in_executor(None, _send)
 
     @classmethod
-    def classify_reply_sentiment(cls, reply_text: str) -> Tuple[str, str]:
-        if not reply_text:
-            return "NEUTRAL", "Empty reply content"
+    async def classify_reply_sentiment(cls, reply_text: str) -> ClassificationResult:
+        """
+        Reply intent classifier with dual-engine intelligence:
+          1. Tries OpenClaw AI first (OpenClaw's active LLM agent via WebSocket / API).
+          2. If OpenClaw is offline or fails, falls back instantly to deterministic Rule Logic.
+        Returns a ClassificationResult exposing label, reason, and source ('OPENCLAW' | 'RULE_LOGIC').
+        """
+        if not reply_text or not reply_text.strip():
+            return ClassificationResult("NEUTRAL", "Empty reply — no content to classify", "RULE_LOGIC")
 
-        clean = reply_text.lower()
+        clean = reply_text.strip().lower()
 
-        for neg in cls.NEGATIVE_KEYWORDS:
-            if neg in clean:
-                return "NEGATIVE", f"Opt-out or negative intent detected: '{neg}'"
+        # ── 1. Try OpenClaw AI Deep Reasoning First ───────────────────────────
+        try:
+            from app.services.ai_client import AIClient
 
-        for pos in cls.POSITIVE_KEYWORDS:
-            if pos in clean:
-                return "POSITIVE", f"Hot lead interest signal detected: '{pos}'"
+            system_prompt = (
+                "You are an expert B2B sales reply analyzer. "
+                "Your job is to read a reply to a cold outreach email and classify the prospect's intent.\n\n"
+                "Classification rules:\n"
+                "- HOT_LEAD: The prospect shows genuine interest. They ask about pricing, want a call/demo, "
+                "ask for more details, say yes/sure/sounds good, or want to schedule something.\n"
+                "- NEUTRAL: The prospect is neither clearly interested nor rejecting. "
+                "They say 'maybe later', 'let me think', ask a generic question, or give a non-committal response.\n"
+                "- REJECTED: The prospect clearly does not want further contact. "
+                "They say not interested, no needed, unsubscribe, stop, wrong person, leave me alone, spam, or similar.\n\n"
+                "Important: Understand full context, not just keywords. Sarcasm, politeness, and ambiguity should be handled intelligently.\n\n"
+                "Respond ONLY with a valid JSON object in this exact format:\n"
+                '{"label": "HOT_LEAD" | "NEUTRAL" | "REJECTED", "reason": "one concise sentence explaining why"}'
+            )
 
-        return "NEUTRAL", "General response or inquiry"
+            user_prompt = (
+                f"Classify the intent of this cold email reply:\n\n"
+                f"---\n{reply_text.strip()[:1500]}\n---"
+            )
+
+            ai = AIClient(timeout=12.0)
+            result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+
+            if isinstance(result, dict) and result.get("label"):
+                source = result.get("_source", "OPENCLAW")
+                # If it was actually evaluated by OpenClaw / Cloud LLM
+                if source != "RULE_LOGIC":
+                    label = str(result.get("label", "")).strip().upper()
+                    reason = str(result.get("reason", "OpenClaw AI classification")).strip()
+                    if label in ("HOT_LEAD", "NEUTRAL", "REJECTED"):
+                        logger.info(f"[OpenClaw AI Classifier] Result: {label} | Reason: {reason} (Engine: {source})")
+                        return ClassificationResult(label, reason, "OPENCLAW")
+
+        except Exception as e:
+            logger.warning(f"[Reply Classifier] OpenClaw AI unreachable or failed ({e}). Falling back to Rule Logic.")
+
+        # ── 2. Fallback: High-Precision Semantic Pattern Matching & Rule Logic ──
+        try:
+            logger.info("[Reply Classifier] Executing Deterministic Rule Logic Engine.")
+
+            # Check for explicit rejections
+            rejection_indicators = [
+                "no needed", "not needed", "no need", "dont need", "don't need", "doesn't need", "does not need",
+                "not interested", "no thanks", "no thank you", "no, thanks", "no, thank you",
+                "unsubscribe", "remove me", "take me off", "stop emailing", "please stop",
+                "do not contact", "dont contact", "don't contact", "leave me alone",
+                "never email", "wrong person", "wrong email", "not looking", "not required",
+                "not for us", "we already have", "we have a vendor", "we have someone",
+                "opt out", "spam", "please remove", "cease and desist"
+            ]
+            for indicator in rejection_indicators:
+                if indicator in clean:
+                    logger.info(f"[Rule Logic Classifier] Matched REJECTED on: '{indicator}'")
+                    return ClassificationResult("REJECTED", f"Prospect explicitly declined ('{indicator}')", "RULE_LOGIC")
+
+            # Check for explicit positive interest
+            hot_indicators = [
+                "great, i want to talk", "i want to talk", "want to talk", "call me",
+                "let's talk", "lets talk", "let's chat", "lets chat",
+                "interested", "schedule a call", "schedule a demo", "send pricing",
+                "how much", "what is the price", "what is the cost",
+                "send details", "send more info", "tell me more", "share details",
+                "sounds good", "yes please", "yes, please", "sure, send", "book a demo",
+                "send a proposal", "send quote", "free to talk", "available for a call",
+                "let's connect", "lets connect"
+            ]
+            for indicator in hot_indicators:
+                if indicator in clean:
+                    logger.info(f"[Rule Logic Classifier] Matched HOT_LEAD on: '{indicator}'")
+                    return ClassificationResult("HOT_LEAD", f"Prospect showed clear interest ('{indicator}')", "RULE_LOGIC")
+
+            return ClassificationResult("NEUTRAL", "Prospect reply is neutral / non-committal", "RULE_LOGIC")
+
+        except Exception as fallback_err:
+            logger.error(f"[Reply Classifier] Rule engine fail-safe triggered: {fallback_err}")
+            # Ultimate safeguard: treat as NEUTRAL so email is safely preserved in inbox
+            return ClassificationResult("NEUTRAL", "Safe default: Review manually in inbox", "RULE_LOGIC")

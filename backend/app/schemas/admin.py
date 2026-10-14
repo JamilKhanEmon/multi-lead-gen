@@ -38,12 +38,12 @@ class EmailTemplateResponse(BaseModel):
 class EmailTemplateUpdate(BaseModel):
     subject: str
     body: str
-    sender_name: Optional[str] = "Jamil Khan"
-    sender_title: Optional[str] = "Senior Solutions Consultant"
-    sender_company: Optional[str] = "Multi-Lead Gen AI"
-    sender_email: Optional[str] = "contact@leadgen.local"
-    sender_phone: Optional[str] = "+880 1700-000000"
-    sender_website: Optional[str] = "https://leadgen.local"
+    sender_name: Optional[str] = ""
+    sender_title: Optional[str] = ""
+    sender_company: Optional[str] = ""
+    sender_email: Optional[str] = ""
+    sender_phone: Optional[str] = ""
+    sender_website: Optional[str] = ""
     sign_off: Optional[str] = "Sincerely,"
     signature_text: Optional[str] = ""
     is_active: Optional[bool] = True
@@ -59,12 +59,12 @@ class EmailPreviewRequest(BaseModel):
     sender_website: Optional[str] = None
     sign_off: Optional[str] = None
     signature_text: Optional[str] = None
-    company_name: Optional[str] = "Tropical Homes Ltd."
+    company_name: Optional[str] = "Acme Enterprise"
     contact_person: Optional[str] = "Managing Director"
-    location: Optional[str] = "Gulshan-2, Dhaka"
-    website: Optional[str] = "tropicalhomesltd.com"
-    phone: Optional[str] = "+880 1711-223344"
-    primary_gap: Optional[str] = "specifically mobile responsiveness and automated WhatsApp lead booking"
+    location: Optional[str] = "Metro City"
+    website: Optional[str] = "acme.example.com"
+    phone: Optional[str] = "+1 555-0199"
+    primary_gap: Optional[str] = "specifically mobile responsiveness and automated lead capture"
 
 class PersonaSignatureCreate(BaseModel):
     title: str = "Primary Signature"
@@ -92,6 +92,7 @@ class CompanyKBResponse(BaseModel):
     contact_phone: Optional[str] = None
     contact_email: Optional[str] = None
     website_url: Optional[str] = None
+    master_kb_notes: Optional[str] = None
     services_json: List[Dict[str, Any]]
     is_active: bool
     created_at: Optional[str] = None
@@ -104,6 +105,8 @@ class CompanyKBUpdate(BaseModel):
     contact_phone: Optional[str] = None
     contact_email: Optional[str] = None
     website_url: Optional[str] = None
+    master_kb_notes: Optional[str] = None
     services_json: Optional[List[Dict[str, Any]]] = None
     is_active: Optional[bool] = None
+
 

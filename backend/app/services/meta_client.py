@@ -41,11 +41,12 @@ class MetaClient:
                 retargeting_threshold_pct=retargeting_threshold_pct,
             )
         else:
-            return self._simulate_sandbox_publish(
-                name=name,
-                budget_daily_bdt=budget_daily_bdt,
-                retargeting_threshold_pct=retargeting_threshold_pct,
-            )
+            return {
+                "success": False,
+                "error": "CREDENTIALS_MISSING",
+                "mode": "CREDENTIALS_REQUIRED",
+                "message": "Meta credentials (META_ACCESS_TOKEN and META_AD_ACCOUNT_ID) must be configured in .env to publish ads to Meta.",
+            }
 
     async def _publish_to_live_meta_api(
         self,
@@ -71,7 +72,11 @@ class MetaClient:
             resp = await client.post(url, json=campaign_payload, headers=headers)
             if resp.status_code != 200:
                 logger.error(f"Meta API Campaign error: {resp.text}")
-                return self._simulate_sandbox_publish(name, budget_daily_bdt, retargeting_threshold_pct)
+                return {
+                    "success": False,
+                    "error": "META_API_REJECTED",
+                    "message": f"Meta Graph API error: {resp.text}",
+                }
 
             data = resp.json()
             campaign_id = data.get("id")
@@ -111,44 +116,24 @@ class MetaClient:
             logger.error(f"Failed to delete Meta campaign: {e}")
             return False
 
-    def _simulate_sandbox_publish(
-        self,
-        name: str,
-        budget_daily_bdt: float,
-        retargeting_threshold_pct: int,
-    ) -> Dict[str, Any]:
-        campaign_id = f"meta_cmp_{uuid.uuid4().hex[:12]}"
-        adset_cold = f"meta_adset_cold_{uuid.uuid4().hex[:10]}"
-        adset_retarget = f"meta_adset_retarget_{uuid.uuid4().hex[:10]}"
-
-        return {
-            "success": True,
-            "meta_campaign_id": campaign_id,
-            "meta_adset_cold_id": adset_cold,
-            "meta_adset_retarget_id": adset_retarget,
-            "mode": "META_SANDBOX_ACTIVE",
-            "status": "ACTIVE",
-            "message": "Campaign successfully deployed to Meta. Cold Video Ad and 50% ThruPlay Retargeting rules active.",
-        }
-
     @classmethod
     def calculate_live_metrics(cls, campaign: Any) -> Dict[str, Any]:
         current_metrics = campaign.metrics or {}
         if campaign.status != "ACTIVE":
             return current_metrics
 
-        spend_val = round(current_metrics.get("spend_usd", current_metrics.get("spend_bdt", 0.0)) + (campaign.budget_daily_bdt * 0.05), 2)
-        video_views = int(current_metrics.get("video_views", 0) + 42)
-        thruplays = int(video_views * 0.48)
-        qualified_hot = int(thruplays * (campaign.retargeting_threshold_pct / 100.0) * 0.85)
-        whatsapp_clicks = int(current_metrics.get("whatsapp_clicks", 0) + max(1, int(qualified_hot * 0.08)))
-        conversations = int(whatsapp_clicks * 0.65)
-        cpl = round(spend_val / max(1, conversations), 2)
+        spend_val = float(current_metrics.get("spend_usd", current_metrics.get("spend_bdt", 0.0)))
+        video_views = int(current_metrics.get("video_views", 0))
+        thruplays = int(current_metrics.get("thruplays_15s", 0))
+        qualified_hot = int(current_metrics.get("qualified_50pct_viewers", 0))
+        whatsapp_clicks = int(current_metrics.get("whatsapp_clicks", 0))
+        conversations = int(current_metrics.get("conversations_started", 0))
+        cpl = round(spend_val / max(1, conversations), 2) if conversations > 0 else 0.0
 
         return {
             "spend_usd": spend_val,
             "spend_bdt": spend_val,
-            "impressions": int(video_views * 1.8),
+            "impressions": int(current_metrics.get("impressions", 0)),
             "video_views": video_views,
             "thruplays_15s": thruplays,
             "qualified_50pct_viewers": qualified_hot,

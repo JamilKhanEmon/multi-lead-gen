@@ -12,15 +12,15 @@ from app.models import (
     Business, BusinessLocation, Evidence, Lead, LeadScore,
     ParameterResult, ResearchRun, ResearchJob,
 )
-from app.services.openclaw_client import OpenClawClient, MockOpenClawClient
-from app.services.ollama_client import OllamaClient, MockOllamaClient
+from app.services.openclaw_client import OpenClawClient
+from app.services.ai_client import AIClient
 from app.engine.deduplication import DeduplicationEngine
 from app.engine.parameter_engine import ParameterEngine
 from app.engine.evidence_engine import EvidenceEngine
 from app.engine.service_matcher import ServiceMatcher
 from app.engine.qualification_engine import QualificationEngine
 from app.engine.discovery_optimizer import DiscoveryOptimizer
-from app.engine.fit_gate import FitGateEngine
+from app.engine.fit_gate import FitGateEngine, is_appointment_niche
 import redis.asyncio as aioredis
 
 async def publish_progress_event(event_type: str, data: Dict[str, Any]):
@@ -56,7 +56,7 @@ async def handle_discover_businesses(
 
     industry = payload.get("industry", "Business").strip()
     location = payload.get("location", "").strip()
-    company_limit = payload.get("company_limit", 20)
+    company_limit = payload.get("company_limit", 0)
 
     logger.info(f"Running business discovery for {industry} in {location}")
 
@@ -75,12 +75,23 @@ async def handle_discover_businesses(
                 "location": location,
                 "company_limit": company_limit,
                 "business_type_override": payload.get("business_type_override"),
+                "sub_areas": payload.get("sub_areas"),
             },
         )
     except Exception as e:
-        logger.warning(f"OpenClaw discovery error, falling back to mock discovery: {e}")
-        mock_oc = MockOpenClawClient()
-        discovery_result = await mock_oc.run_skill("business-discovery", parameters=payload)
+        logger.warning(f"OpenClaw discovery error on initial query ({e}). Retrying with clean live search...")
+        try:
+            discovery_result = await openclaw_client.run_skill(
+                "business-discovery",
+                parameters={
+                    "industry": industry,
+                    "location": location,
+                    "company_limit": company_limit,
+                },
+            )
+        except Exception as retry_e:
+            logger.error(f"Live discovery failed after retry: {retry_e}")
+            discovery_result = {"discovered_companies": []}
 
     companies = discovery_result.get("discovered_companies", [])
     logger.info(f"Discovered {len(companies)} candidate companies")
@@ -98,21 +109,40 @@ async def handle_discover_businesses(
     async with AsyncSessionLocal() as session:
         for comp in companies:
             raw_name = comp.get("canonical_name", "").strip()
-            raw_domain = comp.get("website")
+            raw_domain = comp.get("domain") or comp.get("website")
             raw_phone = comp.get("phone")
+            raw_fb = comp.get("facebook_url")
 
             if not raw_name:
                 continue
+
+            # Clean and sanitize raw_name against SEO keyword stuffing & runaway titles
+            if raw_name.count(",") >= 2 or len(raw_name) > 80:
+                if raw_domain and "facebook.com" not in raw_domain:
+                    dom_clean = raw_domain.replace("https://", "").replace("http://", "").split("/")[0].replace("www.", "")
+                    raw_name = dom_clean.split(".")[0].replace("-", " ").title()
+                else:
+                    raw_name = raw_name.split(",")[0].split("|")[0].split("-")[0].strip()[:80]
+            raw_name = raw_name[:150].strip()
+
+            # Check if this candidate is a social-only business (e.g. found via Facebook page)
+            if raw_domain and "facebook.com" in raw_domain.lower():
+                if not raw_fb:
+                    raw_fb = raw_domain
+                raw_domain = None
+                comp["website"] = None
+                comp["domain"] = None
+                comp["facebook_url"] = raw_fb
+                comp["is_social_only"] = True
 
             raw_name_l = raw_name.lower().strip()
             if any(bad in raw_name_l for bad in ["facebook.com", "instagram.com", "google.com", "youtube.com", "linkedin.com", "twitter.com"]) or raw_name_l in ["facebook", "instagram", "google", "meta"]:
                 logger.info(f"TaskDiscover: Discarding generic platform candidate '{raw_name}'")
                 continue
 
-            if DeduplicationEngine.is_generic_platform(raw_domain):
-                logger.info(f"TaskDiscover: Stripping generic platform website '{raw_domain}' from '{raw_name}'")
-                raw_domain = None
-                comp["website"] = None
+            if raw_domain and (DeduplicationEngine.is_generic_platform(raw_domain) or DeduplicationEngine.is_directory_or_aggregator(raw_domain, raw_name)):
+                logger.info(f"TaskDiscover: Discarding directory/aggregator platform candidate '{raw_name}' ({raw_domain})")
+                continue
 
             is_valid, reason = DiscoveryOptimizer.validate_candidate(comp, val_plan)
             if not is_valid:
@@ -125,6 +155,11 @@ async def handle_discover_businesses(
 
             norm_domain = DeduplicationEngine.normalize_domain(raw_domain)
             norm_phone = DeduplicationEngine.normalize_phone(raw_phone)
+            clean_email = (comp.get("email") or "").strip()[:200] or None
+            clean_address = (comp.get("address") or "").strip() or None
+            clean_btype = (comp.get("business_type") or payload.get("business_type_override") or "other")[:90]
+            clean_city = (comp.get("city") or city or location or "")[:90] or None
+            clean_country = (comp.get("country") or country or "")[:90] or None
 
             existing_biz = None
             if norm_domain:
@@ -144,23 +179,23 @@ async def handle_discover_businesses(
 
             if not existing_biz:
                 biz = Business(
-                    canonical_name=raw_name,
-                    domain=norm_domain,
-                    phone=norm_phone,
-                    email=comp.get("email"),
-                    address=comp.get("address"),
-                    business_type=comp.get("business_type", payload.get("business_type_override", "other")),
+                    canonical_name=raw_name[:200],
+                    domain=norm_domain[:200] if norm_domain else None,
+                    phone=norm_phone[:45] if norm_phone else None,
+                    email=clean_email,
+                    address=clean_address,
+                    business_type=clean_btype,
                     metadata_json=comp,
                 )
                 session.add(biz)
                 await session.flush()
 
-                if comp.get("address") or location or city or comp.get("latitude") is not None:
+                if clean_address or location or city or comp.get("latitude") is not None:
                     loc = BusinessLocation(
                         business_id=biz.id,
-                        address=comp.get("address"),
-                        city=comp.get("city") or city or location,
-                        country=comp.get("country") or country or None,
+                        address=clean_address,
+                        city=clean_city,
+                        country=clean_country,
                         latitude=comp.get("latitude"),
                         longitude=comp.get("longitude"),
                     )
@@ -217,6 +252,8 @@ async def handle_discover_businesses(
                 "industry": industry,
                 "location": location,
                 "auto_mail_enabled": payload.get("auto_mail_enabled", True),
+                "analyze_website": payload.get("analyze_website", False),
+                "use_company_kb": payload.get("use_company_kb", True),
                 "positive_keywords": val_plan.get("positive_keywords", []),
                 "negative_keywords": val_plan.get("negative_keywords", []),
             },
@@ -237,7 +274,7 @@ async def handle_discover_businesses(
 async def handle_research_and_qualify(
     task_payload: Dict[str, Any],
     openclaw_client: OpenClawClient,
-    ollama_client: OllamaClient,
+    ollama_client: AIClient,
 ) -> Dict[str, Any]:
     payload = task_payload.get("payload", {})
     try:
@@ -284,7 +321,7 @@ async def handle_research_and_qualify(
 async def _execute_research_and_qualify(
     task_payload: Dict[str, Any],
     openclaw_client: OpenClawClient,
-    ollama_client: OllamaClient,
+    ollama_client: AIClient,
     business_id: uuid.UUID,
     run_id: uuid.UUID,
 ) -> Dict[str, Any]:
@@ -297,48 +334,70 @@ async def _execute_research_and_qualify(
 
     logger.info(f"Researching & Qualifying: {business_name} ({business_type}) [Depth: {depth}]")
 
-    website_data = {}
-    if not domain and business_name:
-        try:
-            from app.services.openclaw_client import LiveResearchEngine
-            resolved_dom = await LiveResearchEngine.resolve_domain_for_business(business_name, location)
-            if resolved_dom:
-                domain = resolved_dom
-                logger.info(f"Resolved live domain for {business_name}: {domain}")
-        except Exception as e:
-            logger.debug(f"Domain resolution error for {business_name}: {e}")
+    analyze_website = payload.get("analyze_website", False)
+    current_phone = payload.get("phone")
+    current_email = payload.get("email")
 
-    if domain:
-        target_url = f"https://{domain}"
-        try:
-            website_data = await openclaw_client.run_skill(
-                "website-research",
-                {"url": target_url, "canonical_name": business_name, "location": location}
-            )
-        except Exception as e:
-            logger.warning(f"OpenClaw website research fallback for {domain}: {e}")
-            website_data = {
-                "url": target_url,
-                "status": 500,
-                "is_accessible": False,
-                "title": business_name,
-                "mobile_responsive": None,
-                "has_whatsapp": False,
-                "has_online_booking": False,
-                "has_contact_form": False,
-                "broken_links_count": 0,
-                "extracted_phone": payload.get("phone"),
-                "extracted_email": payload.get("email"),
-                "facebook_url": None,
-                "instagram_url": None,
-                "linkedin_url": None,
-                "cms_platform": "Unknown",
-                "has_meta_pixel": False,
-                "has_google_analytics": False,
-                "contact_person": None,
-                "contact_title": None,
-                "rendered_by": "fallback",
-            }
+    target_url = f"https://{domain}" if domain else None
+    website_data = {
+        "url": target_url,
+        "is_accessible": True if domain else False,
+        "title": business_name,
+        "extracted_phone": current_phone,
+        "extracted_email": current_email,
+        "facebook_url": None,
+        "instagram_url": None,
+        "linkedin_url": None,
+        "cms_platform": "Unknown",
+        "has_meta_pixel": False,
+        "has_google_analytics": False,
+        "contact_person": None,
+        "contact_title": None,
+        "rendered_by": "direct" if domain else "none",
+    }
+
+    if analyze_website:
+        # Full deep technical website audit mode (when user explicitly checked the box)
+        if not domain and business_name:
+            try:
+                from app.services.openclaw_client import LiveResearchEngine
+                resolved_dom = await LiveResearchEngine.resolve_domain_for_business(business_name, location)
+                if resolved_dom:
+                    domain = resolved_dom
+                    logger.info(f"Resolved live domain for {business_name}: {domain}")
+            except Exception as e:
+                logger.debug(f"Domain resolution error for {business_name}: {e}")
+
+        if domain:
+            target_url = f"https://{domain}"
+            try:
+                website_data = await openclaw_client.run_skill(
+                    "website-research",
+                    {"url": target_url, "canonical_name": business_name, "location": location}
+                )
+            except Exception as e:
+                logger.warning(f"OpenClaw website research fallback for {domain}: {e}")
+    else:
+        # Social & Software Demo Mode: Skip heavy technical audit, but ALWAYS fetch lightweight contact info for cross-verification!
+        if domain:
+            logger.info(f"TaskResearch: Fetching official website contact info for multi-source cross-verification ('{business_name}')...")
+            try:
+                light_data = await openclaw_client.run_skill(
+                    "website-research",
+                    {"url": f"https://{domain}", "canonical_name": business_name, "location": location, "lightweight": True}
+                )
+                if light_data.get("extracted_phone"):
+                    website_data["extracted_phone"] = light_data["extracted_phone"]
+                if light_data.get("extracted_email"):
+                    website_data["extracted_email"] = light_data["extracted_email"]
+                if light_data.get("extracted_address"):
+                    website_data["extracted_address"] = light_data["extracted_address"]
+                for k in ["facebook_url", "instagram_url", "linkedin_url", "has_whatsapp"]:
+                    if light_data.get(k) is not None:
+                        website_data[k] = light_data[k]
+            except Exception as e:
+                logger.debug(f"Lightweight contact check notice for {domain}: {e}")
+
 
     current_phone = website_data.get("extracted_phone") or payload.get("phone")
     current_email = website_data.get("extracted_email") or payload.get("email")
@@ -365,71 +424,229 @@ async def _execute_research_and_qualify(
     gmaps_url = f"https://www.google.com/maps/search/{maps_query}"
     gsearch_url = f"https://www.google.com/search?q={maps_query}"
 
+    social_res: Dict[str, Any] = {}
+    ads_res: Dict[str, Any] = {}
+    reviews_res: Dict[str, Any] = {}
+
+    # 1. LIVE SOCIAL RESEARCH (Facebook page, post recency & dormancy)
+    try:
+        social_res = await openclaw_client.run_skill(
+            "social-research",
+            {
+                "canonical_name": business_name,
+                "domain": domain,
+                "facebook_url": website_data.get("facebook_url"),
+                "location": location,
+            }
+        )
+        if social_res.get("facebook_url") and not website_data.get("facebook_url"):
+            website_data["facebook_url"] = social_res["facebook_url"]
+        website_data["social_is_dormant"] = social_res.get("is_dormant", False)
+        website_data["social_post_recency"] = social_res.get("post_recency_text")
+        if social_res.get("evidence_text"):
+            website_data["social_evidence"] = social_res["evidence_text"]
+    except Exception as e:
+        logger.debug(f"Live social research notice for {business_name}: {e}")
+
+    # 2. LIVE ADS RESEARCH (Meta Ad Library Proof)
+    try:
+        ads_res = await openclaw_client.run_skill(
+            "ads-research",
+            {
+                "canonical_name": business_name,
+                "domain": domain,
+                "has_meta_pixel": website_data.get("has_meta_pixel", False),
+            }
+        )
+        if ads_res.get("meta_ads_url"):
+            website_data["meta_ads_url"] = ads_res["meta_ads_url"]
+    except Exception as e:
+        logger.debug(f"Live ads research notice for {business_name}: {e}")
+
+    # 3. LIVE REVIEWS & MAPS RESEARCH
+    raw_rating = payload.get("rating") or payload.get("rating_score")
+    raw_reviews = payload.get("review_count") or payload.get("reviews_count")
+    try:
+        reviews_res = await openclaw_client.run_skill(
+            "review-research",
+            {
+                "business_name": business_name,
+                "location": location,
+                "rating": float(raw_rating) if raw_rating else None,
+                "review_count": int(raw_reviews) if raw_reviews else None,
+            }
+        )
+        if reviews_res.get("google_maps_url"):
+            website_data["google_maps_url"] = reviews_res["google_maps_url"]
+    except Exception as e:
+        logger.debug(f"Live review research notice for {business_name}: {e}")
+
+    # 4-Way Multi-Source Cross-Verification Consensus
+    discovery_contact = {
+        "phone": payload.get("phone"),
+        "email": payload.get("email"),
+        "address": payload.get("address"),
+        "source_url": website_data.get("google_maps_url") or gmaps_url,
+    }
+    website_contact = {
+        "extracted_phone": website_data.get("extracted_phone"),
+        "extracted_email": website_data.get("extracted_email"),
+        "extracted_address": website_data.get("extracted_address"),
+        "has_whatsapp": website_data.get("has_whatsapp", False),
+        "source_url": target_url if target_url else (f"https://{domain}" if domain else None),
+    }
+    social_contact = {
+        "phone": social_res.get("phone") if isinstance(social_res, dict) else None,
+        "whatsapp_phone": social_res.get("whatsapp_phone") if isinstance(social_res, dict) else None,
+        "email": social_res.get("email") if isinstance(social_res, dict) else None,
+        "address": social_res.get("address") if isinstance(social_res, dict) else None,
+        "source_url": website_data.get("facebook_url"),
+    }
+    contact_consensus = EvidenceEngine.resolve_contact_consensus(
+        discovery_contact=discovery_contact,
+        website_contact=website_contact,
+        social_contact=social_contact,
+        target_domain=domain,
+    )
+    if contact_consensus.get("primary_phone"):
+        current_phone = contact_consensus["primary_phone"]
+        website_data["extracted_phone"] = current_phone
+    if contact_consensus.get("primary_email"):
+        current_email = contact_consensus["primary_email"]
+        website_data["extracted_email"] = current_email
+
     evidence_records = [
         {
             "parameter_id": 1,
-            "source_url": gmaps_url,
+            "source_url": website_data.get("google_maps_url") or gmaps_url,
             "source_type": "google_maps",
-            "evidence_text": f"Verified public commercial listing indexed in Google Maps & Business Profile for target market ({location}).",
+            "evidence_text": f"Verified public commercial listing indexed in Google Maps & Business Profile for target market ({location}). Proof: {website_data.get('google_maps_url') or gmaps_url}",
             "status": "PASS",
             "classification": "OBSERVABLE",
             "confidence": 0.95,
             "recency_weight": 100,
         }
     ]
-    detected_pids = []
 
-    if website_data.get("mobile_responsive") is False:
-        detected_pids.append(37)
+    if contact_consensus.get("phone_verified"):
+        sources_label = " + ".join(contact_consensus.get("phone_sources", []))
         evidence_records.append({
-            "parameter_id": 37,
-            "source_url": f"https://{domain}",
-            "source_type": "website",
-            "evidence_text": "Public website layout breaks on mobile viewports; horizontal scrolling observed.",
+            "parameter_id": 1,
+            "source_url": website_data.get("facebook_url") or website_data.get("google_maps_url") or gmaps_url,
+            "source_type": "consensus",
+            "evidence_text": f"Multi-source verified telephone ({contact_consensus['primary_phone']}) cross-confirmed on {sources_label}. High reachability.",
             "status": "STRONG",
             "classification": "OBSERVABLE",
-            "confidence": 0.95,
+            "confidence": 1.0,
             "recency_weight": 100,
         })
 
-    if website_data.get("has_whatsapp") is False:
-        detected_pids.append(43)
+    fb_target = website_data.get("facebook_url")
+    if fb_target:
+        if website_data.get("social_is_dormant"):
+            evidence_records.append({
+                "parameter_id": 1,
+                "source_url": fb_target,
+                "source_type": "social",
+                "evidence_text": f"Public Facebook page verified at {fb_target}. Profile is dormant with zero recent posts detected ({website_data.get('social_post_recency') or 'no recent activity'}). Proof: {fb_target}",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.95,
+                "recency_weight": 100,
+            })
+        else:
+            evidence_records.append({
+                "parameter_id": 1,
+                "source_url": fb_target,
+                "source_type": "social",
+                "evidence_text": f"Verified active Facebook page at {fb_target} ({website_data.get('social_post_recency') or 'active posts'}). Inbound inquiries require automated CRM tracking. Proof: {fb_target}",
+                "status": "PASS",
+                "classification": "OBSERVABLE",
+                "confidence": 0.95,
+                "recency_weight": 100,
+            })
+
+    if website_data.get("meta_ads_url"):
         evidence_records.append({
-            "parameter_id": 43,
-            "source_url": f"https://{domain}/contact",
-            "source_type": "website",
-            "evidence_text": "No click-to-WhatsApp link or widget found on public website.",
-            "status": "STRONG",
+            "parameter_id": 2,
+            "source_url": website_data["meta_ads_url"],
+            "source_type": "ad_registry",
+            "evidence_text": f"Meta Ad Library transparency check: {website_data['meta_ads_url']}",
+            "status": "PASS" if website_data.get("has_meta_pixel") else "STRONG",
             "classification": "OBSERVABLE",
             "confidence": 0.90,
             "recency_weight": 100,
         })
 
-    if website_data.get("has_online_booking") is False:
-        detected_pids.append(44)
-        evidence_records.append({
-            "parameter_id": 44,
-            "source_url": f"https://{domain}",
-            "source_type": "website",
-            "evidence_text": "No automated appointment scheduling system found on public portal.",
-            "status": "STRONG",
-            "classification": "OBSERVABLE",
-            "confidence": 0.88,
-            "recency_weight": 100,
-        })
+    detected_pids = []
 
-    if website_data.get("broken_links_count", 0) > 1:
-        detected_pids.append(36)
-        evidence_records.append({
-            "parameter_id": 36,
-            "source_url": f"https://{domain}",
-            "source_type": "website",
-            "evidence_text": f"Outdated web assets detected with {website_data.get('broken_links_count')} broken link references.",
-            "status": "STRONG",
-            "classification": "OBSERVABLE",
-            "confidence": 0.92,
-            "recency_weight": 100,
-        })
+    if analyze_website:
+        if website_data.get("mobile_responsive") is False:
+            detected_pids.append(37)
+            evidence_records.append({
+                "parameter_id": 37,
+                "source_url": f"https://{domain}",
+                "source_type": "website",
+                "evidence_text": "Public website layout breaks on mobile viewports; horizontal scrolling observed.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.95,
+                "recency_weight": 100,
+            })
+
+        if website_data.get("has_whatsapp") is False:
+            detected_pids.append(43)
+            evidence_records.append({
+                "parameter_id": 43,
+                "source_url": f"https://{domain}/contact",
+                "source_type": "website",
+                "evidence_text": "No click-to-WhatsApp link or widget found on public website.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.90,
+                "recency_weight": 100,
+            })
+
+        if website_data.get("has_online_booking") is False and is_appointment_niche(business_type, business_name):
+            detected_pids.append(44)
+            evidence_records.append({
+                "parameter_id": 44,
+                "source_url": f"https://{domain}",
+                "source_type": "website",
+                "evidence_text": "No automated appointment scheduling system found on public portal.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.88,
+                "recency_weight": 100,
+            })
+
+        if website_data.get("broken_links_count", 0) > 1:
+            detected_pids.append(36)
+            evidence_records.append({
+                "parameter_id": 36,
+                "source_url": f"https://{domain}",
+                "source_type": "website",
+                "evidence_text": f"Outdated web assets detected with {website_data.get('broken_links_count')} broken link references.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.92,
+                "recency_weight": 100,
+            })
+    else:
+        # Social & Software Demo Mode: If no website, highlight opportunity to launch branded web portal
+        if not domain:
+            detected_pids.append(34)
+            evidence_records.append({
+                "parameter_id": 34,
+                "source_url": gmaps_url,
+                "source_type": "social_directory",
+                "evidence_text": f"No official standalone website detected: {business_name} relies on social media and local listings.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.95,
+                "recency_weight": 100,
+            })
+
 
     if not website_data.get("extracted_phone") and not payload.get("phone"):
         detected_pids.append(41)
@@ -486,31 +703,60 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         })
 
-    if website_data.get("has_meta_pixel") is False and website_data.get("is_accessible"):
-        detected_pids.append(5)
-        evidence_records.append({
-            "parameter_id": 5,
-            "source_url": f"https://{domain}" if domain else gsearch_url,
-            "source_type": "website",
-            "evidence_text": "No Meta (Facebook/Instagram) retargeting pixel detected in public website source code.",
-            "status": "STRONG",
-            "classification": "OBSERVABLE",
-            "confidence": 0.93,
-            "recency_weight": 100,
-        })
+    if analyze_website:
+        if website_data.get("has_meta_pixel") is False and website_data.get("is_accessible"):
+            detected_pids.append(5)
+            evidence_records.append({
+                "parameter_id": 5,
+                "source_url": f"https://{domain}" if domain else gsearch_url,
+                "source_type": "website",
+                "evidence_text": "No Meta (Facebook/Instagram) retargeting pixel detected in public website source code.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.93,
+                "recency_weight": 100,
+            })
 
-    if not domain or website_data.get("is_accessible") is False:
-        detected_pids.append(34)
-        evidence_records.append({
-            "parameter_id": 34,
-            "source_url": f"https://{domain}" if domain else gsearch_url,
-            "source_type": "website",
-            "evidence_text": f"No active public website or web portal detected for {business_name} in target market ({location})." if not domain else f"Public website domain for {business_name} timed out or failed to resolve HTTP requests.",
-            "status": "STRONG",
-            "classification": "OBSERVABLE",
-            "confidence": 0.95,
-            "recency_weight": 100,
-        })
+        if website_data.get("has_google_analytics") is False and website_data.get("is_accessible"):
+            detected_pids.append(47)
+            evidence_records.append({
+                "parameter_id": 47,
+                "source_url": f"https://{domain}" if domain else gsearch_url,
+                "source_type": "website",
+                "evidence_text": "No Google Analytics (GA4) visitor tracking detected in public website source code.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.90,
+                "recency_weight": 100,
+            })
+
+        if not domain or website_data.get("is_accessible") is False:
+            detected_pids.append(34)
+            evidence_records.append({
+                "parameter_id": 34,
+                "source_url": f"https://{domain}" if domain else gsearch_url,
+                "source_type": "website",
+                "evidence_text": f"No active public website or web portal detected for {business_name} in target market ({location})." if not domain else f"Public website domain for {business_name} timed out or failed to resolve HTTP requests.",
+                "status": "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.95,
+                "recency_weight": 100,
+            })
+    else:
+        # Social Presence & Google Maps Mode: Check Maps rating score and social communication
+        raw_r = payload.get("rating") or payload.get("rating_score")
+        if raw_r is not None:
+            detected_pids.append(2)
+            evidence_records.append({
+                "parameter_id": 2,
+                "source_url": gmaps_url,
+                "source_type": "google_maps",
+                "evidence_text": f"Google Maps rating recorded at {raw_r}★ for {business_name}.",
+                "status": "PASS" if float(raw_r) >= 4.0 else "STRONG",
+                "classification": "OBSERVABLE",
+                "confidence": 0.95,
+                "recency_weight": 100,
+            })
 
     try:
         ollama_analysis = await ollama_client.analyze(
@@ -518,9 +764,8 @@ async def _execute_research_and_qualify(
             user_prompt=f"Company: {business_name}, Type: {business_type}. Signals: {json.dumps(website_data)}",
         )
     except Exception as e:
-        logger.warning(f"Ollama inference fallback: {e}")
-        mock_ollama = MockOllamaClient()
-        ollama_analysis = await mock_ollama.analyze("", "")
+        logger.warning(f"AI inference notice: {e}")
+        ollama_analysis = {"service_matches": []}
 
     llm_suggestions = ollama_analysis.get("service_matches", [])
 
@@ -578,12 +823,18 @@ async def _execute_research_and_qualify(
         (website_data.get("extracted_phone") or payload.get("phone"))
         or (website_data.get("extracted_email") or payload.get("email"))
     )
+    has_email = bool(website_data.get("extracted_email") or payload.get("email"))
+
+    effective_ev_level = evidence_level if analyze_website else max(evidence_level, 2)
+    effective_sf_score = best_service_fit if (analyze_website and service_matches) else 75.0
+    effective_is_relevant = is_industry_fit if not analyze_website else is_relevant
+
     passed_gates, gate_failures = QualificationEngine.evaluate_gates(
-        max_evidence_level=evidence_level,
-        max_recency=max_recency,
-        is_relevant_to_business_type=is_relevant,
-        best_service_fit_score=best_service_fit,
-        inferable_sources_count=sources_cnt,
+        max_evidence_level=effective_ev_level,
+        max_recency=max(max_recency, 80),
+        is_relevant_to_business_type=effective_is_relevant,
+        best_service_fit_score=effective_sf_score,
+        inferable_sources_count=max(sources_cnt, 2),
         has_primary_conflict=has_conflict,
         has_inferable_gaps=has_inferable,
         has_direct_contact=has_contact,
@@ -591,14 +842,14 @@ async def _execute_research_and_qualify(
         industry_mismatch_reason=fit_reason if not is_industry_fit else "",
     )
 
-    eq_score = avg_confidence * 100.0
-    pr_score = 85.0 if is_relevant else 0.0
-    rep_score = min(100.0, len(evidence_records) * 35.0)
-    rec_score = float(max_recency)
-    bi_score = 75.0 if (relevant_detected and is_industry_fit) else 0.0
-    sf_score = best_service_fit if is_industry_fit else 0.0
+    eq_score = avg_confidence * 100.0 if analyze_website else 85.0
+    pr_score = 85.0 if effective_is_relevant else 0.0
+    rep_score = min(100.0, len(evidence_records) * 25.0) if analyze_website else 75.0
+    rec_score = float(max(max_recency, 85))
+    bi_score = 70.0 if is_industry_fit else 0.0
+    sf_score = effective_sf_score if is_industry_fit else 0.0
 
-    final_score = QualificationEngine.calculate_score(
+    raw_calc_score = QualificationEngine.calculate_score(
         evidence_quality=eq_score,
         problem_relevance=pr_score,
         problem_repetition=rep_score,
@@ -607,7 +858,15 @@ async def _execute_research_and_qualify(
         service_fit=sf_score,
     )
 
-    tier = QualificationEngine.assign_tier(final_score, passed_gates, has_direct_contact=has_contact)
+    # Calibrated score: without verified email, cap at 74.0 and cannot reach Strong Potential
+    if not has_email:
+        final_score = min(74.0, raw_calc_score)
+    else:
+        final_score = raw_calc_score
+
+    tier = QualificationEngine.assign_tier(final_score, passed_gates, has_direct_contact=has_email)
+    if tier == "Rejected" and is_industry_fit and has_contact:
+        tier = "Review Needed"
     is_qualified = tier in ("Strong Potential", "Review Needed")
     logger.info(f"Qualified {business_name}: score={final_score}, tier={tier}, passed_gates={passed_gates}, failures={gate_failures}")
 
@@ -629,17 +888,25 @@ async def _execute_research_and_qualify(
         if biz_obj:
             if domain and not biz_obj.domain:
                 biz_obj.domain = domain
-            if website_data.get("extracted_phone"):
+
+            # Apply 4-Way Cross-Verification Contact Consensus
+            if contact_consensus.get("primary_phone"):
+                biz_obj.phone = contact_consensus["primary_phone"]
+            elif website_data.get("extracted_phone"):
                 biz_obj.phone = website_data.get("extracted_phone")
             elif not biz_obj.phone and payload.get("phone"):
                 biz_obj.phone = payload.get("phone")
 
-            if website_data.get("extracted_email"):
+            if contact_consensus.get("primary_email"):
+                biz_obj.email = contact_consensus["primary_email"]
+            elif website_data.get("extracted_email"):
                 biz_obj.email = website_data.get("extracted_email")
             elif not biz_obj.email and payload.get("email"):
                 biz_obj.email = payload.get("email")
-            elif not biz_obj.email and domain and not DeduplicationEngine.is_generic_platform(domain):
-                biz_obj.email = f"contact@{domain}"
+
+            if contact_consensus.get("verified_address") and not biz_obj.address:
+                biz_obj.address = contact_consensus["verified_address"]
+
             if website_data.get("contact_person"):
                 biz_obj.contact_person = website_data.get("contact_person")
             if website_data.get("contact_title"):
@@ -651,6 +918,23 @@ async def _execute_research_and_qualify(
             for key in ["cms_platform", "has_meta_pixel", "has_google_analytics", "meta_ads_url", "rendered_by"]:
                 if website_data.get(key) is not None:
                     current_meta[key] = website_data[key]
+
+            # Save multi-source contact consensus metadata
+            current_meta["contact_consensus"] = {
+                "phone_verified": contact_consensus.get("phone_verified", False),
+                "phone_sources": contact_consensus.get("phone_sources", []),
+                "secondary_phone": contact_consensus.get("secondary_phone"),
+                "whatsapp_phone": contact_consensus.get("whatsapp_phone"),
+                "email_verified": contact_consensus.get("email_verified", False),
+                "email_sources": contact_consensus.get("email_sources", []),
+                "secondary_email": contact_consensus.get("secondary_email"),
+                "confidence_score": contact_consensus.get("confidence_score", 0.5),
+            }
+            if contact_consensus.get("secondary_phone"):
+                current_meta["secondary_phone"] = contact_consensus["secondary_phone"]
+            if contact_consensus.get("whatsapp_phone"):
+                current_meta["whatsapp_phone"] = contact_consensus["whatsapp_phone"]
+
             biz_obj.metadata_json = current_meta
 
         param_ids_in_evidence = {ev["parameter_id"] for ev in evidence_records if ev.get("parameter_id")}
@@ -694,7 +978,7 @@ async def _execute_research_and_qualify(
 
         if not is_industry_fit or tier == "Rejected":
             logger.info(
-                f"TaskResearch: Discarding irrelevant/unqualified business '{business_name}' "
+                f"TaskResearch: Discarding unqualified business '{business_name}' "
                 f"(Industry fit: {is_industry_fit}, Tier: {tier}, Reason: {fit_reason}). Not adding to leads."
             )
             if valid_run_id:
@@ -724,14 +1008,34 @@ async def _execute_research_and_qualify(
             metadata_json=payload,
             company_kb=kb_dict,
             use_company_kb=use_kb,
+            analyze_website=analyze_website,
         )
+
+        if gate_res.get("fit_tier") == "DROPPED":
+            logger.info(f"TaskResearch: Fit gate DROPPED '{business_name}'. Not adding to leads.")
+            if valid_run_id:
+                stmt_run = select(ResearchRun).where(ResearchRun.id == valid_run_id)
+                r_res = await session.execute(stmt_run)
+                run = r_res.scalar_one_or_none()
+                if run:
+                    run.rejected_count += 1
+            await session.commit()
+            return {"status": "REJECTED", "business_id": str(business_id), "reason": "DROPPED by fit gate"}
+
+        if isinstance(explanation, dict):
+            explanation["verified_gaps"] = gate_res.get("verified_gaps", [])
+            explanation["inferred_opportunities"] = gate_res.get("inferred_opportunities", [])
+            explanation["recommended_services"] = gate_res.get("recommended_services", [])
+            explanation["matched_service_url"] = gate_res.get("matched_service_url", "")
+
+        lead_primary_gap = " • ".join(gate_res["verified_gaps"][:2]) if gate_res.get("verified_gaps") else gap_summary
 
         if lead:
             lead.run_id = valid_run_id
             lead.tier = tier
             lead.final_score = final_score
             lead.is_qualified = is_qualified
-            lead.primary_gap_summary = gap_summary
+            lead.primary_gap_summary = lead_primary_gap
             lead.explanation_json = explanation
             lead.fit_tier = gate_res["fit_tier"]
             lead.why_they_need_us = gate_res["why_they_need_us"]
@@ -748,7 +1052,7 @@ async def _execute_research_and_qualify(
                 tier=tier,
                 final_score=final_score,
                 is_qualified=is_qualified,
-                primary_gap_summary=gap_summary,
+                primary_gap_summary=lead_primary_gap,
                 explanation_json=explanation,
                 outreach_status=initial_outreach,
                 fit_tier=gate_res["fit_tier"],
@@ -810,3 +1114,4 @@ async def _execute_research_and_qualify(
     })
 
     return {"status": "SUCCESS", "tier": tier, "score": final_score, "is_qualified": is_qualified}
+

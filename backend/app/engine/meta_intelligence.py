@@ -1,7 +1,7 @@
 import json
 import re
 from typing import Dict, Any, List, Optional
-from app.services.ollama_client import OllamaClient
+from app.services.ai_client import AIClient
 from app.services.openclaw_client import LiveResearchEngine
 from app.core.logging import logger
 
@@ -16,67 +16,88 @@ class MetaIntelligenceEngine:
         pain_point: Optional[str] = None,
         core_offer: Optional[str] = None,
     ) -> Dict[str, Any]:
-        ollama = OllamaClient()
+        ai = AIClient()
 
         query_prompt = f"""
-You are a top-tier B2B Meta Ads Strategist and Market Intelligence Researcher.
-The user wants to launch B2B Meta Ads for:
+You are an elite B2B Meta Ads Strategist and Market Intelligence Researcher.
+The user wants to launch high-converting B2B Meta Ads for:
 - Service: {service_name}
 - Target Industry: {industry}
 - Location: {target_location}
-- User Pain Point notes: {pain_point or 'N/A'}
-- User Offer notes: {core_offer or 'N/A'}
+- User Pain Point: {pain_point or 'N/A'}
+- User Core Offer: {core_offer or 'N/A'}
 
+Analyze the exact target industry and location provided above. Do NOT assume any specific industry other than what the user provided.
 Provide a JSON object with:
-1. "competitor_search_terms": list of 4 specific search terms to find competitor ads and companies providing this B2B service.
-2. "pain_point_queries": list of 3 search queries to find real complaints, bottlenecks, and costs suffered by factory/business managers in this industry.
-3. "recommended_targeting":
-   - "job_titles": 5-8 exact B2B decision maker job titles (e.g. Managing Director, Quality Assurance Manager, Head of Operations, Factory General Manager).
-   - "behaviors": 2-3 Meta digital behaviors (e.g. "Facebook Business Page Admins", "High Value Tech Adopters").
-   - "interests": 5-7 specific industrial/B2B interests (e.g. "Industrial Automation", "Quality Control", "Supply Chain Management").
-   - "exclusions": 4-6 groups to exclude to eliminate wasted ad budget (e.g. "Job Seekers", "Students", "Fashion Retail Buyers").
+1. "competitor_search_terms": list of 4-6 specific search queries to find real competitor ads, active B2B campaigns, and service providers in {industry} for {target_location}. Include queries targeting Facebook/Meta sponsored ads, Ad Library searches, and official vendor websites.
+2. "pain_point_queries": list of 3-4 search queries to find real-world bottlenecks, financial loss, operational friction, and customer complaints experienced by business owners in {industry} in {target_location}.
+3. "ad_library_queries": list of 2-3 Meta Ad Library search queries for active campaigns in this space.
+4. "recommended_targeting":
+   - "job_titles": 6-10 exact B2B decision maker job titles tailored specifically to {industry} (e.g. Founder, Owner, Managing Director, Head of Operations, Principal).
+   - "behaviors": 2-3 Meta digital behaviors relevant to {industry} business decision makers (e.g. "Facebook Business Page Admins").
+   - "interests": 6-8 specific high-relevance interests for {industry} and {service_name}.
+   - "exclusions": 4-6 groups to exclude to eliminate wasted ad spend (e.g. "Job Seekers", "Students", "Non-Decision Makers", "Internship", "Unemployed").
 """
         targeting_data = {
             "job_titles": [
-                "Managing Director",
+                f"{industry} Owner",
+                f"{industry} Managing Director",
                 "Chief Executive Officer (CEO)",
-                "Factory Manager",
-                "Head of Quality Assurance (QA)",
-                "Operations Director",
+                "Founder",
+                f"Head of {industry} Operations",
+                "Managing Director",
                 "General Manager (GM)",
-                "Production Manager",
+                "Director of Business Development",
             ],
-            "behaviors": ["Facebook Business Page Admins", "Business Page Admins"],
+            "behaviors": ["Facebook Business Page Admins", "Business Page Admins", "High Value Tech Adopters"],
             "interests": [
+                f"{industry}",
                 f"{industry} Solutions",
-                "Operations Management",
-                "Enterprise Efficiency",
-                "Workflow Optimization",
                 f"{service_name}",
+                "Business Operations",
+                "Workflow Automation",
+                "Enterprise Growth",
             ],
-            "exclusions": ["Students", "Job Seekers", "Non-Decision Makers", "Unemployed"],
+            "exclusions": ["Students", "Job Seekers", "Non-Decision Makers", "Unemployed", "Internship"],
         }
 
+        competitor_search_terms: List[str] = []
+        pain_point_queries: List[str] = []
+        ad_library_queries: List[str] = []
+
         try:
-            expanded = await ollama.analyze(
-                system_prompt="Return ONLY valid JSON with keys: competitor_search_terms, pain_point_queries, recommended_targeting.",
+            expanded = await ai.analyze(
+                system_prompt="Return ONLY valid JSON matching the requested structure.",
                 user_prompt=query_prompt,
             )
-            if isinstance(expanded, dict) and "recommended_targeting" in expanded:
-                rec = expanded["recommended_targeting"]
-                if isinstance(rec, dict):
+            if isinstance(expanded, dict):
+                if "recommended_targeting" in expanded and isinstance(expanded["recommended_targeting"], dict):
+                    rec = expanded["recommended_targeting"]
                     targeting_data["job_titles"] = rec.get("job_titles", targeting_data["job_titles"])
                     targeting_data["behaviors"] = rec.get("behaviors", targeting_data["behaviors"])
                     targeting_data["interests"] = rec.get("interests", targeting_data["interests"])
                     targeting_data["exclusions"] = rec.get("exclusions", targeting_data["exclusions"])
+
+                if "competitor_search_terms" in expanded and isinstance(expanded["competitor_search_terms"], list):
+                    competitor_search_terms = [str(t).strip() for t in expanded["competitor_search_terms"] if t]
+
+                if "pain_point_queries" in expanded and isinstance(expanded["pain_point_queries"], list):
+                    pain_point_queries = [str(q).strip() for q in expanded["pain_point_queries"] if q]
+
+                if "ad_library_queries" in expanded and isinstance(expanded["ad_library_queries"], list):
+                    ad_library_queries = [str(q).strip() for q in expanded["ad_library_queries"] if q]
         except Exception as e:
-            logger.warning(f"LLM query expansion failed, using default robust B2B targeting: {e}")
+            logger.warning(f"LLM query expansion failed, using dynamic B2B defaults: {e}")
 
         competitor_insights = await cls._scrape_competitor_ad_angles(
             service_name=service_name,
             industry=industry,
+            target_location=target_location,
             pain_point=pain_point,
             core_offer=core_offer,
+            competitor_search_terms=competitor_search_terms,
+            pain_point_queries=pain_point_queries,
+            ad_library_queries=ad_library_queries,
         )
 
         return {
@@ -89,94 +110,146 @@ Provide a JSON object with:
         cls,
         service_name: str,
         industry: str,
+        target_location: Optional[str] = None,
         pain_point: Optional[str] = None,
         core_offer: Optional[str] = None,
+        competitor_search_terms: Optional[List[str]] = None,
+        pain_point_queries: Optional[List[str]] = None,
+        ad_library_queries: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        search_query = f"{industry} {service_name} B2B solutions providers"
+        loc_clean = (target_location or "").strip()
+        is_global = not loc_clean or any(g in loc_clean.lower() for g in ["global", "worldwide", "multi-region"])
+        loc_label = f" in {loc_clean}" if not is_global else ""
+
+        search_queries: List[str] = []
+
+        # 1. Add LLM-generated targeted queries first (highest relevance)
+        if competitor_search_terms:
+            search_queries.extend(competitor_search_terms[:4])
+        if ad_library_queries:
+            search_queries.extend(ad_library_queries[:2])
+        if pain_point_queries:
+            search_queries.extend(pain_point_queries[:2])
+
+        # 2. Add dynamic search queries including Facebook business pages and ad libraries
+        if not is_global:
+            search_queries.append(f"{service_name} {industry} in {loc_clean} official website")
+            search_queries.append(f"{industry} {service_name} {loc_clean} site:facebook.com")
+            search_queries.append(f"{industry} {service_name} {loc_clean} sponsored facebook ads")
+            search_queries.append(f"top {service_name} companies in {loc_clean}")
+            search_queries.append(f"{service_name} providers {loc_clean} facebook")
+        else:
+            search_queries.append(f"{industry} {service_name} B2B solutions providers")
+            search_queries.append(f"{industry} {service_name} site:facebook.com ads")
+            search_queries.append(f"top {service_name} for {industry} official website")
+            search_queries.append(f"{industry} enterprise {service_name} sponsored ad")
+
         web_results = []
-        try:
-            raw_results = await LiveResearchEngine._execute_web_search(search_query)
-            for r in raw_results[:5]:
-                web_results.append({
-                    "title": r.get("title", ""),
-                    "snippet": r.get("snippet", ""),
-                    "url": r.get("url", ""),
-                })
-        except Exception as e:
-            logger.warning(f"Competitor web search error: {e}")
+        seen_domains = set()
+        excluded_domains = {
+            "twitter.com", "x.com", "youtube.com", "wikipedia.org", "quora.com",
+            "reddit.com", "medium.com", "github.com", "play.google.com",
+            "apps.apple.com", "duckduckgo.com", "yellowpages.com", "bdjobs.com",
+            "clutch.co", "goodfirms.co",
+        }
+        generic_facebook_paths = {"login", "help", "recover", "policies", "terms", "watch", "events", "groups", "places", "settings"}
+
+        for q in search_queries:
+            if not q:
+                continue
+            try:
+                raw_results = await LiveResearchEngine._execute_web_search(q)
+                for r in raw_results:
+                    url = r.get("url", "")
+                    if not url:
+                        continue
+                    clean_url = url.replace("www.", "").lower()
+                    raw_domain = clean_url.split("//")[-1].split("/")[0]
+
+                    # Filter out purely generic aggregator sites
+                    if raw_domain in excluded_domains or any(ex in raw_domain for ex in ["directory", "aggregator", "jobs", "wiki"]):
+                        continue
+
+                    # If it is a Facebook page, extract the company handle
+                    display_brand = raw_domain
+                    if "facebook.com" in raw_domain:
+                        path_parts = [p for p in clean_url.split("facebook.com/")[-1].split("/") if p and not p.startswith("?")]
+                        if not path_parts or path_parts[0] in generic_facebook_paths:
+                            continue
+                        fb_handle = path_parts[0].replace("-", " ").title()
+                        display_brand = f"{fb_handle} (Facebook Meta Ads)"
+                    elif "instagram.com" in raw_domain:
+                        path_parts = [p for p in clean_url.split("instagram.com/")[-1].split("/") if p and not p.startswith("?")]
+                        if not path_parts or path_parts[0] in generic_facebook_paths:
+                            continue
+                        display_brand = f"@{path_parts[0]} (Instagram)"
+
+                    if display_brand not in seen_domains:
+                        seen_domains.add(display_brand)
+                        web_results.append({
+                            "title": r.get("title", ""),
+                            "snippet": r.get("snippet", ""),
+                            "url": url,
+                            "domain": display_brand,
+                        })
+                    if len(web_results) >= 12:
+                        break
+            except Exception as e:
+                logger.warning(f"Competitor web search error for query '{q}': {e}")
+            if len(web_results) >= 12:
+                break
 
         default_competitors = []
         if web_results:
-            for r in web_results[:3]:
-                url = r.get("url", "")
-                domain = url.split("//")[-1].split("/")[0].replace("www.", "") if url else f"Verified {industry} Provider"
+            for r in web_results[:6]:
+                domain = r.get("domain", "") or f"Verified {industry} Provider"
                 title = r.get("title", "")
                 snippet = r.get("snippet", "")
                 default_competitors.append({
                     "brand_or_domain": domain,
-                    "headline": title[:90] if title else f"Enterprise {service_name} for {industry}",
-                    "video_hook": f"How leading {industry} firms utilize {service_name} to eliminate operational drag.",
+                    "headline": title[:90] if title else f"Enterprise {service_name} for {industry}{loc_label}",
+                    "video_hook": f"How leading {industry} firms{loc_label} utilize {service_name} to eliminate operational drag.",
                     "core_offer": snippet[:110] if snippet else f"Request a live {service_name} pilot demonstration.",
-                    "days_running": 42,
-                    "engagement_signal": "High (Live Web Verified)",
+                    "days_running": 38,
+                    "engagement_signal": f"High (Live Web Verified{loc_label})",
                 })
 
-        if not default_competitors:
-            default_competitors = [
-                {
-                    "brand_or_domain": f"Enterprise {service_name} Provider",
-                    "headline": f"How top {industry} enterprises eliminate operational inefficiencies",
-                    "video_hook": f"Are manual workflows causing your {industry} operations costly errors?",
-                    "core_offer": core_offer or "Book a Free 1-on-1 Technical Demo & Pilot Trial.",
-                    "days_running": 45,
-                    "engagement_signal": "High (Active in Multiple Markets)",
-                },
-                {
-                    "brand_or_domain": f"Enterprise {industry} Leader",
-                    "headline": f"Enterprise-grade {service_name} for forward-thinking businesses",
-                    "video_hook": f"Watch how this system automates {service_name} in real-time.",
-                    "core_offer": core_offer or "Schedule a 15-minute direct WhatsApp briefing.",
-                    "days_running": 38,
-                    "engagement_signal": "High",
-                },
-            ]
-
         default_pain_points = [
-            pain_point if pain_point else f"High manual labor costs and operational fatigue in {industry}.",
-            f"Operational bottlenecks and delayed turnarounds impacting {industry} targets.",
-            f"Revenue leaks and inefficiencies from unoptimized legacy workflows in {industry}.",
+            pain_point if pain_point else f"High manual operational friction and overhead in {industry}{loc_label}.",
+            f"Operational bottlenecks and delayed turnarounds impacting {industry} growth{loc_label}.",
+            f"Revenue leaks and inefficiencies from unoptimized legacy workflows in {industry}{loc_label}.",
         ]
 
         default_winning_angles = [
-            f"Risk-Free On-Site or Sandbox Trial: Decision makers in {industry} convert when they see live proof on their own systems.",
-            "Proof-First Video Hook: Demonstrating the tangible solution within the opening 3 seconds.",
-            "Direct WhatsApp Decision Channel: Direct chat with technical leads converts 4x higher than standard web forms.",
+            f"Risk-Free Sandbox or Pilot Trial: Decision makers in {industry}{loc_label} convert when they see live proof on their own systems.",
+            f"Proof-First Video Hook: Demonstrating the tangible solution within the opening 3 seconds{loc_label}.",
+            f"Direct WhatsApp Decision Channel: Direct chat with decision makers in {loc_clean or 'target market'} converts 4x higher than standard web forms.",
         ]
 
-        dynamic_positioning = f"Position {service_name} as the high-ROI B2B solution directly eliminating core {industry} operational bottlenecks."
+        dynamic_positioning = f"Position {service_name} as the high-ROI B2B solution directly eliminating core {industry} operational bottlenecks{loc_label}."
 
-        ollama = OllamaClient()
+        ai = AIClient()
         synth_prompt = f"""
-Analyze these competitor snippets and industry offerings for {service_name} in {industry}:
+Analyze these competitor snippets, active Facebook advertiser pages, and industry offerings for {service_name} in {industry} targeting location: {loc_clean or 'Global'}:
 Snippets: {json.dumps(web_results)}
 User core pain point: {pain_point or 'N/A'}
 User core offer: {core_offer or 'N/A'}
 
-Synthesize actionable competitor intelligence:
-1. "scraped_competitors": list of 2-3 competitor archetypes or brands with:
-   - "brand_or_domain": name/domain
-   - "headline": their main ad headline
-   - "video_hook": their 3-second hook
+Synthesize comprehensive competitor intelligence tailored specifically to businesses and decision-makers in {loc_clean or 'the target market'}:
+1. "scraped_competitors": list of 5-8 verified competitors, active Facebook advertiser pages, or local market solutions (e.g. including Facebook business profiles and top agencies found in the snippets) with:
+   - "brand_or_domain": name/domain or Facebook page name (e.g. "Brand Name (Facebook / Website)")
+   - "headline": their main ad headline or value proposition
+   - "video_hook": their 3-second hook for {loc_clean or 'the target market'}
    - "core_offer": their trial or demo offer
-   - "days_running": 45
-   - "engagement_signal": "High"
-2. "market_pain_points": 3 real-world financial pain points tailored specifically to {service_name} and {industry}.
+   - "days_running": estimated 30-45
+   - "engagement_signal": "High (Active Meta Ad Page)" or "High (Live Verified)"
+2. "market_pain_points": 3 real-world financial pain points tailored specifically to {service_name} and {industry} in {loc_clean or 'the target market'}.
 3. "winning_angles": 3 proved angles that convert business owners in this space.
 4. "recommended_positioning": 1-2 sentence executive recommendation.
 """
 
         try:
-            synth = await ollama.analyze(
+            synth = await ai.analyze(
                 system_prompt="Return ONLY valid JSON matching the requested structure.",
                 user_prompt=synth_prompt,
             )
@@ -207,7 +280,7 @@ Synthesize actionable competitor intelligence:
         core_offer: str,
         competitor_insights: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        ollama = OllamaClient()
+        ai = AIClient()
 
         prompt = f"""
 You are an elite B2B Meta Ads Creative Director.
@@ -218,7 +291,7 @@ Core Pain Point: {pain_point}
 Core Offer: {core_offer}
 Competitor Intelligence: {json.dumps(competitor_insights or {})}
 
-Create the complete 2-Step Video Funnel:
+Create the complete 2-Step Video Funnel strictly tailored to {industry} and {service_name}. Do NOT use unrelated industry references.
 
 POST 1: Cold Video Hook Ad (Objective: ThruPlay Video Views to filter decision makers)
 - "hooks": 3 distinct 3-second opening video hooks (in concise, urgent, authoritative English).
@@ -229,10 +302,10 @@ POST 1: Cold Video Hook Ad (Objective: ThruPlay Video Views to filter decision m
 
 POST 2: Retargeting Closer Ad (Objective: Shown ONLY to 50%+ video viewers with direct WhatsApp CTA)
 - "retargeting_copy": B2B copy speaking directly to someone who watched the demo video (in English).
-- "offer_headline": High-converting offer headline (e.g. "{core_offer or 'Free Live On-Site Pilot'}").
+- "offer_headline": High-converting offer headline (e.g. "{core_offer or f'Request a Free Pilot Trial of {service_name}'}").
 - "offer_description": Clear explanation of the no-risk trial in English.
 - "whatsapp_cta_label": "Send WhatsApp Message"
-- "prefill_message": Pre-typed message ready in their WhatsApp when they click (e.g. "Hello, I watched your demo video for {service_name}. I want to schedule a free 1-day factory trial.").
+- "prefill_message": Pre-typed message ready in their WhatsApp when they click (e.g. "Hello, I watched your demo video for {service_name} and would like to claim the {core_offer or 'live consultation and trial'}.").
 """
 
         default_post1 = {
@@ -252,16 +325,16 @@ POST 2: Retargeting Closer Ad (Objective: Shown ONLY to 50%+ video viewers with 
         }
 
         default_post2 = {
-            "retargeting_copy": f"You saw how {service_name} drives performance. Now test it directly inside your own workflow—risk-free.",
+            "retargeting_copy": f"You saw how {service_name} drives performance. Now test it directly inside your own workflow - risk-free.",
             "offer_headline": core_offer or f"Request a Free Pilot Trial of {service_name}",
-            "offer_description": f"Our technical engineering team will guide you through a customized proof-of-concept for your team with zero obligation.",
+            "offer_description": f"Our technical engineering team will guide you through a customized proof-of-concept for your {industry} team with zero obligation.",
             "whatsapp_cta_label": "Send WhatsApp Message",
             "whatsapp_number": "",
             "prefill_message": f"Hello, I watched your demo on {service_name} and would like to request more information or a live pilot.",
         }
 
         try:
-            creatives = await ollama.analyze(
+            creatives = await ai.analyze(
                 system_prompt="Return ONLY valid JSON with keys: post1, post2.",
                 user_prompt=prompt,
             )
@@ -293,3 +366,4 @@ POST 2: Retargeting Closer Ad (Objective: Shown ONLY to 50%+ video viewers with 
             "post1": default_post1,
             "post2": default_post2,
         }
+

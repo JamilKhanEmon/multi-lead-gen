@@ -1,33 +1,50 @@
 ---
-name: ads-research
-description: Inspects public advertising registries for active campaigns, creative consistency, and landing page quality.
+name: "ads-research"
+description: "Inspects public Meta Ad Library transparency registries and website conversion pixel signals with direct clickable proof links."
 ---
 
-# Ads Research Workflow
+# Ads Research Workflow — Meta Ad Transparency & Conversion Funnel Audit
 
 ## Purpose
-Inspects public advertising transparency registries (Meta Ad Library, Google Ads Transparency) to identify active commercial campaigns, creative consistency, and conversion landing page alignment.
+Examines public advertising transparency registries (Meta Ad Library) to detect whether a commercial entity is actively spending money on paid Facebook/Instagram advertisements, and audits whether that ad spend is supported by proper conversion tracking (Meta Pixel) and automated customer funnels.
+
+## Core Directives & Hard Rules
+1. **Zero Dummy Data:** Never assume a company is running ads without real verification. Use the public transparency link to provide 100% auditable evidence.
+2. **1-Click Proof Verification:** Every observation must provide the direct Meta Ad Library search URL (`proof_link`) so the sales caller or manager can click and view live running creatives instantly.
+3. **The 'Leaking Ad Spender' Formula:** A business spending money on ads without a website lead capture form, without a Meta Pixel, or without an automated WhatsApp CRM is wasting 40-60% of their budget. This is our highest-converting pitch!
 
 ## Procedure
-1. Receive input `company_name` and domain.
-2. Query public ad library for active running advertisements.
-3. Observe:
-   - Presence of active campaigns
-   - Ad creative CTA (e.g. "Message on WhatsApp", "Visit Website", "Book Consultation")
-   - Destination landing page URL
-4. Evaluate alignment: Does clicking the ad lead to a dedicated, high-converting landing page or a generic/broken homepage?
 
-## Safety & Boundaries
-- Never assume ROI or claim "ads are failing" without direct data.
-- Label detected friction strictly as "potential marketing funnel weakness".
+### Step 1: Meta Ad Library Query Generation
+- Receive `canonical_name`, `domain`, and `has_meta_pixel`.
+- Construct the verified public Meta Ad Library URL:
+  `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q={encoded_name}&search_type=keyword_unordered&media_type=all`
+- Query search engine index to observe if active advertisements are currently associated with the brand name.
+
+### Step 2: Conversion Tracking Audit (Meta Pixel Check)
+- Cross-check with website research: Does the business domain load the official Meta Pixel (`fbq('init', ...)` or `connect.facebook.net/en_US/fbevents.js`)?
+- Classification:
+  - **Pixel Missing (`NO_PIXEL`):** If the company runs ads or has a website but lacks a Meta Pixel, they cannot track website conversions, calculate return on ad spend (ROAS), or run visitor retargeting campaigns.
+  - **Pixel Active:** Confirms sophisticated marketing intent; pitch CRM and automated lead intake.
+
+### Step 3: Landing Page & Funnel Alignment
+- If ads point directly to a phone number or a generic homepage without an inquiry form or WhatsApp router:
+  - Flag as **`ADS_RUNNING_LEAD_LEAKAGE`**.
+  - *Sales Opener:* "We saw you are running active paid ads in Dhaka, but prospects clicking your ads don't have an automated inquiry capture form. Inquiries are getting lost."
+
+### Step 4: Output Generation
+- Assemble the auditable evidence note containing the live Meta Ad Library link.
 
 ## Output Schema
 ```json
 {
-  "active_ads_count": 3,
-  "cta_types": ["send_whatsapp_message", "learn_more"],
-  "destination_page_type": "generic_homepage",
+  "canonical_name": "Skyline Properties",
+  "domain": "skylinepropertiesbd.com",
+  "meta_ads_url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q=Skyline%20Properties&search_type=keyword_unordered&media_type=all",
+  "proof_link": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q=Skyline%20Properties&search_type=keyword_unordered&media_type=all",
+  "has_pixel_signal": false,
   "funnel_friction_detected": true,
-  "rationale": "Ad promotes instant discount but destination page is an unoptimized homepage with no lead capture form."
+  "evidence_text": "Meta Ad Library transparency link: https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q=Skyline%20Properties. Website Meta Pixel: Missing - ad spend and remarketing attribution cannot be tracked.",
+  "checked_live": true
 }
 ```

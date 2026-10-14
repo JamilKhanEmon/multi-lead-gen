@@ -10,12 +10,28 @@ echo "Starting LeadGen Platform Services"
 echo "[1/6] Starting PostgreSQL and Redis containers..."
 docker compose -f infra/docker-compose.yml up -d 2>/dev/null || true
 
-echo "[2/4] Verifying OpenClaw Gateway configuration..."
+echo "[2/6] Verifying OpenClaw Gateway configuration..."
 echo "[+] Gateway URL: ${OPENCLAW_GATEWAY_URL:-Configured in .env}"
 
+echo "[3/6] Rotating and capping log files to conserve VPS storage..."
+for logfile in "$PROJECT_DIR/logs"/*.log; do
+    if [ -f "$logfile" ]; then
+        FILESIZE=$(wc -c < "$logfile" 2>/dev/null || echo 0)
+        # If logfile exceeds 10MB (10485760 bytes), keep only latest 3000 lines
+        if [ "$FILESIZE" -gt 10485760 ]; then
+            tail -n 3000 "$logfile" > "$logfile.tmp" 2>/dev/null && mv "$logfile.tmp" "$logfile"
+            echo "[*] Truncated $(basename "$logfile") to latest 3,000 lines (exceeded 10MB)."
+        fi
+    fi
+done
+
 echo "[4/6] Cleaning up old processes on ports 8000 & 3000..."
-lsof -ti :8000 | xargs kill -9 2>/dev/null || true
-lsof -ti :3000 | xargs kill -9 2>/dev/null || true
+for pid in $(lsof -ti :8000 2>/dev/null || true); do
+    kill -9 "$pid" 2>/dev/null || true
+done
+for pid in $(lsof -ti :3000 2>/dev/null || true); do
+    kill -9 "$pid" 2>/dev/null || true
+done
 pkill -f "app.workers.runner" 2>/dev/null || true
 sleep 1
 

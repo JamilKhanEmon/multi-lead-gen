@@ -14,6 +14,7 @@ from app.schemas.auth import (
     UserUpdate,
     UserPermissionsUpdate,
     ChangePasswordRequest,
+    ChangeEmailRequest,
     AdminResetPasswordRequest,
 )
 
@@ -23,38 +24,34 @@ async def ensure_default_accounts(db: AsyncSession):
     import os
     from app.core.logging import logger
 
-    admin_email = (os.getenv("SUPERADMIN_EMAIL") or "").lower().strip()
-    admin_password = os.getenv("SUPERADMIN_PASSWORD") or ""
-    admin_name = os.getenv("SUPERADMIN_NAME") or "Super Administrator"
-
-    if not admin_email or not admin_password:
-        return
-
     try:
-        stmt = select(User).where(User.email == admin_email)
-        res = await db.execute(stmt)
-        existing = res.scalar_one_or_none()
-        if not existing:
-            new_u = User(
-                email=admin_email,
-                hashed_password=get_password_hash(admin_password),
-                full_name=admin_name,
-                role="super_admin",
-                permissions_json={"all": True},
-                is_active=True,
-            )
-            db.add(new_u)
-            await db.commit()
-            logger.info(f"Initialized default superadmin account: {admin_email}")
-        else:
-            # Account exists: never overwrite the database password, preserving user/admin changes
-            if existing.role != "super_admin":
-                existing.role = "super_admin"
-                existing.permissions_json = {"all": True}
-                await db.commit()
+        # If any user account already exists in the database, skip seeding completely
+        has_any_user = await db.execute(select(User.id).limit(1))
+        if has_any_user.scalar_one_or_none() is not None:
+            return
+
+        # If database is empty, only seed if explicit environment variables are provided (no hardcoded passwords)
+        admin_email = os.getenv("SUPERADMIN_EMAIL")
+        admin_password = os.getenv("SUPERADMIN_PASSWORD")
+        admin_name = os.getenv("SUPERADMIN_NAME", "Administrator")
+
+        if not admin_email or not admin_password:
+            return  # Zero hardcoded credentials in codebase
+
+        new_u = User(
+            email=admin_email.lower().strip(),
+            hashed_password=get_password_hash(admin_password),
+            full_name=admin_name.strip(),
+            role="super_admin",
+            permissions_json={"all": True},
+            is_active=True,
+        )
+        db.add(new_u)
+        await db.commit()
+        logger.info(f"Initialized initial superadmin account: {admin_email}")
     except Exception as e:
         await db.rollback()
-        logger.error(f"Error ensuring default superadmin: {e}")
+        logger.error(f"Error ensuring initial superadmin: {e}")
 
 @router.post("/login", response_model=Token)
 async def login(credentials: LoginRequest, db: AsyncSession = Depends(get_db)):
@@ -121,6 +118,55 @@ async def change_password(
     current_user.hashed_password = get_password_hash(data.new_password.strip())
     await db.commit()
     return {"status": "SUCCESS", "message": "Password updated successfully"}
+
+@router.post("/change-email")
+async def change_email(
+    data: ChangeEmailRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    clean_email = data.new_email.lower().strip()
+    if not clean_email or "@" not in clean_email or "." not in clean_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide a valid email address",
+        )
+
+    if not verify_password(data.password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect password. Password verification is required to change your email.",
+        )
+
+    if clean_email == current_user.email:
+        return {
+            "status": "SUCCESS",
+            "message": "Email address is already current",
+            "email": current_user.email,
+            "full_name": current_user.full_name,
+            "role": current_user.role,
+            "id": str(current_user.id),
+        }
+
+    stmt = select(User).where(User.email == clean_email, User.id != current_user.id)
+    res = await db.execute(stmt)
+    if res.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This email address is already in use by another account",
+        )
+
+    current_user.email = clean_email
+    await db.commit()
+    await db.refresh(current_user)
+    return {
+        "status": "SUCCESS",
+        "message": f"Account email updated successfully to {clean_email}",
+        "email": clean_email,
+        "full_name": current_user.full_name,
+        "role": current_user.role,
+        "id": str(current_user.id),
+    }
 
 @router.get("/users", response_model=List[UserResponse])
 async def list_users(
@@ -248,6 +294,23 @@ async def update_user(
                 detail="Forbidden: Only Super Administrators can grant Admin or Super Admin privileges.",
             )
         target.role = new_role
+
+    if user_in.email:
+        clean_email = user_in.email.lower().strip()
+        if not clean_email or "@" not in clean_email or "." not in clean_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Please provide a valid email address",
+            )
+        if clean_email != target.email:
+            stmt = select(User).where(User.email == clean_email, User.id != target.id)
+            res = await db.execute(stmt)
+            if res.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This email address is already in use by another account",
+                )
+            target.email = clean_email
 
     if user_in.full_name:
         target.full_name = user_in.full_name.strip()

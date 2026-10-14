@@ -17,12 +17,12 @@ async def get_current_user(
 ) -> User:
     if not credentials:
         if settings.ENVIRONMENT == "development":
-            stmt = select(User).where(User.email == "dev@leadgen.local")
+            stmt = select(User).where(User.email == "dev@local.internal")
             res = await db.execute(stmt)
             dev_user = res.scalar_one_or_none()
             if not dev_user:
                 dev_user = User(
-                    email="dev@leadgen.local",
+                    email="dev@local.internal",
                     hashed_password="development_mode_no_password",
                     full_name="Local Developer",
                     role="admin",
@@ -80,12 +80,12 @@ async def get_current_user_optional(
 ) -> Optional[User]:
     if not credentials:
         if settings.ENVIRONMENT == "development":
-            stmt = select(User).where(User.email == "dev@leadgen.local")
+            stmt = select(User).where(User.email == "dev@local.internal")
             res = await db.execute(stmt)
             dev_user = res.scalar_one_or_none()
             if not dev_user:
                 dev_user = User(
-                    email="dev@leadgen.local",
+                    email="dev@local.internal",
                     hashed_password="development_mode_no_password",
                     full_name="Local Developer",
                     role="admin",

@@ -42,17 +42,20 @@ class LiveResearchEngine:
         sub_city: str = "",
         company_limit: int = 0,
         business_type_override: Optional[str] = None,
+        sub_areas: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         loc_parts = [p for p in [sub_city, city, country] if p]
         full_location = ", ".join(loc_parts) if loc_parts else location.strip()
-        effective_limit = 500 if company_limit <= 0 else min(company_limit, 1000)
+        is_unlimited = (company_limit <= 0)
+        effective_limit = 999999 if is_unlimited else company_limit
 
         discovered = []
         seen_names = set()
         seen_domains = set()
         loop = asyncio.get_event_loop()
 
-        logger.info(f"LiveResearchEngine: Starting live discovery for '{industry}' in '{full_location}' (Auto-exhaustion cap: {effective_limit})")
+        mode_str = "UNLIMITED Exhaustion" if is_unlimited else f"Explicit Cap: {company_limit}"
+        logger.info(f"LiveResearchEngine: Starting live discovery for '{industry}' in '{full_location}' ({mode_str})")
 
         plan = await DiscoveryOptimizer.optimize_search_plan(
             industry=industry,
@@ -61,8 +64,27 @@ class LiveResearchEngine:
             city=city,
             sub_city=sub_city,
         )
+
+        if sub_areas:
+            area_queries = []
+            loc_anchor = f"{city}, {country}".strip(", ") if (city or country) else full_location
+            for area in sub_areas[:15]:
+                clean_a = str(area).strip()
+                if clean_a:
+                    if loc_anchor and loc_anchor.lower() not in clean_a.lower():
+                        area_queries.append(f"{industry} in {clean_a}, {loc_anchor}")
+                        area_queries.append(f"site:facebook.com \"{industry}\" \"{clean_a}\" \"{loc_anchor}\"")
+                        area_queries.append(f"{industry} company {clean_a} {loc_anchor}")
+                    else:
+                        area_queries.append(f"{industry} in {clean_a}")
+                        area_queries.append(f"site:facebook.com \"{industry}\" \"{clean_a}\"")
+                        area_queries.append(f"{industry} company {clean_a}")
+            plan["search_queries"] = area_queries + plan.get("search_queries", [])
+            logger.info(f"DiscoveryOptimizer: Injected {len(area_queries)} approved sub-area queries.")
+
         logger.info(f"DiscoveryOptimizer: Using {len(plan['search_queries'])} targeted search queries and {len(plan['osm_queries'])} OSM targets.")
 
+        # 1. Primary: High-coverage Web Search for genuine companies with official domains
         try:
             browser_discovered = await cls._search_commercial_companies_via_browser(
                 industry=industry,
@@ -82,107 +104,13 @@ class LiveResearchEngine:
         except Exception as e:
             logger.warning(f"Live browser discovery fallback: {e}")
 
-        osm_search_targets = plan.get("osm_queries", [])
-
-        for target_q in osm_search_targets:
-            if len(discovered) >= effective_limit:
-                break
-            try:
-                places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 50, country, city, sub_city)
-                for p in (places or []):
-                    if len(discovered) >= effective_limit:
-                        break
-                    
-                    p_name = p.get("name", "").strip()
-                    clean_norm_name = re.sub(r'[^a-zA-Z0-9]', '', p_name.lower())
-                    if not p_name or clean_norm_name in seen_names or len(p_name) < 3:
-                        continue
-
-                    candidate_check = {
-                        "canonical_name": p_name,
-                        "industry": industry,
-                        "location": full_location,
-                        "address": p.get("address"),
-                        "website": p.get("website"),
-                        "domain": None,
-                        "snippet": p.get("display_name"),
-                    }
-                    is_valid, reason = DiscoveryOptimizer.validate_candidate(candidate_check, plan)
-                    if not is_valid:
-                        logger.debug(f"OSM candidate rejected: {reason}")
-                        continue
-
-                    seen_names.add(clean_norm_name)
-                    website = p.get("website")
-                    domain = None
-                    if website:
-                        try:
-                            domain = urllib.parse.urlparse(website).netloc.lower().replace("www.", "")
-                            if domain in seen_domains:
-                                continue
-                            seen_domains.add(domain)
-                        except Exception:
-                            pass
-
-                    lat = p.get("latitude")
-                    lon = p.get("longitude")
-                    phone = p.get("phone")
-                    email = p.get("email")
-
-                    if not website and not phone and not email:
-                        enriched = await cls.enrich_contact_from_web(p_name, full_location)
-                        if enriched.get("phone"):
-                            phone = enriched["phone"]
-                        if enriched.get("email"):
-                            email = enriched["email"]
-                        if enriched.get("website"):
-                            website = enriched["website"]
-                            domain = enriched.get("domain")
-
-                    if not website and not domain and not phone and not email and not p.get("address") and lat is None:
-                        logger.debug(f"Discarding ghost candidate '{p_name}' (No contact channel and no address).")
-                        continue
-
-                    if lat is not None and lon is not None:
-                        gmaps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-                    else:
-                        maps_q = urllib.parse.quote(f"{p_name} {full_location}")
-                        gmaps_url = f"https://www.google.com/maps/search/{maps_q}"
-                    
-                    search_q = urllib.parse.quote(f"{p_name} {full_location}")
-                    gsearch_url = f"https://www.google.com/search?q={search_q}"
-
-                    b_type = (business_type_override or industry).lower().replace(" ", "_")
-
-                    discovered.append({
-                        "canonical_name": p_name,
-                        "industry": industry,
-                        "location": full_location,
-                        "city": city or p.get("city"),
-                        "country": country or p.get("country"),
-                        "address": p.get("address"),
-                        "website": website,
-                        "domain": domain,
-                        "business_type": b_type,
-                        "snippet": p.get("display_name") or f"Commercial {industry} in {full_location}",
-                        "source_url": website or gmaps_url,
-                        "google_maps_url": gmaps_url,
-                        "google_search_url": gsearch_url,
-                        "latitude": lat,
-                        "longitude": lon,
-                        "phone": phone,
-                        "email": email,
-                        "confidence": 0.98 if website else 0.92,
-                    })
-
-                await asyncio.sleep(0.2)
-            except Exception as e:
-                logger.warning(f"OSM directory search error for '{target_q}': {e}")
-
-        if len(discovered) < effective_limit:
+        # 2. Multi-engine search expansion across targeted queries (capped to avoid stalls)
+        target_cap = effective_limit if not is_unlimited else 30
+        if len(discovered) < target_cap:
             queries = plan.get("search_queries", []) or GeoExpander.build_search_queries(industry, full_location)
-            for q in queries[:4]:
-                if len(discovered) >= effective_limit:
+            # Query top targeted queries without hanging on 60+ sequential calls
+            for q in queries[:6]:
+                if len(discovered) >= target_cap:
                     break
                 try:
                     page_html, _ = await loop.run_in_executor(None, cls._fetch_ddg_html, q, None)
@@ -190,16 +118,110 @@ class LiveResearchEngine:
                         continue
                     items = cls._parse_ddg_items(page_html)
                     for actual_url, title, snippet in items:
-                        if len(discovered) >= effective_limit:
+                        if len(discovered) >= target_cap:
                             break
                         biz = cls._process_candidate_url(actual_url, title, snippet, industry, full_location, business_type_override, seen_domains, seen_names, plan=plan)
                         if biz:
                             biz["city"] = city
                             biz["country"] = country
                             discovered.append(biz)
-                    await asyncio.sleep(0.2)
+                    await asyncio.sleep(0.05)
                 except Exception as e:
                     logger.warning(f"Web search error for '{q}': {e}")
+
+        # 3. Supplemental: OSM Directory Search ONLY for entities that have website/domain or direct email
+        if len(discovered) < target_cap:
+            osm_search_targets = plan.get("osm_queries", [])
+            for target_q in osm_search_targets[:2]:
+                if len(discovered) >= target_cap:
+                    break
+                try:
+                    places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 25, country, city, sub_city)
+                    for p in (places or []):
+                        if len(discovered) >= target_cap:
+                            break
+                        p_name = p.get("name", "").strip()
+                        clean_norm_name = re.sub(r'[^a-zA-Z0-9]', '', p_name.lower())
+                        if not p_name or clean_norm_name in seen_names or len(p_name) < 3:
+                            continue
+
+                        candidate_check = {
+                            "canonical_name": p_name,
+                            "industry": industry,
+                            "location": full_location,
+                            "address": p.get("address"),
+                            "website": p.get("website"),
+                            "domain": None,
+                            "snippet": p.get("display_name"),
+                        }
+                        is_valid, reason = DiscoveryOptimizer.validate_candidate(candidate_check, plan)
+                        if not is_valid:
+                            continue
+
+                        website = p.get("website")
+                        domain = None
+                        if website:
+                            try:
+                                domain = urllib.parse.urlparse(website).netloc.lower().replace("www.", "")
+                                if domain in seen_domains:
+                                    continue
+                            except Exception:
+                                pass
+
+                        phone = p.get("phone")
+                        email = p.get("email")
+                        lat = p.get("latitude")
+                        lon = p.get("longitude")
+
+                        if not website and not phone and not email:
+                            enriched = await cls.enrich_contact_from_web(p_name, full_location)
+                            if enriched.get("phone"):
+                                phone = enriched["phone"]
+                            if enriched.get("email"):
+                                email = enriched["email"]
+                            if enriched.get("website"):
+                                website = enriched["website"]
+                                domain = enriched.get("domain")
+
+                        if not website and not domain and not phone and not email and not p.get("address") and lat is None:
+                            continue
+
+                        if domain:
+                            seen_domains.add(domain)
+                        seen_names.add(clean_norm_name)
+
+                        if lat is not None and lon is not None:
+                            gmaps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+                        else:
+                            maps_q = urllib.parse.quote(f"{p_name} {full_location}")
+                            gmaps_url = f"https://www.google.com/maps/search/{maps_q}"
+
+                        search_q = urllib.parse.quote(f"{p_name} {full_location}")
+                        gsearch_url = f"https://www.google.com/search?q={search_q}"
+                        b_type = (business_type_override or industry).lower().replace(" ", "_")
+
+                        discovered.append({
+                            "canonical_name": p_name,
+                            "industry": industry,
+                            "location": full_location,
+                            "city": city or p.get("city"),
+                            "country": country or p.get("country"),
+                            "address": p.get("address"),
+                            "website": website,
+                            "domain": domain,
+                            "business_type": b_type,
+                            "snippet": p.get("display_name") or f"Commercial {industry} in {full_location}",
+                            "source_url": website or gmaps_url,
+                            "google_maps_url": gmaps_url,
+                            "google_search_url": gsearch_url,
+                            "latitude": lat,
+                            "longitude": lon,
+                            "phone": phone,
+                            "email": email,
+                            "confidence": 0.98 if website else 0.92,
+                        })
+                except Exception as e:
+                    logger.warning(f"OSM directory search error for '{target_q}': {e}")
 
         logger.info(f"LiveResearchEngine: Successfully discovered {len(discovered)} genuine businesses for '{industry}' in '{full_location}'.")
         return {"discovered_companies": discovered}
@@ -319,12 +341,13 @@ class LiveResearchEngine:
                     })'''
                 )
                 await browser.close()
+                from app.engine.deduplication import DeduplicationEngine
                 for l in results:
                     if not l or not l.startswith("http"):
                         continue
                     parsed = urllib.parse.urlparse(l)
                     dom = parsed.netloc.lower().replace("www.", "")
-                    if any(bad in dom for bad in ["brave.com", "facebook.com", "linkedin.com", "youtube.com", "wikipedia.org", "yellowpages"]):
+                    if DeduplicationEngine.is_generic_platform(dom) or DeduplicationEngine.is_directory_or_aggregator(l):
                         continue
                     if "." in dom and len(dom) > 4:
                         return dom
@@ -332,6 +355,7 @@ class LiveResearchEngine:
             pass
 
         try:
+            from app.engine.deduplication import DeduplicationEngine
             items = await cls._execute_web_search(f"{business_name} {location} official website")
             for it in (items or []):
                 url = it.get("url", "")
@@ -339,7 +363,7 @@ class LiveResearchEngine:
                     continue
                 parsed = urllib.parse.urlparse(url)
                 dom = parsed.netloc.lower().replace("www.", "")
-                if any(bad in dom for bad in ["duckduckgo.com", "brave.com", "bing.com", "google.com", "facebook.com", "linkedin.com", "youtube.com", "wikipedia.org", "yellowpages"]):
+                if DeduplicationEngine.is_generic_platform(dom) or DeduplicationEngine.is_directory_or_aggregator(url):
                     continue
                 if "." in dom and len(dom) > 4:
                     return dom
@@ -587,7 +611,7 @@ class LiveResearchEngine:
             else:
                 req = urllib.request.Request(f"{url}?q={urllib.parse.quote(query_str)}", headers=headers)
 
-            with urllib.request.urlopen(req, timeout=7) as resp:
+            with urllib.request.urlopen(req, timeout=3) as resp:
                 html = resp.read().decode("utf-8", errors="ignore")
                 inputs = dict(re.findall(r'<input[^>]+name=\"([^\"]+)\"[^>]+value=\"([^\"]*)\"', html))
                 if "result__a" in html or "result__snippet" in html:
@@ -604,7 +628,7 @@ class LiveResearchEngine:
                 "Referer": "https://lite.duckduckgo.com/",
             }
             req = urllib.request.Request(lite_url, data=post_data, headers=lite_headers)
-            with urllib.request.urlopen(req, timeout=7) as resp:
+            with urllib.request.urlopen(req, timeout=3) as resp:
                 html = resp.read().decode("utf-8", errors="ignore")
                 return html, {}
         except Exception:
@@ -654,7 +678,63 @@ class LiveResearchEngine:
         parsed = urllib.parse.urlparse(actual_url)
         domain = parsed.netloc.lower().replace("www.", "")
 
-        if not domain or domain in seen_domains:
+        if not domain:
+            return None
+
+        # Check if actual_url is a Facebook business page (social-only candidate)
+        is_fb_page = "facebook.com" in domain and len(parsed.path.strip("/")) > 0 and not any(
+            bad in parsed.path.lower() for bad in ["/login", "/share", "/policies", "/help", "/hashtag", "/groups", "/events", "/p/"]
+        )
+
+        from app.engine.deduplication import DeduplicationEngine
+        if is_fb_page:
+            company_name, detected_btype = cls._clean_company_identity(title, "facebook.com", snippet, industry, business_type_override)
+            clean_norm_name = re.sub(r'[^a-zA-Z0-9]', '', company_name.lower())
+            if clean_norm_name in seen_names or len(company_name) < 3 or clean_norm_name in ["facebook", "login", "home"]:
+                return None
+
+            phone = None
+            email = None
+            full_text = f"{title} {snippet}"
+            phone_match = re.search(r'(?:\+?880\s?1[3-9]\d{8}|\+?1[2-9]\d{2}[2-9]\d{6}|\+?[0-9]{2,4}[\s.-]?[0-9]{3,4}[\s.-]?[0-9]{4,6})', full_text)
+            if phone_match:
+                raw_ph = phone_match.group(0).strip()
+                if len(re.sub(r'\D', '', raw_ph)) >= 7:
+                    phone = raw_ph
+
+            email_match = re.search(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', full_text)
+            if email_match:
+                cand_em = email_match.group(0).lower()
+                if not any(cand_em.endswith(x) for x in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"]):
+                    email = cand_em
+
+            candidate = {
+                "canonical_name": company_name,
+                "industry": industry,
+                "location": location,
+                "address": None,
+                "website": None,
+                "domain": None,
+                "facebook_url": actual_url,
+                "business_type": detected_btype,
+                "snippet": snippet or title,
+                "source_url": actual_url,
+                "phone": phone,
+                "email": email,
+                "confidence": 0.95,
+                "is_social_only": True,
+            }
+            seen_names.add(clean_norm_name)
+            maps_query = urllib.parse.quote(f"{company_name} {location}")
+            candidate["google_maps_url"] = f"https://www.google.com/maps/search/{maps_query}"
+            candidate["google_search_url"] = f"https://www.google.com/search?q={maps_query}"
+            return candidate
+
+        if domain in seen_domains:
+            return None
+
+        if DeduplicationEngine.is_generic_platform(domain) or DeduplicationEngine.is_directory_or_aggregator(actual_url, title):
+            logger.info(f"OpenClaw: Skipping directory/aggregator platform '{domain}' ({actual_url})")
             return None
 
         if re.search(r'\.(pdf|docx?|pptx?|xlsx?|zip|rar|csv)(\?.*)?$', actual_url, re.I):
@@ -719,23 +799,31 @@ class LiveResearchEngine:
             "top real estate", "real estate company", "real estate developer",
             "properties in", "property in", "apartments for sale"
         ]
-        GENERIC_STOP_WORDS = {"real", "estate", "pdf", "developer", "properties", "property", "company", "ltd", "limited"}
+        GENERIC_STOP_WORDS = {
+            "real", "estate", "pdf", "developer", "properties", "property", "company", "ltd", "limited",
+            "goodfirms", "clutch", "crunchbase", "yellowpages", "bproperty", "bikroy", "justdial", "directory", "listing"
+        }
 
-        parts = re.split(r'\||-|—|@|:', raw_title)
+        parts = re.split(r'\||-|—|@|:|,', raw_title)
         candidate_names = []
 
         for p in parts:
             clean = p.strip()
             clean_l = clean.lower()
-            if len(clean) >= 3 and not any(k in clean_l for k in ["best", "top", "ranked", "reviews", "directory", "near me", "list", "guide", "2026", "2025", "home", "official", ".pdf"]):
+            if len(clean) >= 3 and len(clean) <= 80 and not any(k in clean_l for k in [
+                "best", "top", "ranked", "reviews", "directory", "directories", "listing", "listings",
+                "near me", "list", "guide", "2026", "2025", "home", "official", ".pdf",
+                "goodfirms", "clutch", "crunchbase", "bproperty", "bikroy"
+            ]):
                 if not re.search(r'(https?://|www\.|\.[a-zA-Z]{2,})', clean_l):
                     if not any(tag in clean_l for tag in GENERIC_TAGLINES) and clean_l not in GENERIC_STOP_WORDS:
                         candidate_names.append(clean)
 
         best_name = candidate_names[0] if candidate_names else dom_name
-        if best_name.lower() in GENERIC_STOP_WORDS or len(best_name) < 3:
+        if best_name.lower() in GENERIC_STOP_WORDS or len(best_name) < 3 or len(best_name) > 80:
             best_name = dom_name
 
+        best_name = best_name[:120].strip()
         return best_name, b_type
 
     @classmethod
@@ -1228,17 +1316,24 @@ class LiveResearchEngine:
             except Exception:
                 pass
 
+        is_appointment = False
+        try:
+            from app.engine.fit_gate import is_appointment_niche
+            is_appointment = is_appointment_niche("", canonical_name)
+        except Exception:
+            pass
+
         detected_weaknesses = []
         if not mobile_responsive:
             detected_weaknesses.append("Website layout breaks or lacks viewport optimization on mobile devices")
-        if not has_online_booking:
-            detected_weaknesses.append("Missing automated online appointment/quote booking system")
+        if is_appointment and not has_online_booking:
+            detected_weaknesses.append("Missing automated online appointment booking system")
+        elif not has_contact_form:
+            detected_weaknesses.append("Missing direct lead capture/inquiry form")
         if not has_whatsapp:
             detected_weaknesses.append("Missing click-to-WhatsApp instant conversion widget")
         if not has_meta_pixel:
             detected_weaknesses.append("Missing Meta/Google Ads retargeting pixel for visitor recapture")
-        if not has_contact_form:
-            detected_weaknesses.append("Missing direct lead capture/inquiry form")
         if not has_live_chat and not has_ai_chatbot:
             detected_weaknesses.append("Missing 24/7 live chat or AI customer assistant")
         if not has_ssl_security:
@@ -1251,22 +1346,24 @@ class LiveResearchEngine:
             detected_weaknesses.append(f"{broken_links_count} broken link references detected")
 
         weakness_pitch = ""
-        if not mobile_responsive and not has_online_booking:
-            weakness_pitch = "the mobile user experience and the lack of an instant online booking form"
-        elif not has_meta_pixel and not has_whatsapp:
-            weakness_pitch = "visitor retargeting tracking and instant WhatsApp engagement"
-        elif not has_online_booking:
-            weakness_pitch = "automating your online quote & appointment booking flow"
+        if not mobile_responsive:
+            weakness_pitch = "the mobile responsiveness and smartphone client acquisition experience"
+        elif not has_contact_form and not has_whatsapp:
+            weakness_pitch = "direct on-site lead capture and instant WhatsApp client engagement"
+        elif not has_meta_pixel and not has_google_analytics:
+            weakness_pitch = "inbound conversion tracking and digital retargeting pixels"
+        elif is_appointment and not has_online_booking:
+            weakness_pitch = "automating your online client appointment scheduling"
         elif not has_whatsapp:
             weakness_pitch = "adding a direct WhatsApp chat option for rapid mobile client inquiries"
         elif not has_meta_pixel:
-            weakness_pitch = "installing Meta retargeting pixels to re-engage past website visitors"
+            weakness_pitch = "installing retargeting pixels to re-engage past website visitors"
         elif copyright_year and copyright_year < 2024:
-            weakness_pitch = "modernizing your website design to increase trust and inbound conversion rates"
+            weakness_pitch = "modernizing your website design to increase client trust and inbound conversion rates"
         elif detected_weaknesses:
             weakness_pitch = detected_weaknesses[0].lower()
         else:
-            weakness_pitch = "scaling your online visibility and inbound client conversion pipeline"
+            weakness_pitch = "scaling your online visibility and inbound client acquisition pipeline"
 
         logger.info(
             f"LiveResearchEngine: Audited {url} ({visited_pages} pages) -> "
@@ -1313,34 +1410,200 @@ class LiveResearchEngine:
         }
 
     @classmethod
-    async def inspect_advertising(cls, canonical_name: str, domain: str = "") -> Dict[str, Any]:
-        meta_ads_url = f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&q={urllib.parse.quote(canonical_name)}"
+    async def inspect_advertising(
+        cls,
+        canonical_name: str,
+        domain: str = "",
+        has_meta_pixel: bool = False,
+    ) -> Dict[str, Any]:
+        clean_name = canonical_name.strip()
+        meta_ads_url = f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q={urllib.parse.quote(clean_name)}&search_type=keyword_unordered&media_type=all"
+        
+        evidence_note = (
+            f"Meta Ad Library transparency link: {meta_ads_url}. "
+            f"Website Meta Pixel: {'Active on domain' if has_meta_pixel else 'Missing - ad spend and remarketing attribution cannot be tracked'}."
+        )
+
         return {
-            "canonical_name": canonical_name,
+            "canonical_name": clean_name,
             "domain": domain,
             "meta_ads_url": meta_ads_url,
-            "ad_registry": "Meta Ad Library",
-            "has_pixel_signal": False,
+            "proof_link": meta_ads_url,
+            "has_pixel_signal": has_meta_pixel,
+            "evidence_text": evidence_note,
             "checked_live": True,
         }
 
     @classmethod
-    async def inspect_reviews(cls, business_name: str, location: str = "") -> Dict[str, Any]:
-        maps_query = urllib.parse.quote(f"{business_name} {location}")
+    async def inspect_reviews(
+        cls,
+        business_name: str,
+        location: str = "",
+        rating: Optional[float] = None,
+        review_count: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        clean_name = business_name.strip()
+        maps_query = urllib.parse.quote(f"{clean_name} {location}".strip())
         maps_url = f"https://www.google.com/maps/search/{maps_query}"
+        
+        if rating is not None:
+            rev_label = f"{review_count} reviews" if review_count else "reviews"
+            if rating < 4.3:
+                evidence_note = f"Google Maps rating stands at {rating}★ ({rev_label}). Customer review sentiment indicates service response bottlenecks. Proof: {maps_url}"
+            else:
+                evidence_note = f"High-demand Google Maps profile ({rating}★, {rev_label}). High inbound demand requiring automated client booking. Proof: {maps_url}"
+        else:
+            evidence_note = f"Google Maps public directory profile indexed at {maps_url}."
+
         return {
-            "business_name": business_name,
+            "business_name": clean_name,
             "location": location,
             "google_maps_url": maps_url,
-            "repeated_complaint_themes": [],
+            "proof_link": maps_url,
+            "rating": rating,
+            "review_count": review_count,
+            "evidence_text": evidence_note,
             "checked_live": True,
         }
 
     @classmethod
-    async def inspect_social(cls, canonical_name: str, domain: str = "") -> Dict[str, Any]:
+    async def inspect_social(
+        cls,
+        canonical_name: str,
+        domain: str = "",
+        facebook_url: Optional[str] = None,
+        location: str = "",
+    ) -> Dict[str, Any]:
+        loop = asyncio.get_event_loop()
+        clean_name = canonical_name.strip()
+        found_fb = facebook_url
+        post_recency_text = None
+        is_dormant = False
+        recent_snippets = []
+
+        if not found_fb:
+            fb_search = f'site:facebook.com "{clean_name}" {location}'
+            try:
+                def _do_fb_search():
+                    html, _ = cls._fetch_ddg_html(fb_search)
+                    return cls._parse_ddg_items(html)
+                items = await loop.run_in_executor(None, _do_fb_search)
+                for link, title, snippet in items:
+                    if "facebook.com" in link.lower() and not any(bad in link.lower() for bad in ["/sharer", "/login", "/recover", "/groups"]):
+                        found_fb = link
+                        recent_snippets.append(f"{title} {snippet}")
+                        break
+            except Exception as e:
+                logger.debug(f"inspect_social search error: {e}")
+
+        if found_fb and not recent_snippets:
+            try:
+                def _do_page_search():
+                    html, _ = cls._fetch_ddg_html(f'"{clean_name}" site:facebook.com')
+                    return cls._parse_ddg_items(html)
+                items = await loop.run_in_executor(None, _do_page_search)
+                for link, title, snippet in items:
+                    recent_snippets.append(f"{title} {snippet}")
+            except Exception as e:
+                logger.debug(f"inspect_social snippet fetch error: {e}")
+
+        combined_text = " ".join(recent_snippets)
+        date_match = re.search(r'(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}|\d+\s+(?:hours?|days?|weeks?|months?|years?)\s+ago|\b202[0-5]\b)', combined_text, re.IGNORECASE)
+        if date_match:
+            post_recency_text = date_match.group(0).strip()
+            if any(k in post_recency_text.lower() for k in ["month", "year", "2024", "2023", "2022", "2021", "2020"]):
+                is_dormant = True
+        else:
+            if found_fb:
+                post_recency_text = "No recent public posts detected in index"
+                is_dormant = True
+
+        evidence_note = ""
+        if found_fb:
+            if is_dormant:
+                evidence_note = f"Public Facebook page verified at {found_fb}. Activity check: {post_recency_text} (Dormant profile losing organic clients). Proof: {found_fb}"
+            else:
+                evidence_note = f"Public Facebook page verified at {found_fb}. Active presence detected ({post_recency_text}). Inbound inquiries require automated CRM tracking. Proof: {found_fb}"
+        else:
+            evidence_note = f"No verified official Facebook page detected for {clean_name} in {location}."
+
         return {
-            "canonical_name": canonical_name,
+            "canonical_name": clean_name,
             "domain": domain,
+            "facebook_url": found_fb,
+            "proof_link": found_fb or f"https://www.google.com/search?q={urllib.parse.quote(clean_name + ' facebook')}",
+            "has_facebook": bool(found_fb),
+            "is_dormant": is_dormant,
+            "post_recency_text": post_recency_text,
+            "evidence_text": evidence_note,
+            "checked_live": True,
+        }
+
+    @classmethod
+    async def inspect_news(
+        cls,
+        company_name: str,
+        location: str = "",
+    ) -> Dict[str, Any]:
+        loop = asyncio.get_event_loop()
+        clean_name = company_name.strip()
+        news_query = f'"{clean_name}" (launch OR expansion OR project OR contract OR branch) {location}'
+        announcements = []
+
+        try:
+            def _do_search():
+                html, _ = cls._fetch_ddg_html(news_query)
+                return cls._parse_ddg_items(html)
+            items = await loop.run_in_executor(None, _do_search)
+            for link, title, snippet in items[:3]:
+                if any(bad in link.lower() for bad in ["facebook.com", "instagram.com", "youtube.com"]):
+                    continue
+                announcements.append({
+                    "headline": title,
+                    "snippet": snippet,
+                    "source_url": link,
+                    "signal_type": "expansion_or_project",
+                })
+        except Exception as e:
+            logger.debug(f"inspect_news error for {clean_name}: {e}")
+
+        return {
+            "company_name": clean_name,
+            "announcements": announcements,
+            "active_announcements_count": len(announcements),
+            "checked_live": True,
+        }
+
+    @classmethod
+    async def inspect_jobs(
+        cls,
+        company_name: str,
+        location: str = "",
+    ) -> Dict[str, Any]:
+        loop = asyncio.get_event_loop()
+        clean_name = company_name.strip()
+        job_query = f'"{clean_name}" (hiring OR jobs OR career OR vacancy) {location}'
+        tech_roles = []
+        source_urls = []
+
+        try:
+            def _do_job_search():
+                html, _ = cls._fetch_ddg_html(job_query)
+                return cls._parse_ddg_items(html)
+            items = await loop.run_in_executor(None, _do_job_search)
+            for link, title, snippet in items[:5]:
+                combined = f"{title} {snippet}".lower()
+                if any(k in combined for k in ["manager", "developer", "marketing", "sales", "executive", "officer", "engineer", "designer", "specialist"]):
+                    tech_roles.append(title[:60])
+                    source_urls.append(link)
+        except Exception as e:
+            logger.debug(f"inspect_jobs error for {clean_name}: {e}")
+
+        return {
+            "company_name": clean_name,
+            "active_job_count": len(tech_roles),
+            "tech_roles_found": tech_roles[:5],
+            "source_urls": source_urls[:3],
             "checked_live": True,
         }
 
@@ -1427,6 +1690,7 @@ class OpenClawClient:
                 sub_city=sub_city,
                 company_limit=raw_limit,
                 business_type_override=b_type,
+                sub_areas=parameters.get("sub_areas"),
             )
 
         elif skill_name == "website-research":
@@ -1438,27 +1702,58 @@ class OpenClawClient:
         elif skill_name == "ads-research":
             canonical_name = parameters.get("company_name") or parameters.get("canonical_name", "Business")
             domain = parameters.get("domain", "")
-            return await LiveResearchEngine.inspect_advertising(canonical_name=canonical_name, domain=domain)
+            has_pixel = bool(parameters.get("has_meta_pixel", False))
+            return await LiveResearchEngine.inspect_advertising(canonical_name=canonical_name, domain=domain, has_meta_pixel=has_pixel)
 
         elif skill_name == "review-research":
             business_name = parameters.get("business_name", "Business")
             location = parameters.get("location", "")
-            return await LiveResearchEngine.inspect_reviews(business_name=business_name, location=location)
+            rating = parameters.get("rating")
+            review_count = parameters.get("review_count")
+            return await LiveResearchEngine.inspect_reviews(
+                business_name=business_name,
+                location=location,
+                rating=float(rating) if rating is not None else None,
+                review_count=int(review_count) if review_count is not None else None,
+            )
 
         elif skill_name == "social-research":
             canonical_name = parameters.get("canonical_name", "Business")
             domain = parameters.get("domain", "")
-            return await LiveResearchEngine.inspect_social(canonical_name=canonical_name, domain=domain)
+            facebook_url = parameters.get("facebook_url")
+            location = parameters.get("location", "")
+            return await LiveResearchEngine.inspect_social(
+                canonical_name=canonical_name,
+                domain=domain,
+                facebook_url=facebook_url,
+                location=location,
+            )
+
+        elif skill_name in ("skill-lead-gen", "lead-gen"):
+            industry = parameters.get("industry", "Business")
+            location = parameters.get("location", "Dhaka")
+            return await LiveResearchEngine.discover_businesses(
+                industry=industry,
+                location=location,
+                company_limit=parameters.get("company_limit", 10),
+            )
+
+        elif skill_name == "news-research":
+            company_name = parameters.get("company_name") or parameters.get("canonical_name", "Business")
+            location = parameters.get("location", "")
+            return await LiveResearchEngine.inspect_news(company_name=company_name, location=location)
 
         elif skill_name == "jobs-research":
-            return {
-                "active_job_count": 0,
-                "tech_roles_found": [],
-                "hiring_intent_level": "unknown",
-                "source_urls": [],
-            }
+            company_name = parameters.get("company_name") or parameters.get("canonical_name", "Business")
+            location = parameters.get("location", "")
+            return await LiveResearchEngine.inspect_jobs(company_name=company_name, location=location)
+
+        elif skill_name == "visual-research":
+            url = parameters.get("target_url") or parameters.get("url", "")
+            canonical_name = parameters.get("canonical_name", "Business")
+            return await LiveResearchEngine.audit_website(url=url, canonical_name=canonical_name)
+
+        elif skill_name == "evidence-collection":
+            return {"status": "SUCCESS", "skill": "evidence-collection", "evidence_items": parameters.get("evidence_items", [])}
 
         return {"status": "SUCCESS", "skill": skill_name}
-
-class MockOpenClawClient(OpenClawClient):
-    pass

@@ -67,27 +67,30 @@ async def get_system_health(
         overall_healthy = False
         components["redis"] = ComponentHealth(status="down", details={"error": str(e)})
 
-    t0 = time.time()
-    try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            resp = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
-            ollama_latency = (time.time() - t0) * 1000
-            if resp.status_code == 200:
-                components["ollama"] = ComponentHealth(
-                    status="healthy",
-                    latency_ms=round(ollama_latency, 2),
-                    details={"model": settings.OLLAMA_MODEL},
-                )
-            else:
-                components["ollama"] = ComponentHealth(status="degraded", details={"status_code": resp.status_code})
-    except Exception as e:
-        components["ollama"] = ComponentHealth(status="down", details={"error": str(e)})
 
-    oc_open = check_port("127.0.0.1", 18789, timeout=1.0)
-    if oc_open:
-        components["openclaw"] = ComponentHealth(status="healthy", details={"endpoint": settings.OPENCLAW_GATEWAY_URL})
+    gw_url = settings.OPENCLAW_GATEWAY_URL or ""
+    if gw_url.startswith("http://") or gw_url.startswith("https://"):
+        t0_oc = time.time()
+        try:
+            async with httpx.AsyncClient(timeout=3.0, verify=False) as client:
+                resp_oc = await client.get(gw_url)
+                latency_oc = round((time.time() - t0_oc) * 1000, 2)
+                if resp_oc.status_code in (200, 301, 302, 401, 403, 404):
+                    components["openclaw"] = ComponentHealth(
+                        status="healthy",
+                        latency_ms=latency_oc,
+                        details={"endpoint": gw_url, "status_code": resp_oc.status_code}
+                    )
+                else:
+                    components["openclaw"] = ComponentHealth(status="degraded", details={"status_code": resp_oc.status_code, "endpoint": gw_url})
+        except Exception as e:
+            components["openclaw"] = ComponentHealth(status="down", details={"error": str(e), "endpoint": gw_url})
     else:
-        components["openclaw"] = ComponentHealth(status="down", details={"error": "Port 18789 closed or unreachable"})
+        oc_open = check_port("127.0.0.1", 18789, timeout=1.0)
+        if oc_open:
+            components["openclaw"] = ComponentHealth(status="healthy", details={"endpoint": "127.0.0.1:18789"})
+        else:
+            components["openclaw"] = ComponentHealth(status="down", details={"error": "Port 18789 closed or unreachable"})
 
     return SystemHealthResponse(
         status="healthy" if overall_healthy else "degraded",
@@ -145,10 +148,10 @@ async def reset_database(
     await db.commit()
     return {"status": "SUCCESS", "message": "Database reset successfully. System parameters and services preserved."}
 
-DEFAULT_EMAIL_SUBJECT = "Quick inquiry regarding your office in {{location}}"
-DEFAULT_EMAIL_BODY = """Dear {{contact_person}},
+DEFAULT_EMAIL_SUBJECT = "Quick question regarding {{company_name}}"
+DEFAULT_EMAIL_BODY = """Hi {{contact_person}},
 
-I recently came across {{company_name}} located in {{location}}. You have an established local presence, but while researching your digital touchpoints online, I noticed key opportunities to improve your client acquisition pipeline{{primary_gap}}.
+I recently came across {{company_name}}. You have an established local presence, but while researching your digital touchpoints online, I noticed key opportunities to improve your client acquisition pipeline{{primary_gap}}.
 
 Today, over 70% of potential clients search and evaluate businesses on mobile devices before calling or visiting. Without an optimized, modern mobile presence and instant inquiry capture, many high-value leads contact competitors instead.
 
@@ -189,12 +192,12 @@ async def get_email_template(
             name="default",
             subject=DEFAULT_EMAIL_SUBJECT,
             body=DEFAULT_EMAIL_BODY,
-            sender_name="Jamil Khan",
-            sender_title="Senior Solutions Consultant",
-            sender_company="Multi-Lead Gen AI",
-            sender_email="contact@leadgen.local",
-            sender_phone="+880 1700-000000",
-            sender_website="https://leadgen.local",
+            sender_name="",
+            sender_title="",
+            sender_company="",
+            sender_email="",
+            sender_phone="",
+            sender_website="",
             sign_off="Sincerely,",
             signature_text="",
             is_active=True,
@@ -220,12 +223,12 @@ async def update_email_template(
             name="default",
             subject=update_data.subject,
             body=update_data.body,
-            sender_name=update_data.sender_name or "Jamil Khan",
-            sender_title=update_data.sender_title or "Senior Solutions Consultant",
-            sender_company=update_data.sender_company or "Multi-Lead Gen AI",
-            sender_email=update_data.sender_email or "contact@leadgen.local",
-            sender_phone=update_data.sender_phone or "+880 1700-000000",
-            sender_website=update_data.sender_website,
+            sender_name=update_data.sender_name or "",
+            sender_title=update_data.sender_title or "",
+            sender_company=update_data.sender_company or "",
+            sender_email=update_data.sender_email or "",
+            sender_phone=update_data.sender_phone or "",
+            sender_website=update_data.sender_website or "",
             sign_off=update_data.sign_off or "Sincerely,",
             signature_text=update_data.signature_text or "",
             is_active=update_data.is_active if update_data.is_active is not None else True,
@@ -265,12 +268,12 @@ async def preview_email_template(
     subject = preview_req.subject or DEFAULT_EMAIL_SUBJECT
     body = preview_req.body or DEFAULT_EMAIL_BODY
 
-    sender_name = preview_req.sender_name or "Jamil Khan"
-    sender_title = preview_req.sender_title or "Senior Solutions Consultant"
-    sender_company = preview_req.sender_company or "Multi-Lead Gen AI"
-    sender_email = preview_req.sender_email or "contact@leadgen.local"
-    sender_phone = preview_req.sender_phone or "+880 1700-000000"
-    sender_website = preview_req.sender_website or "https://leadgen.local"
+    sender_name = preview_req.sender_name or ""
+    sender_title = preview_req.sender_title or ""
+    sender_company = preview_req.sender_company or ""
+    sender_email = preview_req.sender_email or ""
+    sender_phone = preview_req.sender_phone or ""
+    sender_website = preview_req.sender_website or ""
     sign_off = preview_req.sign_off or "Sincerely,"
 
     if preview_req.signature_text and preview_req.signature_text.strip():
@@ -297,14 +300,14 @@ async def preview_email_template(
     gap_text = f" ({preview_req.primary_gap})" if preview_req.primary_gap else ""
 
     replacements = {
-        "{{company_name}}": preview_req.company_name or "Tropical Homes Ltd.",
-        "{{business_name}}": preview_req.company_name or "Tropical Homes Ltd.",
+        "{{company_name}}": preview_req.company_name or "Acme Enterprise",
+        "{{business_name}}": preview_req.company_name or "Acme Enterprise",
         "{{contact_person}}": preview_req.contact_person or "Decision Maker",
-        "{{location}}": preview_req.location or "Gulshan-2, Dhaka",
-        "{{address}}": preview_req.location or "Gulshan-2, Dhaka",
-        "{{website}}": preview_req.website or "tropicalhomesltd.com",
-        "{{domain}}": preview_req.website or "tropicalhomesltd.com",
-        "{{phone}}": preview_req.phone or "+880 1711-223344",
+        "{{location}}": preview_req.location or "Metro City",
+        "{{address}}": preview_req.location or "Metro City",
+        "{{website}}": preview_req.website or "acme.example.com",
+        "{{domain}}": preview_req.website or "acme.example.com",
+        "{{phone}}": preview_req.phone or "+1 555-0199",
         "{{primary_gap}}": gap_text,
         "{{signature}}": sig,
         "{{sender_name}}": sender_name,
@@ -334,7 +337,7 @@ class SMTPInboxCreate(BaseModel):
     username: str
     password: str
     from_email: str
-    from_name: str = "Growth Team"
+    from_name: str = ""
     daily_limit: int = 30
     is_active: bool = True
 
@@ -357,15 +360,62 @@ async def get_inbox_monitor_stats(
     admin_user: User = Depends(require_admin),
 ):
     from app.engine.outreach_engine import OutreachEngine
-    
+    from app.models.autopilot import EmailOutreachLog
+    from datetime import datetime, timezone
+
+    # 1. Fetch configured inboxes from DB
     db_inboxes_stmt = select(SMTPInbox).order_by(SMTPInbox.created_at)
     res = await db.execute(db_inboxes_stmt)
     db_inboxes = res.scalars().all()
-    
+
+    # 2. Query persistent outreach logs sent TODAY from PostgreSQL
+    now = datetime.now(timezone.utc)
+    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+
+    today_logs_stmt = select(EmailOutreachLog).where(
+        EmailOutreachLog.sent_at >= today_start,
+        EmailOutreachLog.status.in_(["SENT", "MANUAL_REPLY_SENT", "DELIVERED"])
+    )
+    today_logs_res = await db.execute(today_logs_stmt)
+    today_logs = today_logs_res.scalars().all()
+
+    # Map persistent sent logs to specific inboxes
+    inbox_db_counts = {}
+    unassigned_today_count = 0
+
+    for l in today_logs:
+        err_msg = l.error_message or ""
+        matched = False
+        for idx, ib in enumerate(db_inboxes):
+            ib_id_str = str(ib.id)
+            if (
+                ib_id_str in err_msg
+                or f"#{idx + 1}" in err_msg
+                or f"#{ib.id}" in err_msg
+                or (ib.from_email and ib.from_email.lower() in err_msg.lower())
+            ):
+                inbox_db_counts[ib_id_str] = inbox_db_counts.get(ib_id_str, 0) + 1
+                matched = True
+                break
+        if not matched:
+            unassigned_today_count += 1
+
     inbox_list = []
     if db_inboxes:
         for idx, ib in enumerate(db_inboxes):
-            sent_today = OutreachEngine.INBOX_STATS.get(str(ib.id), 0)
+            ib_id_str = str(ib.id)
+            db_sent = inbox_db_counts.get(ib_id_str, 0)
+            mem_sent = OutreachEngine.INBOX_STATS.get(ib_id_str, 0)
+            sent_today = max(db_sent, mem_sent)
+
+            # Attribute legacy unassigned logs sent today so total matches database reality
+            if unassigned_today_count > 0:
+                sent_today += unassigned_today_count
+                unassigned_today_count = 0
+
+            # Keep in-memory cache in sync with persistent DB
+            OutreachEngine.INBOX_STATS[ib_id_str] = sent_today
+
             inbox_list.append({
                 "id": str(ib.id),
                 "index": idx + 1,
@@ -384,7 +434,7 @@ async def get_inbox_monitor_stats(
         env_inboxes = OutreachEngine.get_active_smtp_inboxes()
         for ib in env_inboxes:
             ib_id = ib["id"]
-            sent_today = OutreachEngine.INBOX_STATS.get(str(ib_id), 0)
+            sent_today = len(today_logs) if len(today_logs) > 0 else OutreachEngine.INBOX_STATS.get(str(ib_id), 0)
             inbox_list.append({
                 "id": str(ib_id),
                 "index": ib_id,
@@ -638,34 +688,50 @@ async def get_company_kb(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
+    try:
+        from sqlalchemy import text
+        await db.execute(text("ALTER TABLE company_kb ADD COLUMN IF NOT EXISTS master_kb_notes TEXT;"))
+    except Exception as e:
+        logger.warning(f"company_kb column check notice: {e}")
+
     stmt = select(CompanyKB).order_by(CompanyKB.created_at.desc()).limit(1)
     res = await db.execute(stmt)
     kb = res.scalar_one_or_none()
 
     if not kb:
         kb = CompanyKB(
-            company_name="Enterprise Solutions",
-            tagline_experience="10+ years of digital transformation & custom software engineering",
-            headquarters="Dhaka, Bangladesh",
+            company_name="",
+            tagline_experience="",
+            headquarters=None,
             contact_phone=None,
             contact_email=None,
             website_url=None,
-            services_json=DEFAULT_SERVICES,
+            master_kb_notes=None,
+            services_json=[],
             is_active=True,
         )
         db.add(kb)
         await db.commit()
         await db.refresh(kb)
+    else:
+        # Wipe old seed defaults if they were never customized
+        if kb.company_name == "Enterprise Solutions":
+            kb.company_name = ""
+        if kb.headquarters == "Dhaka, Bangladesh" and not kb.contact_phone and not kb.contact_email:
+            kb.headquarters = None
+        if "10+ years of digital transformation" in (kb.tagline_experience or ""):
+            kb.tagline_experience = ""
 
     return CompanyKBResponse(
         id=str(kb.id),
-        company_name=kb.company_name,
-        tagline_experience=kb.tagline_experience,
+        company_name=kb.company_name or "",
+        tagline_experience=kb.tagline_experience or "",
         headquarters=kb.headquarters,
         contact_phone=kb.contact_phone,
         contact_email=kb.contact_email,
         website_url=kb.website_url,
-        services_json=kb.services_json or DEFAULT_SERVICES,
+        master_kb_notes=getattr(kb, "master_kb_notes", None),
+        services_json=kb.services_json or [],
         is_active=kb.is_active,
         created_at=kb.created_at.isoformat() if kb.created_at else None,
         updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
@@ -677,6 +743,12 @@ async def update_company_kb(
     db: AsyncSession = Depends(get_db),
     admin_user: User = Depends(require_admin),
 ):
+    try:
+        from sqlalchemy import text
+        await db.execute(text("ALTER TABLE company_kb ADD COLUMN IF NOT EXISTS master_kb_notes TEXT;"))
+    except Exception as e:
+        logger.warning(f"company_kb column check notice: {e}")
+
     stmt = select(CompanyKB).order_by(CompanyKB.created_at.desc()).limit(1)
     res = await db.execute(stmt)
     kb = res.scalar_one_or_none()
@@ -697,23 +769,31 @@ async def update_company_kb(
         kb.contact_email = payload.contact_email.strip() or None
     if payload.website_url is not None:
         kb.website_url = payload.website_url.strip() or None
+    if payload.master_kb_notes is not None:
+        kb.master_kb_notes = payload.master_kb_notes.strip() or None
     if payload.services_json is not None:
         kb.services_json = payload.services_json
     if payload.is_active is not None:
         kb.is_active = payload.is_active
 
-    await db.commit()
-    await db.refresh(kb)
+    try:
+        await db.commit()
+        await db.refresh(kb)
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to update company KB: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")
 
     return CompanyKBResponse(
         id=str(kb.id),
-        company_name=kb.company_name,
-        tagline_experience=kb.tagline_experience,
+        company_name=kb.company_name or "",
+        tagline_experience=kb.tagline_experience or "",
         headquarters=kb.headquarters,
         contact_phone=kb.contact_phone,
         contact_email=kb.contact_email,
         website_url=kb.website_url,
-        services_json=kb.services_json or DEFAULT_SERVICES,
+        master_kb_notes=getattr(kb, "master_kb_notes", None),
+        services_json=kb.services_json or [],
         is_active=kb.is_active,
         created_at=kb.created_at.isoformat() if kb.created_at else None,
         updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
@@ -732,19 +812,27 @@ async def reset_company_kb_defaults(
         kb = CompanyKB()
         db.add(kb)
 
-    kb.services_json = DEFAULT_SERVICES
+    kb.company_name = ""
+    kb.tagline_experience = ""
+    kb.headquarters = None
+    kb.contact_phone = None
+    kb.contact_email = None
+    kb.website_url = None
+    kb.master_kb_notes = None
+    kb.services_json = []
     await db.commit()
     await db.refresh(kb)
 
     return CompanyKBResponse(
         id=str(kb.id),
-        company_name=kb.company_name,
-        tagline_experience=kb.tagline_experience,
+        company_name=kb.company_name or "",
+        tagline_experience=kb.tagline_experience or "",
         headquarters=kb.headquarters,
         contact_phone=kb.contact_phone,
         contact_email=kb.contact_email,
         website_url=kb.website_url,
-        services_json=kb.services_json or DEFAULT_SERVICES,
+        master_kb_notes=getattr(kb, "master_kb_notes", None),
+        services_json=kb.services_json or [],
         is_active=kb.is_active,
         created_at=kb.created_at.isoformat() if kb.created_at else None,
         updated_at=kb.updated_at.isoformat() if kb.updated_at else None,
@@ -769,11 +857,18 @@ async def purge_database_data(
 
     target = req.target.lower().strip()
 
-    if target == "rejected_leads":
-        stmt = delete(Lead).where(Lead.tier == "Rejected")
+    if target in ("rejected_leads", "no_email_leads"):
+        from sqlalchemy import or_
+        stmt = delete(Lead).where(
+            or_(
+                Lead.tier == "Rejected",
+                Lead.outreach_status == "NO_EMAIL",
+                Lead.email_status == "NOT_FOUND"
+            )
+        )
         res = await db.execute(stmt)
         await db.commit()
-        return {"status": "SUCCESS", "message": f"Purged {res.rowcount} rejected leads."}
+        return {"status": "SUCCESS", "message": f"Purged {res.rowcount} rejected & no-email leads."}
 
     elif target == "search_runs":
         await db.execute(delete(ResearchJob))
@@ -807,4 +902,212 @@ async def purge_database_data(
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown purge target: {req.target}")
+
+
+# ── AI Engine & Model Settings ──────────────────────────────────────────────
+from app.models.ai_settings import AISettings
+from app.schemas.ai_settings import (
+    AISettingsResponse,
+    AISettingsUpdate,
+    AITestRequest,
+    AITestResponse,
+)
+from app.services.ai_client import AIClient, set_runtime_ai_settings
+import os
+
+def _mask_key(key: Optional[str]) -> Optional[str]:
+    if not key:
+        return None
+    k = key.strip()
+    if len(k) <= 8:
+        return "********"
+    return f"{k[:5]}...{k[-4:]}"
+
+@router.get("/ai-settings", response_model=AISettingsResponse)
+async def get_ai_settings(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(AISettings).where(AISettings.is_active == True).order_by(AISettings.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    cfg = res.scalar_one_or_none()
+
+    if not cfg:
+        cfg = AISettings(
+            primary_provider=settings.LLM_PROVIDER or "groq",
+            primary_model=settings.LLM_MODEL or "qwen/qwen3.8-27b",
+            enable_fallback=True,
+            fallback_provider="openrouter",
+            fallback_model="meta-llama/llama-3.3-70b-instruct:free",
+            groq_api_key=settings.GROQ_API_KEY,
+            openrouter_api_key=os.getenv("OPENROUTER_API_KEY"),
+            openai_api_key=settings.OPENAI_API_KEY,
+            custom_api_key=None,
+            custom_base_url=None,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            temperature=settings.LLM_TEMPERATURE,
+            is_active=True,
+        )
+        db.add(cfg)
+        await db.commit()
+        await db.refresh(cfg)
+
+    return AISettingsResponse(
+        id=cfg.id,
+        primary_provider=cfg.primary_provider,
+        primary_model=cfg.primary_model,
+        enable_fallback=cfg.enable_fallback,
+        fallback_provider=cfg.fallback_provider,
+        fallback_model=cfg.fallback_model,
+        groq_api_key_masked=_mask_key(cfg.groq_api_key),
+        openrouter_api_key_masked=_mask_key(cfg.openrouter_api_key),
+        openai_api_key_masked=_mask_key(cfg.openai_api_key),
+        custom_api_key_masked=_mask_key(cfg.custom_api_key),
+        custom_base_url=cfg.custom_base_url,
+        has_groq_key=bool(cfg.groq_api_key),
+        has_openrouter_key=bool(cfg.openrouter_api_key),
+        has_openai_key=bool(cfg.openai_api_key),
+        has_custom_key=bool(cfg.custom_api_key),
+        max_tokens=cfg.max_tokens,
+        temperature=cfg.temperature,
+        usage_stats_json=cfg.usage_stats_json or {},
+        is_active=cfg.is_active,
+    )
+
+@router.put("/ai-settings", response_model=AISettingsResponse)
+async def update_ai_settings(
+    data: AISettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(AISettings).where(AISettings.is_active == True).order_by(AISettings.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    cfg = res.scalar_one_or_none()
+
+    if not cfg:
+        cfg = AISettings()
+        db.add(cfg)
+
+    cfg.primary_provider = data.primary_provider.strip().lower()
+    cfg.primary_model = data.primary_model.strip()
+    cfg.enable_fallback = data.enable_fallback
+    cfg.fallback_provider = data.fallback_provider.strip().lower() if data.fallback_provider else None
+    cfg.fallback_model = data.fallback_model.strip() if data.fallback_model else None
+
+    if data.groq_api_key is not None and "..." not in data.groq_api_key and data.groq_api_key.strip():
+        cfg.groq_api_key = data.groq_api_key.strip()
+    if data.openrouter_api_key is not None and "..." not in data.openrouter_api_key and data.openrouter_api_key.strip():
+        cfg.openrouter_api_key = data.openrouter_api_key.strip()
+    if data.openai_api_key is not None and "..." not in data.openai_api_key and data.openai_api_key.strip():
+        cfg.openai_api_key = data.openai_api_key.strip()
+    if data.custom_api_key is not None and "..." not in data.custom_api_key and data.custom_api_key.strip():
+        cfg.custom_api_key = data.custom_api_key.strip()
+    if data.custom_base_url is not None:
+        cfg.custom_base_url = data.custom_base_url.strip() if data.custom_base_url.strip() else None
+
+    if data.max_tokens is not None:
+        cfg.max_tokens = data.max_tokens
+    if data.temperature is not None:
+        cfg.temperature = data.temperature
+
+    await db.commit()
+    await db.refresh(cfg)
+
+    set_runtime_ai_settings({
+        "primary_provider": cfg.primary_provider,
+        "primary_model": cfg.primary_model,
+        "enable_fallback": cfg.enable_fallback,
+        "fallback_provider": cfg.fallback_provider,
+        "fallback_model": cfg.fallback_model,
+        "groq_api_key": cfg.groq_api_key,
+        "openrouter_api_key": cfg.openrouter_api_key,
+        "openai_api_key": cfg.openai_api_key,
+        "custom_api_key": cfg.custom_api_key,
+        "custom_base_url": cfg.custom_base_url,
+        "max_tokens": cfg.max_tokens,
+        "temperature": cfg.temperature,
+    })
+
+    return AISettingsResponse(
+        id=cfg.id,
+        primary_provider=cfg.primary_provider,
+        primary_model=cfg.primary_model,
+        enable_fallback=cfg.enable_fallback,
+        fallback_provider=cfg.fallback_provider,
+        fallback_model=cfg.fallback_model,
+        groq_api_key_masked=_mask_key(cfg.groq_api_key),
+        openrouter_api_key_masked=_mask_key(cfg.openrouter_api_key),
+        openai_api_key_masked=_mask_key(cfg.openai_api_key),
+        custom_api_key_masked=_mask_key(cfg.custom_api_key),
+        custom_base_url=cfg.custom_base_url,
+        has_groq_key=bool(cfg.groq_api_key),
+        has_openrouter_key=bool(cfg.openrouter_api_key),
+        has_openai_key=bool(cfg.openai_api_key),
+        has_custom_key=bool(cfg.custom_api_key),
+        max_tokens=cfg.max_tokens,
+        temperature=cfg.temperature,
+        usage_stats_json=cfg.usage_stats_json or {},
+        is_active=cfg.is_active,
+    )
+
+@router.post("/ai-settings/reset-usage", response_model=AISettingsResponse)
+async def reset_ai_usage_stats(
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    stmt = select(AISettings).where(AISettings.is_active == True).order_by(AISettings.created_at.desc()).limit(1)
+    res = await db.execute(stmt)
+    cfg = res.scalar_one_or_none()
+    if cfg:
+        cfg.usage_stats_json = {
+            "total_calls": 0,
+            "total_tokens": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_cost_usd": 0.0,
+            "last_call_at": None,
+            "by_model": {}
+        }
+        await db.commit()
+        await db.refresh(cfg)
+    return await get_ai_settings(db, admin_user)
+
+@router.post("/ai-settings/test", response_model=AITestResponse)
+async def test_ai_connection(
+    data: AITestRequest,
+    db: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_admin),
+):
+    key = data.api_key
+    if not key or "..." in key:
+        stmt = select(AISettings).where(AISettings.is_active == True).order_by(AISettings.created_at.desc()).limit(1)
+        res = await db.execute(stmt)
+        cfg = res.scalar_one_or_none()
+        if cfg:
+            p = data.provider.lower().strip()
+            if p == "groq":
+                key = cfg.groq_api_key
+            elif p == "openrouter":
+                key = cfg.openrouter_api_key
+            elif p == "openai":
+                key = cfg.openai_api_key
+            elif p == "custom":
+                key = cfg.custom_api_key
+
+    result = await AIClient.test_provider_connection(
+        provider=data.provider,
+        model=data.model,
+        api_key=key,
+        custom_base_url=data.custom_base_url,
+    )
+
+    return AITestResponse(
+        success=result["success"],
+        latency_ms=result["latency_ms"],
+        provider=result["provider"],
+        model=result["model"],
+        message=result["message"],
+        response_sample=result.get("response_sample"),
+    )
+
 

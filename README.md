@@ -75,7 +75,7 @@ graph TD
 * **Qualification System:** 135-Parameter Rule & Parameter Scoring Engine
 * **Cold Outreach Dispatch:** Async SMTP Client (`smtplib` with SSL/TLS support & dry-run fallback)
 * **Autopilot Service:** Continuous scheduled discovery & automated lead processing
-* **Local LLM Offline Engine (Optional):** Ollama (`qwen2.5:7b` / `gemma3:4b`)
+* **AI Reasoning Engine:** OpenClaw Cloud Gateway & Deterministic Rule Engine (No local models required)
 * **Meta Ads Generation:** Meta Marketing Graph API integration
 * **Voice Agent:** Automated AI Voice phone calling integration
 
@@ -162,7 +162,7 @@ leadgenai/
 │   │   ├── engine/               # Core intelligence (qualification, discovery, outreach, autopilot)
 │   │   ├── models/               # Database ORM schemas (Lead, Evidence, Campaign, OutreachLog)
 │   │   ├── schemas/              # Pydantic validation schemas
-│   │   ├── services/             # External services (OpenClaw, Ollama, Meta, Voice)
+│   │   ├── services/             # External services (OpenClaw, AI Client, Meta, Voice)
 │   │   └── workers/              # Redis background task runners
 │   ├── tests/                    # Pytest test suite
 │   ├── alembic/                  # Database migration scripts
@@ -319,7 +319,7 @@ Every push to `main` will automatically build, test, and deploy the updated serv
 | `SMTP_FROM_NAME` | Sender Display Name | `LeadGen Sales Team` | Optional |
 | `NEXT_PUBLIC_API_URL` | API Endpoint for Next.js Frontend | `http://127.0.0.1:8000/api/v1` | **Yes** |
 | `META_ACCESS_TOKEN` | Facebook Ads Graph API Token | `EAAG...` | Optional |
-| `GOOGLE_API_KEY` | Google Gemini / Imagen 3 API Key | `AIzaSy...` | Optional |
+
 
 ---
 

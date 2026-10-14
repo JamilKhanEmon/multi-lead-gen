@@ -2,6 +2,9 @@ from typing import Dict, List, Any, Optional
 from app.core.logging import logger
 
 PARAMETER_SERVICE_RULES: Dict[int, List[Dict[str, Any]]] = {
+    5: [
+        {"service_slug": "digital-marketing", "rule_score": 0.9, "reason": "No Meta Pixel detected; unable to retarget past web visitors."},
+    ],
     34: [
         {"service_slug": "website-development", "rule_score": 1.0, "reason": "No accessible website found; brand requires new web presence."},
     ],
@@ -31,6 +34,9 @@ PARAMETER_SERVICE_RULES: Dict[int, List[Dict[str, Any]]] = {
     ],
     46: [
         {"service_slug": "payment-integration", "rule_score": 1.0, "reason": "Digital payment gateway integration needed to accept online transactions."},
+    ],
+    47: [
+        {"service_slug": "digital-marketing", "rule_score": 0.9, "reason": "No Google Analytics tracking detected; unable to measure search and visitor conversions."},
     ],
     54: [
         {"service_slug": "ai-customer-support", "rule_score": 0.9, "reason": "Repeated customer complaints regarding slow response time."},

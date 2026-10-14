@@ -60,70 +60,40 @@ async def generate_video_storyboard(
     payload: Dict[str, Any],
     current_user: User = Depends(get_current_user),
 ):
-    from app.services.video_engine import VideoMediaEngine
-    try:
-        scenes = await VideoMediaEngine.generate_storyboard(
-            service_name=payload.get("service_name", "B2B AI System"),
-            industry=payload.get("industry", "Manufacturing"),
-            selected_topic=payload.get("selected_topic", "Enterprise ROI & Operational Efficiency"),
-            reference_image_description=payload.get("reference_image_description"),
-        )
-        return {"scenes": scenes}
-    except Exception as e:
-        logger.error(f"Storyboard generation failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(
+        status_code=403,
+        detail="AI Video Storyboard generation is locked by administrator. Please upload video files directly.",
+    )
 
 @router.post("/render-scene")
 async def render_individual_scene(
     payload: Dict[str, Any],
     current_user: User = Depends(get_current_user),
 ):
-    from app.services.video_engine import VideoMediaEngine
-    try:
-        result = await VideoMediaEngine.render_single_scene(
-            scene_number=payload.get("scene_number", 1),
-            prompt=payload.get("prompt", ""),
-            reference_image_url=payload.get("reference_image_url"),
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Scene render failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(
+        status_code=403,
+        detail="AI Scene rendering is locked by administrator. Please upload video files directly.",
+    )
 
 @router.post("/stitch-video")
 async def stitch_scenes_into_video(
     payload: Dict[str, Any],
     current_user: User = Depends(get_current_user),
 ):
-    from app.services.video_engine import VideoMediaEngine
-    try:
-        result = await VideoMediaEngine.stitch_scenes(
-            scenes=payload.get("scenes", []),
-            campaign_name=payload.get("campaign_name", "B2B Commercial"),
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Video stitching failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(
+        status_code=403,
+        detail="AI Video stitching is locked by administrator. Please upload video files directly.",
+    )
 
 @router.post("/generate-poster")
 async def generate_b2b_poster(
     payload: Dict[str, Any],
     current_user: User = Depends(get_current_user),
 ):
-    from app.services.video_engine import VideoMediaEngine
-    try:
-        result = await VideoMediaEngine.generate_b2b_poster(
-            service_name=payload.get("service_name", "B2B AI Solution"),
-            industry=payload.get("industry", "Manufacturing"),
-            headline=payload.get("headline", "Free 1-Day Live On-Site Trial"),
-            offer=payload.get("offer", "Zero Risk Demo on your active line"),
-            reference_image_url=payload.get("reference_image_url"),
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Poster generation failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(
+        status_code=403,
+        detail="AI Poster generation is locked by administrator. Please upload poster image directly.",
+    )
 
 @router.post("", response_model=CampaignResponse)
 async def create_campaign(

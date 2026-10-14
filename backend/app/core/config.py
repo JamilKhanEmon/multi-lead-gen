@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -60,14 +60,42 @@ class Settings(BaseSettings):
         default="oc_dev_webhook_token_change_me_distinct_secret",
         description="Dedicated token for validating inbound cron/automation webhooks",
     )
-
-    OLLAMA_BASE_URL: str = Field(
-        default="http://127.0.0.1:11434",
-        description="Native macOS Ollama instance",
+    OPENCLAW_MODEL: Optional[str] = Field(
+        default=None,
+        description="Optional override for OpenClaw active LLM model (defaults to active agent in OpenClaw)",
     )
-    OLLAMA_MODEL: str = Field(
-        default="qwen2.5:7b",
-        description="High-speed B2B reasoning model (Qwen 2.5 7B, precise JSON and cold outreach copy)",
+
+    GROQ_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Groq API Key (ultra-fast, cost-efficient inference via console.groq.com)",
+    )
+    OPENAI_API_KEY: Optional[str] = Field(
+        default=None,
+        description="OpenAI API Key (e.g. for gpt-4o-mini)",
+    )
+    LLM_PROVIDER: str = Field(
+        default="groq",
+        description="LLM Provider: 'groq', 'openai', 'openclaw', or 'custom'",
+    )
+    LLM_MODEL: Optional[str] = Field(
+        default=None,
+        description="Override model name (e.g. 'llama-3.1-8b-instant' or 'gpt-4o-mini')",
+    )
+    LLM_BASE_URL: Optional[str] = Field(
+        default=None,
+        description="Custom OpenAI-compatible base URL (e.g. local Ollama or vLLM)",
+    )
+    LLM_MAX_TOKENS: int = Field(
+        default=250,
+        ge=50,
+        le=2048,
+        description="Strict maximum token limit to prevent excessive token usage and costs",
+    )
+    LLM_TEMPERATURE: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Sampling temperature for deterministic, concise outputs",
     )
 
     WORKER_CONCURRENCY: int = Field(default=2, ge=1, le=4)
@@ -78,14 +106,20 @@ class Settings(BaseSettings):
     META_AD_ACCOUNT_ID: Optional[str] = Field(default=None, description="Meta Ad Account ID e.g. act_123456789")
     META_PAGE_ID: Optional[str] = Field(default=None, description="Facebook Business Page ID")
 
-    GOOGLE_API_KEY: Optional[str] = Field(default=None, description="Google Gemini/Imagen/Veo API key")
+    ELEVENLABS_API_KEY: Optional[str] = Field(default=None, description="ElevenLabs API Key for Voice Agent & Cloning")
 
     SMTP_HOST: Optional[str] = Field(default=None, description="SMTP Server Host (e.g., smtp.gmail.com)")
     SMTP_PORT: int = Field(default=587, description="SMTP Port (587 for TLS, 465 for SSL)")
     SMTP_USER: Optional[str] = Field(default=None, description="SMTP Authentication Username/Email")
     SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP Authentication Password or App Password")
     SMTP_FROM_EMAIL: Optional[str] = Field(default=None, description="Sender Email Address")
-    SMTP_FROM_NAME: str = Field(default="LeadGen Sales Team", description="Sender Name displayed in email clients")
+    SMTP_FROM_NAME: str = Field(default="", description="Sender Name displayed in email clients")
+
+    IMAP_HOST: Optional[str] = Field(default=None, description="IMAP Server Host (e.g., imap.gmail.com)")
+    IMAP_PORT: int = Field(default=993, description="IMAP SSL Port (typically 993)")
+    IMAP_USER: Optional[str] = Field(default=None, description="IMAP Username/Email (defaults to SMTP_USER if not set)")
+    IMAP_PASSWORD: Optional[str] = Field(default=None, description="IMAP Password or App Password (defaults to SMTP_PASSWORD if not set)")
+    IMAP_POLL_INTERVAL_SECONDS: int = Field(default=180, description="Interval in seconds to check inbox for client replies")
 
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",

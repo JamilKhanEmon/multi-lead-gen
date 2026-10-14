@@ -49,6 +49,7 @@ import {
   humanVerifyLeadEmail,
   markLeadHotDeal,
   simulateLeadReply,
+  triggerInboxSync,
   Lead,
   AutopilotCampaign,
   AutopilotAnalytics,
@@ -71,9 +72,9 @@ export default function AutopilotPage() {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [cName, setCName] = useState("");
-  const [cKeywords, setCKeywords] = useState("Software Agency, Web Development");
-  const [cCountry, setCCountry] = useState("Bangladesh");
-  const [cSubCities, setCSubCities] = useState<string[]>(["Uttara", "Gazipur", "Mirpur", "Tangail"]);
+  const [cKeywords, setCKeywords] = useState("");
+  const [cCountry, setCCountry] = useState("");
+  const [cSubCities, setCSubCities] = useState<string[]>([]);
   const [subCityInput, setSubCityInput] = useState("");
   const [cDailyLimit, setCDailyLimit] = useState(100);
   const [cUnlimited, setCUnlimited] = useState(false);
@@ -324,6 +325,31 @@ export default function AutopilotPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                const res = await triggerInboxSync();
+                if (res.status === "warning") {
+                  showToast(res.message);
+                } else {
+                  showToast(res.message || "Inbox scanned successfully!");
+                }
+              } catch (e: any) {
+                showToast(e.message || "Inbox sync failed");
+              } finally {
+                setRefreshing(false);
+                loadData();
+              }
+            }}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-emerald-500/30 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition shadow-sm"
+            title="Scan connected IMAP inbox for new client email replies"
+          >
+            <Inbox className={`w-3.5 h-3.5 ${refreshing ? "animate-pulse text-emerald-400" : ""}`} />
+            <span>Scan Client Replies</span>
+          </button>
+
           <button
             onClick={() => {
               setRefreshing(true);
