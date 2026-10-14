@@ -41,7 +41,7 @@ class OutreachEngine:
                 "I was researching top businesses in {city} and came across {company_name}.\n\n"
                 "While reviewing your website, I noticed a key growth opportunity regarding {primary_gap}.\n\n"
                 "We recently helped a similar company in your industry address this and increase their monthly inbound inquiries by over 30%.\n\n"
-                "Would you be open to a brief 5-minute chat this Thursday to see the free audit report we prepared for {company_name}?\n\n"
+                "Would you be open to a brief 5-minute chat sometime this week or early next week to see the free audit report we prepared for {company_name}?\n\n"
                 "Best regards,\n\n"
                 "{sender_name}\n"
                 "{sender_title}\n"
@@ -81,22 +81,12 @@ class OutreachEngine:
     # ── LLM-based classification — no keyword lists needed ──────────────────
 
     @classmethod
-    def render_email(cls, step: int, lead_data: Dict[str, Any]) -> Tuple[str, str]:
-        company_name = lead_data.get("company_name") or "Your Team"
-        raw_contact = str(lead_data.get("contact_person") or "").strip()
-        if raw_contact and raw_contact.lower() not in ["there", "sir", "madam", "n/a", "none", "unknown", "team"]:
-            contact_person = raw_contact
-        else:
-            contact_person = f"Team {company_name}"
-
-        raw_city = str(lead_data.get("city") or lead_data.get("location") or lead_data.get("address") or "").strip()
-        has_real_city = bool(raw_city and raw_city.lower() not in ["your area", "your city", "your office in your city", "n/a", "none", "unknown", ""])
-        city = raw_city if has_real_city else ""
-        primary_gap = lead_data.get("primary_gap") or "optimizing your online presence and client acquisition"
-        industry = (lead_data.get("industry") or lead_data.get("business_type") or "").lower()
-
+    def _resolve_signature(cls, company_name: str, lead_data: Dict[str, Any]) -> Tuple[str, str, str, str]:
         personas = lead_data.get("personas") or []
         sig_block = ""
+        sender_name = ""
+        sender_title = ""
+        sender_company = ""
         if personas:
             p = personas[hash(company_name) % len(personas)]
             if isinstance(p, dict):
@@ -125,6 +115,120 @@ class OutreachEngine:
             sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or ""
             sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
             sig_block = lead_data.get("signature_text") or ("\n".join(sig_lines) if sig_lines else "")
+        return sig_block, sender_name, sender_title, sender_company
+
+    @classmethod
+    async def render_email(
+        cls,
+        step: int,
+        lead_data: Dict[str, Any],
+        ai_client: Optional[Any] = None,
+    ) -> Tuple[str, str]:
+        """
+        Dynamically generates hyper-personalized, spam-proof B2B cold emails using LLM.
+        Falls back to rule-based template if AI is unavailable or fails.
+        """
+        custom_tpl = lead_data.get("custom_template")
+        if custom_tpl and lead_data.get("force_template"):
+            return cls.render_email_template(step, lead_data)
+
+        company_name = lead_data.get("company_name") or "Your Team"
+        raw_contact = str(lead_data.get("contact_person") or "").strip()
+        if raw_contact and raw_contact.lower() not in ["there", "sir", "madam", "n/a", "none", "unknown", "team", "executive"]:
+            contact_person = raw_contact
+        else:
+            contact_person = f"Team {company_name}"
+
+        city = str(lead_data.get("city") or lead_data.get("location") or lead_data.get("address") or "").strip()
+        industry = str(lead_data.get("industry") or lead_data.get("business_type") or "General Business").strip()
+        primary_gap = lead_data.get("primary_gap") or "optimizing operational workflows and client acquisition"
+        matched_service = lead_data.get("matched_service") or "software and workflow automation"
+        website = lead_data.get("website") or ""
+
+        sig_block, sender_name, sender_title, sender_company = cls._resolve_signature(company_name, lead_data)
+
+        try:
+            if ai_client is None:
+                from app.services.ai_client import AIClient
+                ai_client = AIClient(timeout=10.0)
+
+            step_descriptions = {
+                1: "Step 1 Initial Cold Outreach: Introduce high-value growth opportunity or operational software solution, mention specific gap respectfully, offer a 5-minute interactive live software demo or walkthrough sometime this week or early next week.",
+                2: "Step 2 Follow-up (Sent 4 days later): Polite, concise check-in referencing previous observation, ask if they'd like a 1-page summary or a 5-minute live demo call.",
+                3: "Step 3 Breakup Email (Sent 8 days later): Respectful final note acknowledging they may be busy, closing the file politely while leaving the door open for future modernization."
+            }
+            step_instruction = step_descriptions.get(step, step_descriptions[1])
+
+            system_prompt = (
+                "You are an elite B2B Sales Director writing personalized, concise, high-converting cold emails.\n\n"
+                "STRICT STRUCTURE (Follow this exact 4-part skeleton):\n"
+                f"Line 1 (Greeting): Hi {contact_person},\n"
+                "Line 2 (Hook & Gap): Exactly 1 sentence referencing their company and the audited gap/bottleneck respectfully.\n"
+                "Line 3 (Value & Solution): 1-2 sentences highlighting how the matched solution solves this and drives ROI.\n"
+                "Line 4 (Low-Friction CTA): Exactly 1 sentence asking for a 5-minute brief walkthrough or chat sometime this week or early next week.\n\n"
+                "CRITICAL CONSTRAINTS:\n"
+                "- LENGTH: STRICT MAXIMUM 80 WORDS. Keep paragraphs separated by double newlines. Mobile-friendly.\n"
+                "- NO corporate fluff or clichés ('Hope you are well', 'Allow me to introduce', 'I am writing to').\n"
+                "- NO hardcoded days of the week (never mention Thursday, Monday, etc.).\n"
+                "- Do NOT include the sender signature or sign-off at the end (it is attached automatically).\n"
+                "- Output format: Raw JSON only with keys \"subject\" and \"body\": {\"subject\": \"...\", \"body\": \"...\"}"
+            )
+
+            user_prompt = (
+                f"Email Step: {step_instruction}\n"
+                f"Target Company: {company_name}\n"
+                f"Recipient: {contact_person}\n"
+                f"Industry: {industry}\n"
+                f"Location: {city}\n"
+                f"Website: {website}\n"
+                f"Identified Gap: {primary_gap}\n"
+                f"Our Matched Solution: {matched_service}\n\n"
+                "Generate the subject line and short body following the exact 4-part structure."
+            )
+
+            res = await ai_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+            if isinstance(res, dict) and res.get("subject") and res.get("body"):
+                llm_subject = str(res["subject"]).strip().strip('"')
+                llm_body = str(res["body"]).strip()
+
+                import re
+                llm_body = re.sub(r"^(Dear|Hello|Hi)\s+(there|sir|madam|team)[,:]?", f"Hi {contact_person},", llm_body, flags=re.IGNORECASE)
+
+                # Guardrail: If LLM produced an excessively long essay (> 130 words), fall back to crisp template
+                word_count = len(llm_body.split())
+                if word_count > 130:
+                    logger.warning(f"OutreachEngine: LLM body exceeded 130 words ({word_count} words). Falling back to crisp template.")
+                    return cls.render_email_template(step, lead_data)
+
+                if sig_block:
+                    full_body = f"{llm_body}\n\n{sig_block}"
+                else:
+                    full_body = llm_body
+
+                logger.info(f"OutreachEngine: LLM successfully generated Step {step} email for '{company_name}' ({word_count} words)")
+                return llm_subject, full_body
+
+        except Exception as e:
+            logger.warning(f"OutreachEngine: LLM email generation notice ({e}). Using rule-based fallback.")
+
+        return cls.render_email_template(step, lead_data)
+
+    @classmethod
+    def render_email_template(cls, step: int, lead_data: Dict[str, Any]) -> Tuple[str, str]:
+        company_name = lead_data.get("company_name") or "Your Team"
+        raw_contact = str(lead_data.get("contact_person") or "").strip()
+        if raw_contact and raw_contact.lower() not in ["there", "sir", "madam", "n/a", "none", "unknown", "team"]:
+            contact_person = raw_contact
+        else:
+            contact_person = f"Team {company_name}"
+
+        raw_city = str(lead_data.get("city") or lead_data.get("location") or lead_data.get("address") or "").strip()
+        has_real_city = bool(raw_city and raw_city.lower() not in ["your area", "your city", "your office in your city", "n/a", "none", "unknown", ""])
+        city = raw_city if has_real_city else ""
+        primary_gap = lead_data.get("primary_gap") or "optimizing your online presence and client acquisition"
+        industry = (lead_data.get("industry") or lead_data.get("business_type") or "").lower()
+
+        sig_block, sender_name, sender_title, sender_company = cls._resolve_signature(company_name, lead_data)
 
         custom_tpl = lead_data.get("custom_template")
         if custom_tpl and step == 1:
@@ -234,7 +338,7 @@ class OutreachEngine:
                 f"I was researching top businesses in {city} and came across {company_name}.\n\n"
                 f"We develop specialized systems and marketing solutions to help companies in your industry {value_pitch}.\n\n"
                 f"We currently have a ready 5-minute interactive live software demo showcasing exactly how this works.\n\n"
-                f"Would you be open to a brief 5-minute call this Thursday to {call_to_action}?\n\n"
+                f"Would you be open to a brief 5-minute call sometime this week or early next week to {call_to_action}?\n\n"
                 f"{sig_block}"
             )
 
