@@ -192,8 +192,15 @@ export default function ResearchInitiatorPage() {
 
     const queries: string[] = [];
     selectedSubAreas.forEach((area) => {
-      queries.push(`${ind} in ${area}`);
-      queries.push(`site:facebook.com "${ind}" "${area}"`);
+      const cleanA = area.trim();
+      if (!cleanA) return;
+      if (loc && !cleanA.toLowerCase().includes(loc.toLowerCase())) {
+        queries.push(`${ind} in ${cleanA}, ${loc}`);
+        queries.push(`site:facebook.com "${ind}" "${cleanA}" "${loc}"`);
+      } else {
+        queries.push(`${ind} in ${cleanA}`);
+        queries.push(`site:facebook.com "${ind}" "${cleanA}"`);
+      }
     });
     return queries;
   }, [strategyPreview, selectedSubAreas]);

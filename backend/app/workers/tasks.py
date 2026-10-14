@@ -463,6 +463,40 @@ async def _execute_research_and_qualify(
     except Exception as e:
         logger.debug(f"Live review research notice for {business_name}: {e}")
 
+    # 4-Way Multi-Source Cross-Verification Consensus
+    discovery_contact = {
+        "phone": payload.get("phone"),
+        "email": payload.get("email"),
+        "address": payload.get("address"),
+        "source_url": website_data.get("google_maps_url") or gmaps_url,
+    }
+    website_contact = {
+        "extracted_phone": website_data.get("extracted_phone"),
+        "extracted_email": website_data.get("extracted_email"),
+        "extracted_address": website_data.get("extracted_address"),
+        "has_whatsapp": website_data.get("has_whatsapp", False),
+        "source_url": target_url if target_url else (f"https://{domain}" if domain else None),
+    }
+    social_contact = {
+        "phone": social_res.get("phone") if isinstance(social_res, dict) else None,
+        "whatsapp_phone": social_res.get("whatsapp_phone") if isinstance(social_res, dict) else None,
+        "email": social_res.get("email") if isinstance(social_res, dict) else None,
+        "address": social_res.get("address") if isinstance(social_res, dict) else None,
+        "source_url": website_data.get("facebook_url"),
+    }
+    contact_consensus = EvidenceEngine.resolve_contact_consensus(
+        discovery_contact=discovery_contact,
+        website_contact=website_contact,
+        social_contact=social_contact,
+        target_domain=domain,
+    )
+    if contact_consensus.get("primary_phone"):
+        current_phone = contact_consensus["primary_phone"]
+        website_data["extracted_phone"] = current_phone
+    if contact_consensus.get("primary_email"):
+        current_email = contact_consensus["primary_email"]
+        website_data["extracted_email"] = current_email
+
     evidence_records = [
         {
             "parameter_id": 1,
@@ -475,6 +509,19 @@ async def _execute_research_and_qualify(
             "recency_weight": 100,
         }
     ]
+
+    if contact_consensus.get("phone_verified"):
+        sources_label = " + ".join(contact_consensus.get("phone_sources", []))
+        evidence_records.append({
+            "parameter_id": 1,
+            "source_url": website_data.get("facebook_url") or website_data.get("google_maps_url") or gmaps_url,
+            "source_type": "consensus",
+            "evidence_text": f"Multi-source verified telephone ({contact_consensus['primary_phone']}) cross-confirmed on {sources_label}. High reachability.",
+            "status": "STRONG",
+            "classification": "OBSERVABLE",
+            "confidence": 1.0,
+            "recency_weight": 100,
+        })
 
     fb_target = website_data.get("facebook_url")
     if fb_target:
@@ -823,17 +870,25 @@ async def _execute_research_and_qualify(
         if biz_obj:
             if domain and not biz_obj.domain:
                 biz_obj.domain = domain
-            if website_data.get("extracted_phone"):
+
+            # Apply 4-Way Cross-Verification Contact Consensus
+            if contact_consensus.get("primary_phone"):
+                biz_obj.phone = contact_consensus["primary_phone"]
+            elif website_data.get("extracted_phone"):
                 biz_obj.phone = website_data.get("extracted_phone")
             elif not biz_obj.phone and payload.get("phone"):
                 biz_obj.phone = payload.get("phone")
 
-            if website_data.get("extracted_email"):
+            if contact_consensus.get("primary_email"):
+                biz_obj.email = contact_consensus["primary_email"]
+            elif website_data.get("extracted_email"):
                 biz_obj.email = website_data.get("extracted_email")
             elif not biz_obj.email and payload.get("email"):
                 biz_obj.email = payload.get("email")
-            elif not biz_obj.email and domain and not DeduplicationEngine.is_generic_platform(domain):
-                biz_obj.email = f"contact@{domain}"
+
+            if contact_consensus.get("verified_address") and not biz_obj.address:
+                biz_obj.address = contact_consensus["verified_address"]
+
             if website_data.get("contact_person"):
                 biz_obj.contact_person = website_data.get("contact_person")
             if website_data.get("contact_title"):
@@ -845,6 +900,23 @@ async def _execute_research_and_qualify(
             for key in ["cms_platform", "has_meta_pixel", "has_google_analytics", "meta_ads_url", "rendered_by"]:
                 if website_data.get(key) is not None:
                     current_meta[key] = website_data[key]
+
+            # Save multi-source contact consensus metadata
+            current_meta["contact_consensus"] = {
+                "phone_verified": contact_consensus.get("phone_verified", False),
+                "phone_sources": contact_consensus.get("phone_sources", []),
+                "secondary_phone": contact_consensus.get("secondary_phone"),
+                "whatsapp_phone": contact_consensus.get("whatsapp_phone"),
+                "email_verified": contact_consensus.get("email_verified", False),
+                "email_sources": contact_consensus.get("email_sources", []),
+                "secondary_email": contact_consensus.get("secondary_email"),
+                "confidence_score": contact_consensus.get("confidence_score", 0.5),
+            }
+            if contact_consensus.get("secondary_phone"):
+                current_meta["secondary_phone"] = contact_consensus["secondary_phone"]
+            if contact_consensus.get("whatsapp_phone"):
+                current_meta["whatsapp_phone"] = contact_consensus["whatsapp_phone"]
+
             biz_obj.metadata_json = current_meta
 
         param_ids_in_evidence = {ev["parameter_id"] for ev in evidence_records if ev.get("parameter_id")}

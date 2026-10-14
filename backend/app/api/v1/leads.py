@@ -157,6 +157,13 @@ async def list_leads(
             else (biz.business_type if biz else "Commercial Entity")
         )
 
+        consensus = meta.get("contact_consensus") or {}
+        p_verified = consensus.get("phone_verified", False)
+        p_sources = consensus.get("phone_sources") or []
+        sec_phone = consensus.get("secondary_phone") or meta.get("secondary_phone")
+        wa_phone = consensus.get("whatsapp_phone") or meta.get("whatsapp_phone")
+        meta_ads = meta.get("meta_ads_url")
+
         lead_items.append(
             LeadResponse(
                 id=l.id,
@@ -170,6 +177,11 @@ async def list_leads(
                 business_name=biz.canonical_name if biz else "Candidate Business",
                 domain=clean_dom,
                 phone=biz.phone if biz else None,
+                phone_verified=p_verified,
+                phone_sources=p_sources,
+                secondary_phone=sec_phone,
+                whatsapp_phone=wa_phone,
+                meta_ads_url=meta_ads,
                 email=resolved_email,
                 email_status=getattr(l, "email_status", None) or email_status,
                 verification_notes=getattr(l, "verification_notes", None),
@@ -1024,6 +1036,13 @@ async def get_lead_detail(
     except Exception:
         pass
 
+    consensus = meta.get("contact_consensus") or {}
+    p_verified = consensus.get("phone_verified", False)
+    p_sources = consensus.get("phone_sources") or []
+    sec_phone = consensus.get("secondary_phone") or meta.get("secondary_phone")
+    wa_phone = consensus.get("whatsapp_phone") or meta.get("whatsapp_phone")
+    meta_ads = meta.get("meta_ads_url")
+
     return LeadDetailResponse(
         id=lead.id,
         business_id=lead.business_id,
@@ -1031,6 +1050,11 @@ async def get_lead_detail(
         domain=clean_biz_dom,
         business_type=btype,
         phone=lead.business.phone if lead.business else None,
+        phone_verified=p_verified,
+        phone_sources=p_sources,
+        secondary_phone=sec_phone,
+        whatsapp_phone=wa_phone,
+        meta_ads_url=meta_ads,
         email=resolved_email,
         email_status=email_status,
         contact_person=lead.business.contact_person if lead.business else None,

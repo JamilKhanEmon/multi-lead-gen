@@ -1069,7 +1069,7 @@ export default function LeadsPipelinePage() {
                       <td className="py-3.5 px-4 text-xs whitespace-nowrap">
                         <div className="space-y-1.5">
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             {lead.phone ? (
                               <>
                                 <a
@@ -1080,6 +1080,14 @@ export default function LeadsPipelinePage() {
                                   <Phone className="w-3 h-3 text-sky-400 shrink-0" />
                                   <span>{lead.phone}</span>
                                 </a>
+                                {lead.phone_verified && (
+                                  <span
+                                    title={`Verified across: ${(lead.phone_sources || ['Website', 'Facebook']).join(', ')}`}
+                                    className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                                  >
+                                    ✓ Verified
+                                  </span>
+                                )}
                                 {waUrl && (
                                   <a
                                     href={waUrl}
@@ -1099,6 +1107,15 @@ export default function LeadsPipelinePage() {
                               </span>
                             )}
                           </div>
+
+                          {lead.secondary_phone && (
+                            <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                              <span className="text-slate-500">Alt:</span>
+                              <a href={`tel:${lead.secondary_phone}`} onClick={(e) => e.stopPropagation()} className="hover:underline hover:text-sky-300">
+                                {lead.secondary_phone}
+                              </a>
+                            </div>
+                          )}
 
                           <div>
                             {lead.email ? (
@@ -1384,9 +1401,26 @@ export default function LeadsPipelinePage() {
                     <Phone className="w-3.5 h-3.5 text-sky-400" />
                     <span>Call {activeScriptLead.phone}</span>
                   </a>
-                  {getWhatsAppUrl(activeScriptLead.phone, activeScriptLead.business_name) && (
+                  {activeScriptLead.phone_verified && (
+                    <span
+                      title={`Cross-verified on: ${(activeScriptLead.phone_sources || ['Website', 'Facebook']).join(', ')}`}
+                      className="px-2 py-1 rounded-md text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1"
+                    >
+                      ✓ Multi-Source Verified
+                    </span>
+                  )}
+                  {activeScriptLead.secondary_phone && (
                     <a
-                      href={getWhatsAppUrl(activeScriptLead.phone, activeScriptLead.business_name)!}
+                      href={`tel:${activeScriptLead.secondary_phone}`}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 font-mono text-xs transition"
+                    >
+                      <span className="text-slate-400">Alt:</span>
+                      <span>{activeScriptLead.secondary_phone}</span>
+                    </a>
+                  )}
+                  {getWhatsAppUrl(activeScriptLead.whatsapp_phone || activeScriptLead.phone, activeScriptLead.business_name) && (
+                    <a
+                      href={getWhatsAppUrl(activeScriptLead.whatsapp_phone || activeScriptLead.phone, activeScriptLead.business_name)!}
                       target="_blank"
                       rel="noreferrer"
                       className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 font-semibold transition"

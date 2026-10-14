@@ -59,6 +59,8 @@ class DiscoveryOptimizer:
                 result["negative_keywords"] = neg
                 result["industry"] = ind_clean
                 result["location"] = full_loc
+                result["city"] = city.strip()
+                result["country"] = country.strip()
                 result["sub_city"] = sub_city.strip()
                 return result
         except Exception as e:
@@ -105,6 +107,7 @@ class DiscoveryOptimizer:
         return {
             "industry": industry,
             "location": loc_str,
+            "country": country.strip(),
             "city": city.strip(),
             "sub_city": sub_city.strip(),
             "search_queries": queries,
@@ -131,6 +134,30 @@ class DiscoveryOptimizer:
             return False, f"Candidate is a directory/aggregator platform ({domain}), not a direct business."
         if any(bad in name_lower for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "google.com/maps", "twitter.com"]):
             return False, f"Candidate name is a social media / platform URL: '{name}'"
+
+        target_country = (plan.get("country") or "").lower().strip()
+        target_location = (plan.get("location") or "").lower().strip()
+        is_bd_target = "bangladesh" in target_country or "bd" in target_country or "bangladesh" in target_location or "bd" in target_location
+
+        if is_bd_target:
+            # 1. Reject explicit foreign national ccTLDs (keep .com, .net, .org, .bd, .io, .co intact)
+            FOREIGN_NATIONAL_TLDS = (".kg", ".np", ".in", ".pk", ".ru", ".lk", ".bt", ".mm", ".co.in", ".com.np", ".com.pk")
+            clean_dom = domain.split("/")[0].split("?")[0]
+            if any(clean_dom.endswith(tld) for tld in FOREIGN_NATIONAL_TLDS):
+                return False, f"Domain '{domain}' has foreign country ccTLD incompatible with target Bangladesh."
+
+            # 2. Reject candidates whose snippet or address explicitly specifies another country/city without BD context
+            FOREIGN_EXPLICIT_REGIONS = [
+                "kathmandu", "nepal", "kyrgyzstan", "bishkek", "mumbai", "delhi", "kolkata",
+                "chennai", "bangalore", "lahore", "karachi", "islamabad"
+            ]
+            full_snippet_text = f"{snippet} {cand_address} {name_lower}"
+            bd_tokens = ["bangladesh", "dhaka", "sylhet", "chittagong", "chattogram", "rajshahi", "khulna", "barishal", "rangpur", "gazipur", "narayanganj", "comilla", "bogra", "uttara", "gulshan", "banani", "dhanmondi"]
+            has_bd_token = any(tok in full_snippet_text for tok in bd_tokens)
+            if not has_bd_token:
+                for f_reg in FOREIGN_EXPLICIT_REGIONS:
+                    if f_reg in full_snippet_text:
+                        return False, f"Candidate snippet explicitly references foreign region '{f_reg}'."
 
         req_sub_city = (plan.get("sub_city") or "").lower().strip()
         req_city = (plan.get("city") or "").lower().strip()

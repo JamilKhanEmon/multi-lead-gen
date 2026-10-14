@@ -53,6 +53,10 @@ export interface Lead {
   google_search_url?: string;
   facebook_url?: string;
   meta_ads_url?: string;
+  phone_verified?: boolean;
+  phone_sources?: string[];
+  secondary_phone?: string;
+  whatsapp_phone?: string;
   latitude?: number;
   longitude?: number;
   fit_tier?: "HOT" | "WARM" | "COLD" | "DROPPED" | string;

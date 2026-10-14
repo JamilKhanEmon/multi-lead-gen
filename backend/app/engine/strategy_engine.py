@@ -121,15 +121,23 @@ class StrategyEngine:
     @classmethod
     def generate_search_queries(cls, industry: str, location: str, sub_areas: List[str]) -> List[str]:
         ind_clean = industry.strip()
+        loc_clean = location.strip()
         queries = []
         for area in sub_areas[:10]:
-            queries.append(f"{ind_clean} in {area}")
-            queries.append(f"site:facebook.com \"{ind_clean}\" \"{area}\"")
+            clean_area = str(area).strip()
+            if not clean_area:
+                continue
+            if loc_clean and loc_clean.lower() not in clean_area.lower():
+                queries.append(f"{ind_clean} in {clean_area}, {loc_clean}")
+                queries.append(f"site:facebook.com \"{ind_clean}\" \"{clean_area}\" \"{loc_clean}\"")
+            else:
+                queries.append(f"{ind_clean} in {clean_area}")
+                queries.append(f"site:facebook.com \"{ind_clean}\" \"{clean_area}\"")
         if not queries:
             queries = [
-                f"{ind_clean} in {location}",
-                f"site:facebook.com \"{ind_clean}\" \"{location}\"",
-                f"{ind_clean} office {location}",
+                f"{ind_clean} in {loc_clean}",
+                f"site:facebook.com \"{ind_clean}\" \"{loc_clean}\"",
+                f"{ind_clean} office {loc_clean}",
             ]
         return queries
 

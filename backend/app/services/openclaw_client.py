@@ -67,12 +67,18 @@ class LiveResearchEngine:
 
         if sub_areas:
             area_queries = []
+            loc_anchor = f"{city}, {country}".strip(", ") if (city or country) else full_location
             for area in sub_areas[:15]:
                 clean_a = str(area).strip()
                 if clean_a:
-                    area_queries.append(f"{industry} in {clean_a}")
-                    area_queries.append(f"site:facebook.com \"{industry}\" \"{clean_a}\"")
-                    area_queries.append(f"{industry} company {clean_a}")
+                    if loc_anchor and loc_anchor.lower() not in clean_a.lower():
+                        area_queries.append(f"{industry} in {clean_a}, {loc_anchor}")
+                        area_queries.append(f"site:facebook.com \"{industry}\" \"{clean_a}\" \"{loc_anchor}\"")
+                        area_queries.append(f"{industry} company {clean_a} {loc_anchor}")
+                    else:
+                        area_queries.append(f"{industry} in {clean_a}")
+                        area_queries.append(f"site:facebook.com \"{industry}\" \"{clean_a}\"")
+                        area_queries.append(f"{industry} company {clean_a}")
             plan["search_queries"] = area_queries + plan.get("search_queries", [])
             logger.info(f"DiscoveryOptimizer: Injected {len(area_queries)} approved sub-area queries.")
 
