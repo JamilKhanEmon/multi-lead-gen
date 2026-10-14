@@ -1423,6 +1423,76 @@ export default function LeadsPipelinePage() {
               )}
             </div>
 
+            {/* Live Evidence & Proof Links (Human Audit Bar) */}
+            <div className="p-3.5 rounded-xl bg-slate-950/90 border border-indigo-500/30 space-y-2.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-indigo-400" />
+                  <span>Human Verification Proof Links (ক্লিক করে সরাসরি সত্যতা যাচাই করুন)</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">1-Click Live Audits</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                {activeScriptLead.facebook_url ? (
+                  <a
+                    href={activeScriptLead.facebook_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5 font-semibold transition"
+                    title="Open official Facebook page to check post recency and comments"
+                  >
+                    <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>🔗 Facebook Page Proof</span>
+                  </a>
+                ) : (
+                  <a
+                    href={`https://www.google.com/search?q=${encodeURIComponent(activeScriptLead.business_name + ' facebook')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 flex items-center gap-1.5 transition text-[11px]"
+                  >
+                    <Globe className="w-3 h-3 text-slate-400" />
+                    <span>Search Facebook</span>
+                  </a>
+                )}
+
+                <a
+                  href={activeScriptLead.google_maps_url || `https://www.google.com/maps/search/${encodeURIComponent(activeScriptLead.business_name + ' ' + (activeScriptLead.address || ''))}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 font-semibold transition"
+                  title="Open Google Maps listing to check real reviews, rating, and customer sentiment"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                  <span>🔗 Google Maps Reviews Proof</span>
+                </a>
+
+                <a
+                  href={activeScriptLead.meta_ads_url || `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q=${encodeURIComponent(activeScriptLead.business_name || "")}&search_type=keyword_unordered&media_type=all`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 flex items-center gap-1.5 font-semibold transition"
+                  title="Open Meta Ad Library to verify if this business is actively spending on ads"
+                >
+                  <Zap className="w-3.5 h-3.5 text-sky-400" />
+                  <span>🔗 Meta Ad Library Proof</span>
+                </a>
+
+                {activeScriptLead.domain && (
+                  <a
+                    href={activeScriptLead.domain.startsWith("http") ? activeScriptLead.domain : `https://${activeScriptLead.domain}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 font-semibold transition"
+                    title="Open live website to check mobile responsiveness and layout"
+                  >
+                    <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>🔗 Website Audit Proof</span>
+                  </a>
+                )}
+              </div>
+            </div>
+
             {/* Why They Need Us & What They Need */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
               <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-1">

@@ -759,6 +759,7 @@ async def export_leads_json(
             "facebook_url": meta.get("facebook_url"),
             "instagram_url": meta.get("instagram_url"),
             "linkedin_url": biz.linkedin_url,
+            "meta_ads_url": meta.get("meta_ads_url") or f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q={urllib.parse.quote(biz.name)}&search_type=keyword_unordered&media_type=all",
             "tech_stack": {
                 "cms_platform": meta.get("cms_platform") or ("WordPress" if meta.get("is_wordpress") else ("Custom Web App" if clean_dom else "No Website")),
                 "has_meta_pixel": bool(meta.get("has_meta_pixel")),

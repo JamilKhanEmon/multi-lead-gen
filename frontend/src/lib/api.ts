@@ -51,6 +51,8 @@ export interface Lead {
   address?: string;
   google_maps_url?: string;
   google_search_url?: string;
+  facebook_url?: string;
+  meta_ads_url?: string;
   latitude?: number;
   longitude?: number;
   fit_tier?: "HOT" | "WARM" | "COLD" | "DROPPED" | string;
