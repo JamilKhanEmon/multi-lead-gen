@@ -160,27 +160,30 @@ class OutreachEngine:
             step_instruction = step_descriptions.get(step, step_descriptions[1])
 
             system_prompt = (
-                "You are an elite B2B Sales Director writing personalized, high-converting cold emails. "
-                "CRITICAL RULES:\n"
-                "1. Keep the body short and punchy: STRICTLY between 60 to 110 words total.\n"
-                "2. NO corporate clichés or fluff ('I hope this email finds you well', 'Allow me to introduce myself', 'Dear Sir/Madam').\n"
-                f"3. Start naturally with 'Hi {contact_person},'.\n"
-                "4. Be consultative, respectful, and direct. Focus on how our solution solves their specific bottleneck.\n"
-                "5. The call-to-action MUST be low friction: offer a brief 5-minute live software demo or walkthrough sometime this week or early next week.\n"
-                "6. Do NOT include the sender signature at the end of the body (it will be appended automatically).\n"
-                "7. Output strictly raw JSON: {\"subject\": \"...\", \"body\": \"...\"} without markdown fences or chit-chat."
+                "You are an elite B2B Sales Director writing personalized, concise, high-converting cold emails.\n\n"
+                "STRICT STRUCTURE (Follow this exact 4-part skeleton):\n"
+                f"Line 1 (Greeting): Hi {contact_person},\n"
+                "Line 2 (Hook & Gap): Exactly 1 sentence referencing their company and the audited gap/bottleneck respectfully.\n"
+                "Line 3 (Value & Solution): 1-2 sentences highlighting how the matched solution solves this and drives ROI.\n"
+                "Line 4 (Low-Friction CTA): Exactly 1 sentence asking for a 5-minute brief walkthrough or chat sometime this week or early next week.\n\n"
+                "CRITICAL CONSTRAINTS:\n"
+                "- LENGTH: STRICT MAXIMUM 80 WORDS. Keep paragraphs separated by double newlines. Mobile-friendly.\n"
+                "- NO corporate fluff or clichés ('Hope you are well', 'Allow me to introduce', 'I am writing to').\n"
+                "- NO hardcoded days of the week (never mention Thursday, Monday, etc.).\n"
+                "- Do NOT include the sender signature or sign-off at the end (it is attached automatically).\n"
+                "- Output format: Raw JSON only with keys \"subject\" and \"body\": {\"subject\": \"...\", \"body\": \"...\"}"
             )
 
             user_prompt = (
-                f"Goal: {step_instruction}\n"
-                f"Lead Company: {company_name}\n"
-                f"Contact Person: {contact_person}\n"
+                f"Email Step: {step_instruction}\n"
+                f"Target Company: {company_name}\n"
+                f"Recipient: {contact_person}\n"
                 f"Industry: {industry}\n"
                 f"Location: {city}\n"
                 f"Website: {website}\n"
-                f"Audited Gap / Bottleneck: {primary_gap}\n"
-                f"Matched Solution / Service: {matched_service}\n\n"
-                "Write a compelling subject line and short email body in JSON format."
+                f"Identified Gap: {primary_gap}\n"
+                f"Our Matched Solution: {matched_service}\n\n"
+                "Generate the subject line and short body following the exact 4-part structure."
             )
 
             res = await ai_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
@@ -191,12 +194,18 @@ class OutreachEngine:
                 import re
                 llm_body = re.sub(r"^(Dear|Hello|Hi)\s+(there|sir|madam|team)[,:]?", f"Hi {contact_person},", llm_body, flags=re.IGNORECASE)
 
+                # Guardrail: If LLM produced an excessively long essay (> 130 words), fall back to crisp template
+                word_count = len(llm_body.split())
+                if word_count > 130:
+                    logger.warning(f"OutreachEngine: LLM body exceeded 130 words ({word_count} words). Falling back to crisp template.")
+                    return cls.render_email_template(step, lead_data)
+
                 if sig_block:
                     full_body = f"{llm_body}\n\n{sig_block}"
                 else:
                     full_body = llm_body
 
-                logger.info(f"OutreachEngine: LLM successfully generated Step {step} email for '{company_name}'")
+                logger.info(f"OutreachEngine: LLM successfully generated Step {step} email for '{company_name}' ({word_count} words)")
                 return llm_subject, full_body
 
         except Exception as e:
