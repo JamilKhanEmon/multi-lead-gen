@@ -1,46 +1,61 @@
 ---
-name: business-discovery
-description: Discovers public business candidates matching requested industry and location criteria.
+name: "business-discovery"
+description: "Discovers verified commercial businesses via Google Maps & web registries with demand-side keyword queries, coordinate verification, and zero dummy data."
 ---
 
-# Business Discovery Workflow
+# Business Discovery Workflow — Candidate Pool Aggregation
 
 ## Purpose
-Discovers real commercial businesses in target geographic areas and industries through public directories, local listings, and search results.
+Discovers real, active commercial business entities matching requested industry and geographic criteria in Bangladesh. Builds the initial Candidate Pool for the pipeline, prioritizing demand-side decision-maker signals over generic pins.
+
+## Core Directives & Hard Rules
+1. **Candidate Pool, Not Final Lead List:** Discovered businesses are raw candidates. Every candidate must pass Deduplication and the FIT GATE before being prospected or contacted.
+2. **Zero Dummy Data:** Never return mock or hardcoded business names. If discovery fails on initial query, retry automatically with clean live search terms.
+3. **Demand-Side Query Expansion:** Always prefer buyer-intent keyword variants:
+   - `<category> head office` / `<category> corporate office` (targets corporate decision makers)
+   - `<category> online order` / `<category> booking` (targets businesses actively trying digital)
+4. **Mandatory Contact Requirement:** Extract real canonical telephone numbers (`+880...`, `01...`) and official domains.
 
 ## Procedure
-1. Receive input parameters: `industry`, `location`, `company_limit`, `business_type_override`.
-2. Query public search engines and business registries using search terms: `"{industry} companies in {location}"` and `"{industry} services {location}"`.
-3. Extract candidates:
-   - Canonical business name
-   - Official website URL (if found)
-   - Public contact phone number
-   - Physical address / city
-   - Primary discovery source URL
-4. Filter out duplicates and personal/irrelevant results.
-5. Format and return structured JSON.
 
-## Safety & Boundaries
-- Only access publicly accessible listings.
-- Never bypass login or paywalls.
-- Never scrape private personal data.
-- If a listing does not provide a phone or website, record `null` (do not guess).
+### Step 1: Input Validation & Geographic Targeting
+- Receive `industry`, `location`, `city`, `sub_city`, and `company_limit` (default: 10 target leads $\rightarrow$ scrape 3-5x candidates).
+- Normalize location coordinates (e.g. Uttara ≈ 23.8759, 90.3735; Dhanmondi ≈ 23.7465, 90.3760).
+
+### Step 2: Live Candidate Scraping
+- Query public Google Maps and local search engine business listings.
+- Extract:
+  - Canonical business name (NFKC-normalized)
+  - Physical address and city
+  - Official website URL or domain (if present)
+  - Public contact phone number
+  - Google Maps listing URL, review count, and star rating
+
+### Step 3: In-Memory Pre-Dedup & Filtering
+- Strip out directory aggregators (e.g. YellowPages, Tripadvisor, Yelp).
+- Normalize phone numbers to last 10 digits.
+- Check against existing database records to discard duplicates *before* the Fit Gate.
+
+### Step 4: Output Compilation
+- Return structured candidate array with source URLs and verified metadata.
 
 ## Output Schema
 ```json
 {
   "discovered_companies": [
     {
-      "canonical_name": "string",
-      "industry": "string",
-      "location": "string",
-      "website": "string or null",
-      "phone": "string or null",
-      "address": "string or null",
-      "source_url": "string",
-      "business_type": "string",
+      "canonical_name": "Comfort Diagnostic Centre",
+      "industry": "diagnostic center",
+      "location": "Dhanmondi, Dhaka",
+      "website": "https://comfortdiagnostic.com",
+      "phone": "+8801711234567",
+      "address": "House 16, Road 5, Dhanmondi, Dhaka",
+      "rating": 4.2,
+      "review_count": 310,
+      "source_url": "https://www.google.com/maps/search/Comfort%20Diagnostic%20Centre%20Dhanmondi",
       "confidence": 0.95
     }
-  ]
+  ],
+  "candidate_count": 1
 }
 ```
