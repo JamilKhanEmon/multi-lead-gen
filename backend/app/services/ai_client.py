@@ -464,9 +464,12 @@ class AIClient:
                 by_model[model_key] = m_stat
                 stats["by_model"] = by_model
 
+                from sqlalchemy.orm.attributes import flag_modified
                 cfg.usage_stats_json = stats
+                flag_modified(cfg, "usage_stats_json")
                 session.add(cfg)
                 await session.commit()
+                logger.info(f"AIClient: Recorded {total_tokens} tokens for [{provider}:{model}]. Total tokens: {stats.get('total_tokens')}")
         except Exception as e:
             logger.warning(f"Failed to record AI token usage: {e}")
 
