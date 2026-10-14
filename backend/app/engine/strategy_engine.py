@@ -152,7 +152,7 @@ class StrategyEngine:
         from app.models.company_kb import CompanyKB
         from sqlalchemy import select
 
-        kb_name = "NiBiz Soft"
+        kb_name = ""
         kb_context_parts = []
         try:
             stmt = select(CompanyKB).where(CompanyKB.is_active == True).order_by(CompanyKB.created_at.desc()).limit(1)
@@ -160,7 +160,7 @@ class StrategyEngine:
             kb = res.scalar_one_or_none()
             if kb:
                 if kb.company_name:
-                    kb_name = kb.company_name
+                    kb_name = kb.company_name.strip()
                 if kb.tagline_experience:
                     kb_context_parts.append(f"Tagline/Experience: {kb.tagline_experience}")
                 if kb.master_kb_notes:
@@ -178,17 +178,16 @@ class StrategyEngine:
             ai_client = AIClient()
 
         kb_context = "\n".join(kb_context_parts) if kb_context_parts else (
-            "NiBiz Soft provides custom ERP systems, automated CRM & messaging workflows, industry SaaS portals, "
-            "headless high-converting web apps, and targeted client acquisition funnels for Real Estate, Healthcare, "
-            "Garments/Manufacturing, E-Commerce, Hospitality, Logistics, and Corporate Enterprises."
+            "Analyze the target industry and propose modern B2B software, workflow automation, and digital growth solutions tailored specifically to their operational bottlenecks."
         )
 
+        company_identifier = kb_name if kb_name else "our company"
         system_prompt = (
-            f"You are the Chief Solutions Architect and Sales Strategist for {kb_name}. "
-            "Given the target industry and target location, analyze our software and growth offerings "
+            f"You are the Chief Solutions Architect and Sales Strategist for {company_identifier}. "
+            "Given the target industry and target location, analyze our offerings and capabilities "
             "and dynamically decide the top 2 to 4 highest-converting services and live demo hooks to pitch. "
             "CRITICAL: The recommendations MUST be tailored precisely to the specific bottlenecks, workflows, and high-value needs of this specific industry. "
-            "DO NOT return generic placeholders. Be specific (e.g. for Real Estate: ERP, WhatsApp Lead CRM, 3D/Website launch portal; for Healthcare: Clinic ERP, Appointment WhatsApp CRM; for Garments: Apparel Production ERP, B2B Portal). "
+            "DO NOT return generic placeholders. Be specific to the industry. "
             "Output strictly raw JSON without conversation or markdown."
         )
         user_prompt = (
