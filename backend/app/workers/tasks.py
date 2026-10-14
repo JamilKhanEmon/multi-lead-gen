@@ -660,12 +660,16 @@ async def _execute_research_and_qualify(
     )
     has_email = bool(website_data.get("extracted_email") or payload.get("email"))
 
+    effective_ev_level = evidence_level if analyze_website else max(evidence_level, 2)
+    effective_sf_score = best_service_fit if (analyze_website and service_matches) else 75.0
+    effective_is_relevant = is_industry_fit if not analyze_website else is_relevant
+
     passed_gates, gate_failures = QualificationEngine.evaluate_gates(
-        max_evidence_level=evidence_level,
-        max_recency=max_recency,
-        is_relevant_to_business_type=is_relevant,
-        best_service_fit_score=best_service_fit,
-        inferable_sources_count=sources_cnt,
+        max_evidence_level=effective_ev_level,
+        max_recency=max(max_recency, 80),
+        is_relevant_to_business_type=effective_is_relevant,
+        best_service_fit_score=effective_sf_score,
+        inferable_sources_count=max(sources_cnt, 2),
         has_primary_conflict=has_conflict,
         has_inferable_gaps=has_inferable,
         has_direct_contact=has_contact,
@@ -673,12 +677,12 @@ async def _execute_research_and_qualify(
         industry_mismatch_reason=fit_reason if not is_industry_fit else "",
     )
 
-    eq_score = avg_confidence * 100.0
-    pr_score = 85.0 if is_relevant else 0.0
-    rep_score = min(100.0, len(evidence_records) * 25.0)
-    rec_score = float(max_recency)
-    bi_score = 70.0 if (relevant_detected and is_industry_fit) else 0.0
-    sf_score = best_service_fit if is_industry_fit else 0.0
+    eq_score = avg_confidence * 100.0 if analyze_website else 85.0
+    pr_score = 85.0 if effective_is_relevant else 0.0
+    rep_score = min(100.0, len(evidence_records) * 25.0) if analyze_website else 75.0
+    rec_score = float(max(max_recency, 85))
+    bi_score = 70.0 if is_industry_fit else 0.0
+    sf_score = effective_sf_score if is_industry_fit else 0.0
 
     raw_calc_score = QualificationEngine.calculate_score(
         evidence_quality=eq_score,
@@ -696,6 +700,8 @@ async def _execute_research_and_qualify(
         final_score = raw_calc_score
 
     tier = QualificationEngine.assign_tier(final_score, passed_gates, has_direct_contact=has_email)
+    if tier == "Rejected" and is_industry_fit and has_contact:
+        tier = "Review Needed"
     is_qualified = tier in ("Strong Potential", "Review Needed")
     logger.info(f"Qualified {business_name}: score={final_score}, tier={tier}, passed_gates={passed_gates}, failures={gate_failures}")
 

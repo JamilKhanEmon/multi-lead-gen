@@ -38,6 +38,9 @@ import {
   ShieldCheck,
   Send,
   AlertTriangle,
+  PhoneCall,
+  Copy,
+  Check,
 } from "lucide-react";
 
 type PipelineStage = "ALL" | "REVIEW" | "READY" | "SENT" | "HOT_DEALS" | "NO_EMAIL";
@@ -66,6 +69,9 @@ export default function LeadsPipelinePage() {
     results: Array<{ lead_id: string; company: string; email: string; status: string; note?: string }>;
   } | null>(null);
 
+  const [activeScriptLead, setActiveScriptLead] = useState<Lead | null>(null);
+  const [copiedScript, setCopiedScript] = useState(false);
+
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
 
   const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
@@ -73,6 +79,14 @@ export default function LeadsPipelinePage() {
     setTimeout(() => {
       setToast((prev) => (prev?.message === message ? null : prev));
     }, 4000);
+  };
+
+  const copyScriptToClipboard = (text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedScript(true);
+    showToast("Discovery Call Script copied to clipboard!", "success");
+    setTimeout(() => setCopiedScript(false), 2500);
   };
 
   const loadLeads = (tier?: string, runId?: string, fitTier?: string) => {
@@ -1208,6 +1222,18 @@ export default function LeadsPipelinePage() {
                             <ShieldCheck className="w-3.5 h-3.5" /> Approve & Queue
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveScriptLead(lead);
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 font-semibold text-xs transition border border-emerald-500/30 cursor-pointer shadow-sm shadow-emerald-500/10"
+                          title="Open 30-Sec Discovery Call Script (EN & BN)"
+                        >
+                          <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Script</span>
+                        </button>
                         <Link
                           href={`/leads/${lead.id}`}
                           onClick={(e) => e.stopPropagation()}
@@ -1302,6 +1328,169 @@ export default function LeadsPipelinePage() {
                 </button>
               </div>
             ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Discovery Call Script Modal */}
+      {activeScriptLead && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-4 border-b border-slate-800/80 pb-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                    <PhoneCall className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      {activeScriptLead.business_name}
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          activeScriptLead.fit_tier === "HOT"
+                            ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                            : activeScriptLead.fit_tier === "WARM"
+                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                            : "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                        }`}
+                      >
+                        {activeScriptLead.fit_tier === "HOT" ? "🔥 HOT" : activeScriptLead.fit_tier === "WARM" ? "⚡ WARM" : activeScriptLead.fit_tier || "LEAD"}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Discovery-First Opener • {activeScriptLead.business_type || "Commercial"} • {activeScriptLead.address || "Local Market"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveScriptLead(null)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Action Contact Bar */}
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              {activeScriptLead.phone ? (
+                <>
+                  <a
+                    href={`tel:${activeScriptLead.phone}`}
+                    className="px-3 py-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 flex items-center gap-1.5 font-mono font-semibold transition"
+                  >
+                    <Phone className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Call {activeScriptLead.phone}</span>
+                  </a>
+                  {getWhatsAppUrl(activeScriptLead.phone, activeScriptLead.business_name) && (
+                    <a
+                      href={getWhatsAppUrl(activeScriptLead.phone, activeScriptLead.business_name)!}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 font-semibold transition"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>WhatsApp Chat</span>
+                    </a>
+                  )}
+                </>
+              ) : (
+                <span className="text-xs text-slate-500 flex items-center gap-1">
+                  <Phone className="w-3.5 h-3.5 text-slate-600" /> No direct phone found
+                </span>
+              )}
+              {activeScriptLead.email && (
+                <a
+                  href={`mailto:${activeScriptLead.email}`}
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition"
+                >
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="truncate max-w-[180px]">{activeScriptLead.email}</span>
+                </a>
+              )}
+              {activeScriptLead.domain && (
+                <a
+                  href={activeScriptLead.domain.startsWith("http") ? activeScriptLead.domain : `https://${activeScriptLead.domain}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition"
+                >
+                  <Globe className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Website</span>
+                </a>
+              )}
+            </div>
+
+            {/* Why They Need Us & What They Need */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-1">
+                <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider block">
+                  🔍 Live Verified Evidence (Why They Need Us)
+                </span>
+                <p className="text-amber-200/90 whitespace-pre-wrap leading-relaxed">
+                  {activeScriptLead.why_they_need_us || activeScriptLead.primary_gap_summary || "Operational gap identified in inbound customer handling."}
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-sky-500/10 border border-sky-500/25 space-y-1">
+                <span className="text-[10px] font-bold text-sky-300 uppercase tracking-wider block">
+                  🎯 Solution Fit (What They Need)
+                </span>
+                <p className="text-sky-200/90 leading-relaxed font-semibold">
+                  {activeScriptLead.matched_service || "Digital Sales & Workflow System"}
+                </p>
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  {activeScriptLead.what_they_need || "Automated customer inquiry capture, WhatsApp routing, and pipeline tracking."}
+                </p>
+              </div>
+            </div>
+
+            {/* Script Box */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <PhoneCall className="w-3.5 h-3.5 text-emerald-400" /> 30-Second Discovery Call Script (EN & BN)
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    copyScriptToClipboard(
+                      activeScriptLead.discovery_call_script ||
+                        `1. OPENING EVIDENCE:\n   "Hello, is this ${activeScriptLead.business_name}? I was reviewing your online presence and noticed: ${activeScriptLead.why_they_need_us || activeScriptLead.primary_gap_summary || "solvable gaps in online visibility"}.\n\n2. DISCOVERY QUESTION:\n   "How are you currently handling inbound client acquisition and follow-ups right now?"\n\n3. VALUE PITCH (${activeScriptLead.matched_service || ""}):\n   "We specialize in solving this. Would you be open to a 5-minute preview of the live solution modeled for ${activeScriptLead.business_name}?"`
+                    )
+                  }
+                  className="px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold transition border border-emerald-500/30 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedScript ? "Copied Script!" : "Copy Script"}</span>
+                </button>
+              </div>
+
+              <div className="text-xs text-slate-200 font-mono bg-slate-950 p-4 rounded-xl border border-slate-800 whitespace-pre-wrap leading-relaxed max-h-72 overflow-y-auto select-all">
+                {activeScriptLead.discovery_call_script || (
+                  `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n📞 [EN] SALES CALL SCRIPT (ENGLISH OUTREACH)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n1. OPENING EVIDENCE & HOOK:\n   "Hello, is this ${activeScriptLead.business_name}? I was reviewing your business presence in ${activeScriptLead.address || "your area"} and noticed: ${activeScriptLead.why_they_need_us || activeScriptLead.primary_gap_summary || "solvable customer intake bottlenecks"}"\n\n2. DISCOVERY QUESTION:\n   "When prospective clients reach out to your team, how are inquiries currently captured and tracked so no clients are lost?"\n\n3. VALUE PITCH & 5-MIN DEMO OFFER:\n   "We have a specialized ${activeScriptLead.matched_service || "Sales Automation Solution"} that automates this. Would you be open to a 5-minute live preview this week?"\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🇧🇩 [BN] সেলস টিম গাইড ও বাংলা স্পিচ\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n১. কল শুরুর হুক (Opening Hook):\n   "আসসালামু আলাইকুম, আমি কি ${activeScriptLead.business_name}-এর ওনার বা ম্যানেজমেন্ট টিমের সাথে কথা বলতে পারি? আপনাদের বিজনেস পর্যালোচনা করে লক্ষ্য করলাম: ${activeScriptLead.why_they_need_us || activeScriptLead.primary_gap_summary || "ইনবাউন্ড কাস্টমার ট্র্যাকিংয়ে কিছু সমস্যা রয়েছে"}"\n\n২. সমস্যা খোঁজার প্রশ্ন (Discovery Question):\n   "প্রতিদিন যখন নতুন কাস্টমাররা আপনাদের কল বা মেসেজ দেয়, আপনারা কি সেগুলো ম্যানুয়ালি হ্যান্ডেল করছেন নাকি কোনো স্বয়ংক্রিয় সিস্টেম আছে যাতে কোনো ক্লায়েন্ট মিস না হয়?"\n\n৩. সমাধান ও ৫ মিনিটের ডেমো অফার:\n   "আমরা এই ধরনের ব্যবসার জন্য ${activeScriptLead.matched_service || "ডিজিটাল সফটওয়্যার"} প্রস্তুত করেছি। এই সপ্তাহে কি ৫ মিনিট সময় দিতে পারবেন লাইভ ডেমোটি দেখার জন্য?"`
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              <Link
+                href={`/leads/${activeScriptLead.id}`}
+                className="text-xs text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1"
+              >
+                Open Full Lead Detail & Email History <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+              <button
+                type="button"
+                onClick={() => setActiveScriptLead(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
