@@ -363,26 +363,25 @@ async def _execute_research_and_qualify(
             except Exception as e:
                 logger.warning(f"OpenClaw website research fallback for {domain}: {e}")
     else:
-        # Social & Software Demo Mode (DEFAULT): Skip heavy website audit!
-        if domain and (not current_phone or not current_email):
-            logger.info(f"TaskResearch: analyze_website=False. Fetching lightweight contact info for '{business_name}'...")
+        # Social & Software Demo Mode: Skip heavy technical audit, but ALWAYS fetch lightweight contact info for cross-verification!
+        if domain:
+            logger.info(f"TaskResearch: Fetching official website contact info for multi-source cross-verification ('{business_name}')...")
             try:
                 light_data = await openclaw_client.run_skill(
                     "website-research",
                     {"url": f"https://{domain}", "canonical_name": business_name, "location": location, "lightweight": True}
                 )
-                if light_data.get("extracted_phone") and not current_phone:
+                if light_data.get("extracted_phone"):
                     website_data["extracted_phone"] = light_data["extracted_phone"]
-                if light_data.get("extracted_email") and not current_email:
+                if light_data.get("extracted_email"):
                     website_data["extracted_email"] = light_data["extracted_email"]
-                for k in ["facebook_url", "instagram_url", "linkedin_url"]:
-                    if light_data.get(k):
+                if light_data.get("extracted_address"):
+                    website_data["extracted_address"] = light_data["extracted_address"]
+                for k in ["facebook_url", "instagram_url", "linkedin_url", "has_whatsapp"]:
+                    if light_data.get(k) is not None:
                         website_data[k] = light_data[k]
             except Exception as e:
                 logger.debug(f"Lightweight contact check notice for {domain}: {e}")
-        else:
-            if domain and current_phone and current_email:
-                logger.info(f"TaskResearch: Direct contacts already present. SKIPPING website scraping completely for '{business_name}'!")
 
 
     current_phone = website_data.get("extracted_phone") or payload.get("phone")
