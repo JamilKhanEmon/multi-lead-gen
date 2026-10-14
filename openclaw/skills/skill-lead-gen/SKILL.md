@@ -1,9 +1,9 @@
 ---
-name: "nibiz-lead-gen"
+name: "skill-lead-gen"
 description: "Demand-side lead pipeline for N I Biz Soft: catch buying signals (broken sites, ad spenders, hiring, manual ops) → fit-gate → prospect only leads with evidence → discovery-first script → store in local PostgreSQL system database and display in UI dashboard (No external Google Sheet required)."
 ---
 
-# nibiz-lead-gen — Demand-Side Lead Pipeline for N I Biz Soft (System-Native)
+# skill-lead-gen — Demand-Side Lead Pipeline for N I Biz Soft (System-Native)
 
 End-to-end pipeline: **Aggregate candidates → Dedup → FIT GATE → Prospect → Call Script → Store in Database**.
 v2 Pipeline is DEMAND-SIDE. We no longer pitch every scraped business.
