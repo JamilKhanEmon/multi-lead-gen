@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import json
@@ -368,14 +369,17 @@ class AIClient:
                     parsed["_model"] = model
 
                     # Asynchronously record exact token usage and billing metrics in background
-                    if isinstance(total_toks, (int, float)) and total_toks > 0:
-                        asyncio.create_task(self.record_token_usage(
-                            provider=provider_name,
-                            model=model,
-                            prompt_tokens=int(in_toks) if isinstance(in_toks, (int, float)) else 0,
-                            completion_tokens=int(out_toks) if isinstance(out_toks, (int, float)) else 0,
-                            total_tokens=int(total_toks),
-                        ))
+                    try:
+                        if isinstance(total_toks, (int, float)) and total_toks > 0:
+                            asyncio.create_task(self.record_token_usage(
+                                provider=provider_name,
+                                model=model,
+                                prompt_tokens=int(in_toks) if isinstance(in_toks, (int, float)) else 0,
+                                completion_tokens=int(out_toks) if isinstance(out_toks, (int, float)) else 0,
+                                total_tokens=int(total_toks),
+                            ))
+                    except Exception as te:
+                        logger.warning(f"AIClient: token usage recording background task warning: {te}")
 
                     return parsed
                 else:
