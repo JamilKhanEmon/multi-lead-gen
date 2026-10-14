@@ -125,7 +125,7 @@ async def autonomous_outreach_scheduler():
                         continue
 
                     recipient = biz.email.strip()
-                    subject, body = OutreachEngine.render_email(
+                    subject, body = await OutreachEngine.render_email(
                         step=1,
                         lead_data={
                             "company_name": biz.canonical_name,
@@ -223,7 +223,7 @@ async def autonomous_outreach_scheduler():
                         continue
 
                     f_recipient = f_biz.email.strip()
-                    f_subject, f_body = OutreachEngine.render_email(
+                    f_subject, f_body = await OutreachEngine.render_email(
                         step=target_step,
                         lead_data={
                             "company_name": f_biz.canonical_name,

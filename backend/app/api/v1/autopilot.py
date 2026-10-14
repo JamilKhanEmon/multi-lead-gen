@@ -224,7 +224,7 @@ async def dispatch_outreach_queue(
             continue
         recipient = biz.email.strip()
 
-        subject, body = OutreachEngine.render_email(
+        subject, body = await OutreachEngine.render_email(
             step=1,
             lead_data={
                 "company_name": biz.canonical_name,
@@ -891,7 +891,7 @@ async def get_email_thread(
                             active_tpl = t_res.scalar_one_or_none()
 
                         from app.engine.outreach_engine import OutreachEngine
-                        _, full_rendered = OutreachEngine.render_email(
+                        _, full_rendered = await OutreachEngine.render_email(
                             step=log.step or 1,
                             lead_data={
                                 "company_name": biz.canonical_name,

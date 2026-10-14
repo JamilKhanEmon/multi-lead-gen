@@ -81,22 +81,13 @@ class OutreachEngine:
     # ── LLM-based classification — no keyword lists needed ──────────────────
 
     @classmethod
-    def render_email(cls, step: int, lead_data: Dict[str, Any]) -> Tuple[str, str]:
-        company_name = lead_data.get("company_name") or "Your Team"
-        raw_contact = str(lead_data.get("contact_person") or "").strip()
-        if raw_contact and raw_contact.lower() not in ["there", "sir", "madam", "n/a", "none", "unknown", "team"]:
-            contact_person = raw_contact
-        else:
-            contact_person = f"Team {company_name}"
-
-        raw_city = str(lead_data.get("city") or lead_data.get("location") or lead_data.get("address") or "").strip()
-        has_real_city = bool(raw_city and raw_city.lower() not in ["your area", "your city", "your office in your city", "n/a", "none", "unknown", ""])
-        city = raw_city if has_real_city else ""
-        primary_gap = lead_data.get("primary_gap") or "optimizing your online presence and client acquisition"
-        industry = (lead_data.get("industry") or lead_data.get("business_type") or "").lower()
-
+    @classmethod
+    def _resolve_signature(cls, company_name: str, lead_data: Dict[str, Any]) -> Tuple[str, str, str, str]:
         personas = lead_data.get("personas") or []
         sig_block = ""
+        sender_name = ""
+        sender_title = ""
+        sender_company = ""
         if personas:
             p = personas[hash(company_name) % len(personas)]
             if isinstance(p, dict):
@@ -125,6 +116,111 @@ class OutreachEngine:
             sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or ""
             sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
             sig_block = lead_data.get("signature_text") or ("\n".join(sig_lines) if sig_lines else "")
+        return sig_block, sender_name, sender_title, sender_company
+
+    @classmethod
+    async def render_email(
+        cls,
+        step: int,
+        lead_data: Dict[str, Any],
+        ai_client: Optional[Any] = None,
+    ) -> Tuple[str, str]:
+        """
+        Dynamically generates hyper-personalized, spam-proof B2B cold emails using LLM.
+        Falls back to rule-based template if AI is unavailable or fails.
+        """
+        custom_tpl = lead_data.get("custom_template")
+        if custom_tpl and lead_data.get("force_template"):
+            return cls.render_email_template(step, lead_data)
+
+        company_name = lead_data.get("company_name") or "Your Team"
+        raw_contact = str(lead_data.get("contact_person") or "").strip()
+        if raw_contact and raw_contact.lower() not in ["there", "sir", "madam", "n/a", "none", "unknown", "team", "executive"]:
+            contact_person = raw_contact
+        else:
+            contact_person = f"Team {company_name}"
+
+        city = str(lead_data.get("city") or lead_data.get("location") or lead_data.get("address") or "").strip()
+        industry = str(lead_data.get("industry") or lead_data.get("business_type") or "General Business").strip()
+        primary_gap = lead_data.get("primary_gap") or "optimizing operational workflows and client acquisition"
+        matched_service = lead_data.get("matched_service") or "software and workflow automation"
+        website = lead_data.get("website") or ""
+
+        sig_block, sender_name, sender_title, sender_company = cls._resolve_signature(company_name, lead_data)
+
+        try:
+            if ai_client is None:
+                from app.services.ai_client import AIClient
+                ai_client = AIClient(timeout=10.0)
+
+            step_descriptions = {
+                1: "Step 1 Initial Cold Outreach: Introduce high-value growth opportunity or operational software solution, mention specific gap respectfully, offer a 5-minute interactive live software demo or walkthrough sometime this week or early next week.",
+                2: "Step 2 Follow-up (Sent 4 days later): Polite, concise check-in referencing previous observation, ask if they'd like a 1-page summary or a 5-minute live demo call.",
+                3: "Step 3 Breakup Email (Sent 8 days later): Respectful final note acknowledging they may be busy, closing the file politely while leaving the door open for future modernization."
+            }
+            step_instruction = step_descriptions.get(step, step_descriptions[1])
+
+            system_prompt = (
+                "You are an elite B2B Sales Director writing personalized, high-converting cold emails. "
+                "CRITICAL RULES:\n"
+                "1. Keep the body short and punchy: STRICTLY between 60 to 110 words total.\n"
+                "2. NO corporate clichés or fluff ('I hope this email finds you well', 'Allow me to introduce myself', 'Dear Sir/Madam').\n"
+                f"3. Start naturally with 'Hi {contact_person},'.\n"
+                "4. Be consultative, respectful, and direct. Focus on how our solution solves their specific bottleneck.\n"
+                "5. The call-to-action MUST be low friction: offer a brief 5-minute live software demo or walkthrough sometime this week or early next week.\n"
+                "6. Do NOT include the sender signature at the end of the body (it will be appended automatically).\n"
+                "7. Output strictly raw JSON: {\"subject\": \"...\", \"body\": \"...\"} without markdown fences or chit-chat."
+            )
+
+            user_prompt = (
+                f"Goal: {step_instruction}\n"
+                f"Lead Company: {company_name}\n"
+                f"Contact Person: {contact_person}\n"
+                f"Industry: {industry}\n"
+                f"Location: {city}\n"
+                f"Website: {website}\n"
+                f"Audited Gap / Bottleneck: {primary_gap}\n"
+                f"Matched Solution / Service: {matched_service}\n\n"
+                "Write a compelling subject line and short email body in JSON format."
+            )
+
+            res = await ai_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+            if isinstance(res, dict) and res.get("subject") and res.get("body"):
+                llm_subject = str(res["subject"]).strip().strip('"')
+                llm_body = str(res["body"]).strip()
+
+                import re
+                llm_body = re.sub(r"^(Dear|Hello|Hi)\s+(there|sir|madam|team)[,:]?", f"Hi {contact_person},", llm_body, flags=re.IGNORECASE)
+
+                if sig_block:
+                    full_body = f"{llm_body}\n\n{sig_block}"
+                else:
+                    full_body = llm_body
+
+                logger.info(f"OutreachEngine: LLM successfully generated Step {step} email for '{company_name}'")
+                return llm_subject, full_body
+
+        except Exception as e:
+            logger.warning(f"OutreachEngine: LLM email generation notice ({e}). Using rule-based fallback.")
+
+        return cls.render_email_template(step, lead_data)
+
+    @classmethod
+    def render_email_template(cls, step: int, lead_data: Dict[str, Any]) -> Tuple[str, str]:
+        company_name = lead_data.get("company_name") or "Your Team"
+        raw_contact = str(lead_data.get("contact_person") or "").strip()
+        if raw_contact and raw_contact.lower() not in ["there", "sir", "madam", "n/a", "none", "unknown", "team"]:
+            contact_person = raw_contact
+        else:
+            contact_person = f"Team {company_name}"
+
+        raw_city = str(lead_data.get("city") or lead_data.get("location") or lead_data.get("address") or "").strip()
+        has_real_city = bool(raw_city and raw_city.lower() not in ["your area", "your city", "your office in your city", "n/a", "none", "unknown", ""])
+        city = raw_city if has_real_city else ""
+        primary_gap = lead_data.get("primary_gap") or "optimizing your online presence and client acquisition"
+        industry = (lead_data.get("industry") or lead_data.get("business_type") or "").lower()
+
+        sig_block, sender_name, sender_title, sender_company = cls._resolve_signature(company_name, lead_data)
 
         custom_tpl = lead_data.get("custom_template")
         if custom_tpl and step == 1:

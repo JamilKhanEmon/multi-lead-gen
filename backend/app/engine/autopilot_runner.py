@@ -404,7 +404,7 @@ class AutopilotRunner:
                         )
                         
                         if is_office_hrs:
-                            subject, body = OutreachEngine.render_email(
+                            subject, body = await OutreachEngine.render_email(
                                 step=1,
                                 lead_data={
                                     "company_name": biz.canonical_name,
