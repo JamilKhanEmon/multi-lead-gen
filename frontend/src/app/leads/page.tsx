@@ -41,6 +41,10 @@ import {
   PhoneCall,
   Copy,
   Check,
+  Facebook,
+  Instagram,
+  Linkedin,
+  ExternalLink,
 } from "lucide-react";
 
 type PipelineStage = "ALL" | "REVIEW" | "READY" | "SENT" | "HOT_DEALS" | "NO_EMAIL";
@@ -1022,14 +1026,22 @@ export default function LeadsPipelinePage() {
                             )}
                           </div>
 
-                          {lead.address && (
-                            <div className="text-[11px] text-slate-500 flex items-center gap-1 line-clamp-1">
-                              <MapPin className="w-3 h-3 text-slate-600 shrink-0" />
-                              <span className="truncate max-w-xs">{lead.address}</span>
-                            </div>
+                          {(lead.address || lead.city) && (
+                            <a
+                              href={lead.google_maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((lead.business_name || '') + ' ' + (lead.address || lead.city || ''))}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Click to view exact location on Google Maps"
+                              className="text-[11px] text-slate-400 hover:text-amber-300 flex items-center gap-1 line-clamp-1 transition group"
+                            >
+                              <MapPin className="w-3 h-3 text-amber-400/90 shrink-0 group-hover:scale-110 transition" />
+                              <span className="truncate max-w-xs">{lead.address || lead.city}</span>
+                            </a>
                           )}
 
-                          <div className="flex items-center gap-1.5 pt-1">
+                          {/* 1-Click Verification & Social Media Links */}
+                          <div className="flex items-center gap-1.5 pt-1.5 flex-wrap">
                             {lead.google_maps_url && (
                               <a
                                 href={lead.google_maps_url}
@@ -1037,30 +1049,84 @@ export default function LeadsPipelinePage() {
                                 rel="noreferrer"
                                 onClick={(e) => e.stopPropagation()}
                                 title="Open on Google Maps"
-                                className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 flex items-center gap-1"
+                                className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 flex items-center gap-1 transition"
                               >
                                 <MapPin className="w-2.5 h-2.5" /> Maps
                               </a>
                             )}
+
+                            {lead.facebook_url ? (
+                              <a
+                                href={lead.facebook_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                title="Open Official Facebook Page"
+                                className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/15 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 flex items-center gap-1 transition shadow-sm shadow-blue-500/10"
+                              >
+                                <Facebook className="w-2.5 h-2.5 text-blue-400" /> Facebook
+                              </a>
+                            ) : (
+                              <a
+                                href={`https://www.facebook.com/search/top?q=${encodeURIComponent(lead.business_name || '')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                title="Search for company on Facebook"
+                                className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 flex items-center gap-1 transition"
+                              >
+                                FB Search
+                              </a>
+                            )}
+
+                            {lead.meta_ads_url && (
+                              <a
+                                href={lead.meta_ads_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                title="View live ads in Meta Ad Library"
+                                className="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-500/15 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 flex items-center gap-1 transition"
+                              >
+                                Ads
+                              </a>
+                            )}
+
+                            {lead.instagram_url && (
+                              <a
+                                href={lead.instagram_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                title="Open Instagram Profile"
+                                className="px-2 py-0.5 rounded text-[10px] font-medium bg-pink-500/15 hover:bg-pink-500/30 text-pink-300 border border-pink-500/30 flex items-center gap-1 transition"
+                              >
+                                <Instagram className="w-2.5 h-2.5 text-pink-400" /> Instagram
+                              </a>
+                            )}
+
+                            {lead.linkedin_url && (
+                              <a
+                                href={lead.linkedin_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                title="Open LinkedIn Profile"
+                                className="px-2 py-0.5 rounded text-[10px] font-medium bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 flex items-center gap-1 transition"
+                              >
+                                <Linkedin className="w-2.5 h-2.5 text-sky-400" /> LinkedIn
+                              </a>
+                            )}
+
                             <a
                               href={lead.google_search_url || `https://www.google.com/search?q=${encodeURIComponent(lead.business_name || '')}`}
                               target="_blank"
                               rel="noreferrer"
                               onClick={(e) => e.stopPropagation()}
                               title="Google Search"
-                              className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1"
+                              className="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 flex items-center gap-1 transition"
                             >
                               <Search className="w-2.5 h-2.5" /> Search
-                            </a>
-                            <a
-                              href={`https://www.facebook.com/search/top?q=${encodeURIComponent(lead.business_name || '')}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                              title="Facebook Search"
-                              className="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 flex items-center gap-1"
-                            >
-                              FB
                             </a>
                           </div>
                         </div>

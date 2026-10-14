@@ -163,6 +163,11 @@ async def list_leads(
         sec_phone = consensus.get("secondary_phone") or meta.get("secondary_phone")
         wa_phone = consensus.get("whatsapp_phone") or meta.get("whatsapp_phone")
         meta_ads = meta.get("meta_ads_url")
+        fb_url = meta.get("facebook_url") or getattr(biz, "facebook_url", None)
+        ig_url = meta.get("instagram_url") or getattr(biz, "instagram_url", None)
+        li_url = getattr(biz, "linkedin_url", None) or meta.get("linkedin_url")
+        loc_city = (loc.city if loc else None) or meta.get("city") or meta.get("location")
+        loc_addr = address or loc_city
 
         lead_items.append(
             LeadResponse(
@@ -181,6 +186,10 @@ async def list_leads(
                 phone_sources=p_sources,
                 secondary_phone=sec_phone,
                 whatsapp_phone=wa_phone,
+                facebook_url=fb_url,
+                instagram_url=ig_url,
+                linkedin_url=li_url,
+                city=loc_city,
                 meta_ads_url=meta_ads,
                 email=resolved_email,
                 email_status=getattr(l, "email_status", None) or email_status,
@@ -191,7 +200,7 @@ async def list_leads(
                 last_contacted_at=getattr(l, "last_contacted_at", None),
                 contact_person=biz.contact_person if biz else None,
                 contact_title=biz.contact_title if biz else None,
-                address=address,
+                address=loc_addr,
                 business_type=btype,
                 google_maps_url=gmaps_url,
                 google_search_url=gsearch_url,
