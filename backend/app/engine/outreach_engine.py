@@ -81,7 +81,6 @@ class OutreachEngine:
     # ── LLM-based classification — no keyword lists needed ──────────────────
 
     @classmethod
-    @classmethod
     def _resolve_signature(cls, company_name: str, lead_data: Dict[str, Any]) -> Tuple[str, str, str, str]:
         personas = lead_data.get("personas") or []
         sig_block = ""
