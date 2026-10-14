@@ -142,53 +142,109 @@ class StrategyEngine:
         return queries
 
     @classmethod
-    async def match_kb_services(cls, db_session, industry: str) -> List[Dict[str, Any]]:
+    async def match_kb_services(
+        cls,
+        db_session,
+        industry: str,
+        location: str = "",
+        ai_client: Optional[AIClient] = None,
+    ) -> List[Dict[str, Any]]:
         from app.models.company_kb import CompanyKB
         from sqlalchemy import select
 
-        matched = []
+        kb_name = "NiBiz Soft"
+        kb_context_parts = []
         try:
             stmt = select(CompanyKB).where(CompanyKB.is_active == True).order_by(CompanyKB.created_at.desc()).limit(1)
             res = await db_session.execute(stmt)
             kb = res.scalar_one_or_none()
-            if kb and isinstance(kb.services_json, list) and len(kb.services_json) > 0:
-                ind_lower = industry.lower()
-                for s in kb.services_json:
-                    name = s.get("name") or s.get("key") or "Digital Growth"
-                    desc = s.get("features") or s.get("description") or ""
-                    matched.append({
-                        "name": name,
-                        "type": "software" if any(w in (name + " " + desc).lower() for w in ["crm", "erp", "software", "portal", "system"]) else "marketing",
-                        "description": desc,
-                        "offer_hook": "5-Minute Live Interactive Software Demo"
-                    })
+            if kb:
+                if kb.company_name:
+                    kb_name = kb.company_name
+                if kb.tagline_experience:
+                    kb_context_parts.append(f"Tagline/Experience: {kb.tagline_experience}")
+                if kb.master_kb_notes:
+                    kb_context_parts.append(f"Master Overview: {kb.master_kb_notes[:1200]}")
+                if kb.services_json and isinstance(kb.services_json, list):
+                    for s in kb.services_json:
+                        s_name = s.get("name") or s.get("key") or ""
+                        s_desc = s.get("features") or s.get("description") or ""
+                        if s_name:
+                            kb_context_parts.append(f"- {s_name}: {s_desc}")
         except Exception as e:
-            logger.warning(f"StrategyEngine KB match error: {e}")
+            logger.warning(f"StrategyEngine KB load error: {e}")
 
-        if not matched:
-            # High-conversion service offerings with 5-Minute Live Interactive Demo
-            matched = [
-                {
-                    "name": f"{industry} High-Intent Meta & Video Ad Lead Funnel",
-                    "type": "marketing",
-                    "description": "Acquire qualified local clients and buyer inquiries with optimized Meta & TikTok campaigns.",
-                    "offer_hook": "5-Minute Campaign Strategy & Competitor Blueprint"
-                },
-                {
-                    "name": f"Automated {industry} CRM & Instant WhatsApp Follow-up System",
-                    "type": "software",
-                    "description": "Convert inbound inquiries instantly without manual messaging delays using custom CRM automation.",
-                    "offer_hook": "5-Minute Live Interactive Software Demo"
-                },
-                {
-                    "name": f"Branded {industry} Official Website & Inbound Booking Portal",
-                    "type": "software",
-                    "description": "Launch a dedicated high-converting web presence for businesses currently operating exclusively on social media.",
-                    "offer_hook": "5-Minute Interactive Live Demo"
-                }
-            ]
+        if ai_client is None:
+            ai_client = AIClient()
 
-        return matched
+        kb_context = "\n".join(kb_context_parts) if kb_context_parts else (
+            "NiBiz Soft provides custom ERP systems, automated CRM & messaging workflows, industry SaaS portals, "
+            "headless high-converting web apps, and targeted client acquisition funnels for Real Estate, Healthcare, "
+            "Garments/Manufacturing, E-Commerce, Hospitality, Logistics, and Corporate Enterprises."
+        )
+
+        system_prompt = (
+            f"You are the Chief Solutions Architect and Sales Strategist for {kb_name}. "
+            "Given the target industry and target location, analyze our software and growth offerings "
+            "and dynamically decide the top 2 to 4 highest-converting services and live demo hooks to pitch. "
+            "CRITICAL: The recommendations MUST be tailored precisely to the specific bottlenecks, workflows, and high-value needs of this specific industry. "
+            "DO NOT return generic placeholders. Be specific (e.g. for Real Estate: ERP, WhatsApp Lead CRM, 3D/Website launch portal; for Healthcare: Clinic ERP, Appointment WhatsApp CRM; for Garments: Apparel Production ERP, B2B Portal). "
+            "Output strictly raw JSON without conversation or markdown."
+        )
+        user_prompt = (
+            f"Target Industry: {industry}\n"
+            f"Target Location: {location}\n"
+            f"Company KB Context:\n{kb_context}\n\n"
+            "Select or craft 2 to 4 distinct, high-impact services for this industry. Format strictly as:\n"
+            '{"services": [\n'
+            '  {\n'
+            '    "name": "Specific Software or Growth Product Name",\n'
+            '    "type": "software" or "marketing",\n'
+            '    "description": "Specific problem solved for businesses in this industry",\n'
+            '    "offer_hook": "5-Minute Live Interactive Software Demo" or "5-Minute Interactive Growth Blueprint"\n'
+            '  }\n'
+            ']}'
+        )
+
+        try:
+            res = await ai_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+            services = res.get("services")
+            if isinstance(services, list) and len(services) >= 1:
+                formatted = []
+                for s in services[:4]:
+                    if isinstance(s, dict) and s.get("name"):
+                        formatted.append({
+                            "name": str(s.get("name")).strip(),
+                            "type": "software" if str(s.get("type", "")).lower() == "software" else "marketing",
+                            "description": str(s.get("description", "")).strip(),
+                            "offer_hook": str(s.get("offer_hook") or "5-Minute Live Interactive Demo").strip(),
+                        })
+                if formatted:
+                    return formatted
+        except Exception as e:
+            logger.warning(f"StrategyEngine AI service matching failed: {e}. Falling back to rule-based defaults.")
+
+        # High-conversion service offerings fallback only if AI fails
+        return [
+            {
+                "name": f"{industry} High-Intent Meta & Video Ad Lead Funnel",
+                "type": "marketing",
+                "description": f"Acquire qualified local clients and buyer inquiries for {industry} with optimized video & social campaigns.",
+                "offer_hook": "5-Minute Campaign Strategy & Competitor Blueprint"
+            },
+            {
+                "name": f"Automated {industry} CRM & Instant WhatsApp Follow-up System",
+                "type": "software",
+                "description": f"Convert {industry} inbound inquiries instantly without manual messaging delays using custom CRM automation.",
+                "offer_hook": "5-Minute Live Interactive Software Demo"
+            },
+            {
+                "name": f"Branded {industry} Official Website & Inbound Booking Portal",
+                "type": "software",
+                "description": f"Launch a dedicated high-converting web presence for {industry} businesses currently operating exclusively on social media.",
+                "offer_hook": "5-Minute Interactive Live Demo"
+            }
+        ]
 
     @classmethod
     async def generate_strategy_preview(
@@ -201,11 +257,20 @@ class StrategyEngine:
     ) -> Dict[str, Any]:
         """
         Builds complete strategy preview for Admin Review & Approval.
+        Uses AI to dynamically decompose sub-areas and match relevant services.
         """
+        if ai_client is None:
+            ai_client = AIClient()
+
         sub_areas_objs = await cls.decompose_sub_areas(location, industry=industry, ai_client=ai_client)
         sub_area_names = [a["name"] for a in sub_areas_objs if a.get("checked", True)]
         search_queries = cls.generate_search_queries(industry, location, sub_area_names)
-        matched_services = await cls.match_kb_services(db_session, industry)
+        matched_services = await cls.match_kb_services(
+            db_session=db_session,
+            industry=industry,
+            location=location,
+            ai_client=ai_client,
+        )
 
         return {
             "industry": industry,
