@@ -1532,6 +1532,74 @@ class LiveResearchEngine:
             "checked_live": True,
         }
 
+    @classmethod
+    async def inspect_news(
+        cls,
+        company_name: str,
+        location: str = "",
+    ) -> Dict[str, Any]:
+        loop = asyncio.get_event_loop()
+        clean_name = company_name.strip()
+        news_query = f'"{clean_name}" (launch OR expansion OR project OR contract OR branch) {location}'
+        announcements = []
+
+        try:
+            def _do_search():
+                html, _ = cls._fetch_ddg_html(news_query)
+                return cls._parse_ddg_items(html)
+            items = await loop.run_in_executor(None, _do_search)
+            for link, title, snippet in items[:3]:
+                if any(bad in link.lower() for bad in ["facebook.com", "instagram.com", "youtube.com"]):
+                    continue
+                announcements.append({
+                    "headline": title,
+                    "snippet": snippet,
+                    "source_url": link,
+                    "signal_type": "expansion_or_project",
+                })
+        except Exception as e:
+            logger.debug(f"inspect_news error for {clean_name}: {e}")
+
+        return {
+            "company_name": clean_name,
+            "announcements": announcements,
+            "active_announcements_count": len(announcements),
+            "checked_live": True,
+        }
+
+    @classmethod
+    async def inspect_jobs(
+        cls,
+        company_name: str,
+        location: str = "",
+    ) -> Dict[str, Any]:
+        loop = asyncio.get_event_loop()
+        clean_name = company_name.strip()
+        job_query = f'"{clean_name}" (hiring OR jobs OR career OR vacancy) {location}'
+        tech_roles = []
+        source_urls = []
+
+        try:
+            def _do_job_search():
+                html, _ = cls._fetch_ddg_html(job_query)
+                return cls._parse_ddg_items(html)
+            items = await loop.run_in_executor(None, _do_job_search)
+            for link, title, snippet in items[:5]:
+                combined = f"{title} {snippet}".lower()
+                if any(k in combined for k in ["manager", "developer", "marketing", "sales", "executive", "officer", "engineer", "designer", "specialist"]):
+                    tech_roles.append(title[:60])
+                    source_urls.append(link)
+        except Exception as e:
+            logger.debug(f"inspect_jobs error for {clean_name}: {e}")
+
+        return {
+            "company_name": clean_name,
+            "active_job_count": len(tech_roles),
+            "tech_roles_found": tech_roles[:5],
+            "source_urls": source_urls[:3],
+            "checked_live": True,
+        }
+
 class OpenClawClient:
 
     def __init__(
@@ -1662,5 +1730,23 @@ class OpenClawClient:
                 location=location,
                 company_limit=parameters.get("company_limit", 10),
             )
+
+        elif skill_name == "news-research":
+            company_name = parameters.get("company_name") or parameters.get("canonical_name", "Business")
+            location = parameters.get("location", "")
+            return await LiveResearchEngine.inspect_news(company_name=company_name, location=location)
+
+        elif skill_name == "jobs-research":
+            company_name = parameters.get("company_name") or parameters.get("canonical_name", "Business")
+            location = parameters.get("location", "")
+            return await LiveResearchEngine.inspect_jobs(company_name=company_name, location=location)
+
+        elif skill_name == "visual-research":
+            url = parameters.get("target_url") or parameters.get("url", "")
+            canonical_name = parameters.get("canonical_name", "Business")
+            return await LiveResearchEngine.audit_website(url=url, canonical_name=canonical_name)
+
+        elif skill_name == "evidence-collection":
+            return {"status": "SUCCESS", "skill": "evidence-collection", "evidence_items": parameters.get("evidence_items", [])}
 
         return {"status": "SUCCESS", "skill": skill_name}
