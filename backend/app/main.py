@@ -341,6 +341,10 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             from sqlalchemy import text
+            try:
+                await conn.execute(text("ALTER TABLE businesses ALTER COLUMN canonical_name TYPE TEXT;"))
+            except Exception:
+                pass
             for col in ["phone", "email", "contact_person", "contact_title", "address", "linkedin_url"]:
                 try:
                     await conn.execute(text(f"ALTER TABLE businesses ADD COLUMN IF NOT EXISTS {col} VARCHAR;"))

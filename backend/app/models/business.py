@@ -8,7 +8,7 @@ from .base import Base, TimestampMixin, UUIDMixin
 class Business(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "businesses"
 
-    canonical_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    canonical_name: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     domain: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(50), index=True, nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)

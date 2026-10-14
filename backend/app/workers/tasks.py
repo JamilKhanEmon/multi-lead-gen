@@ -116,6 +116,15 @@ async def handle_discover_businesses(
             if not raw_name:
                 continue
 
+            # Clean and sanitize raw_name against SEO keyword stuffing & runaway titles
+            if raw_name.count(",") >= 2 or len(raw_name) > 80:
+                if raw_domain and "facebook.com" not in raw_domain:
+                    dom_clean = raw_domain.replace("https://", "").replace("http://", "").split("/")[0].replace("www.", "")
+                    raw_name = dom_clean.split(".")[0].replace("-", " ").title()
+                else:
+                    raw_name = raw_name.split(",")[0].split("|")[0].split("-")[0].strip()[:80]
+            raw_name = raw_name[:150].strip()
+
             # Check if this candidate is a social-only business (e.g. found via Facebook page)
             if raw_domain and "facebook.com" in raw_domain.lower():
                 if not raw_fb:
@@ -146,6 +155,11 @@ async def handle_discover_businesses(
 
             norm_domain = DeduplicationEngine.normalize_domain(raw_domain)
             norm_phone = DeduplicationEngine.normalize_phone(raw_phone)
+            clean_email = (comp.get("email") or "").strip()[:200] or None
+            clean_address = (comp.get("address") or "").strip() or None
+            clean_btype = (comp.get("business_type") or payload.get("business_type_override") or "other")[:90]
+            clean_city = (comp.get("city") or city or location or "")[:90] or None
+            clean_country = (comp.get("country") or country or "")[:90] or None
 
             existing_biz = None
             if norm_domain:
@@ -165,23 +179,23 @@ async def handle_discover_businesses(
 
             if not existing_biz:
                 biz = Business(
-                    canonical_name=raw_name,
-                    domain=norm_domain,
-                    phone=norm_phone,
-                    email=comp.get("email"),
-                    address=comp.get("address"),
-                    business_type=comp.get("business_type", payload.get("business_type_override", "other")),
+                    canonical_name=raw_name[:200],
+                    domain=norm_domain[:200] if norm_domain else None,
+                    phone=norm_phone[:45] if norm_phone else None,
+                    email=clean_email,
+                    address=clean_address,
+                    business_type=clean_btype,
                     metadata_json=comp,
                 )
                 session.add(biz)
                 await session.flush()
 
-                if comp.get("address") or location or city or comp.get("latitude") is not None:
+                if clean_address or location or city or comp.get("latitude") is not None:
                     loc = BusinessLocation(
                         business_id=biz.id,
-                        address=comp.get("address"),
-                        city=comp.get("city") or city or location,
-                        country=comp.get("country") or country or None,
+                        address=clean_address,
+                        city=clean_city,
+                        country=clean_country,
                         latitude=comp.get("latitude"),
                         longitude=comp.get("longitude"),
                     )
@@ -324,8 +338,9 @@ async def _execute_research_and_qualify(
     current_phone = payload.get("phone")
     current_email = payload.get("email")
 
+    target_url = f"https://{domain}" if domain else None
     website_data = {
-        "url": f"https://{domain}" if domain else None,
+        "url": target_url,
         "is_accessible": True if domain else False,
         "title": business_name,
         "extracted_phone": current_phone,
@@ -408,6 +423,10 @@ async def _execute_research_and_qualify(
     maps_query = urllib.parse.quote(f"{business_name} {location}")
     gmaps_url = f"https://www.google.com/maps/search/{maps_query}"
     gsearch_url = f"https://www.google.com/search?q={maps_query}"
+
+    social_res: Dict[str, Any] = {}
+    ads_res: Dict[str, Any] = {}
+    reviews_res: Dict[str, Any] = {}
 
     # 1. LIVE SOCIAL RESEARCH (Facebook page, post recency & dormancy)
     try:
