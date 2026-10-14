@@ -1168,7 +1168,10 @@ export function renderEmailTemplate(
   const sender_phone = template.sender_phone || "";
 
   const companyName = lead.business_name || "your company";
-  const contactPerson = lead.contact_person || "there";
+  const rawContact = (lead.contact_person || "").trim();
+  const contactPerson = (rawContact && !["there", "sir", "madam", "n/a", "none", "unknown", "team"].includes(rawContact.toLowerCase()))
+    ? rawContact
+    : (lead.business_name ? `Team ${lead.business_name}` : "Team");
   const location = lead.address || "your city";
   const website = lead.domain || "official website";
   const phone = lead.phone || "";
