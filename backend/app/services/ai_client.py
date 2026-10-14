@@ -114,6 +114,7 @@ class AIClient:
         user_prompt: str,
         image_paths: Optional[List[str]] = None,
         response_schema: Optional[Dict[str, Any]] = None,
+        max_tokens: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Executes strict token-minimized inference with automated fallback.
@@ -130,7 +131,11 @@ class AIClient:
         fallback_provider = (ai_cfg.get("fallback_provider") or "openrouter").lower().strip()
         fallback_model = ai_cfg.get("fallback_model") or "meta-llama/llama-3.3-70b-instruct:free"
 
-        max_tokens = min(ai_cfg.get("max_tokens", 250), 400)
+        if max_tokens is None:
+            configured_max = int(ai_cfg.get("max_tokens") or settings.LLM_MAX_TOKENS or 800)
+            max_tokens = max(200, min(configured_max, 1500))
+        else:
+            max_tokens = max(100, min(max_tokens, 2048))
         temp = ai_cfg.get("temperature", 0.0)
 
         # ── 2. In-Memory Zero-Token Cache Check ──────────────────────────────

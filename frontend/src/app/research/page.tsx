@@ -910,7 +910,7 @@ export default function ResearchInitiatorPage() {
                 <span>Company KB Matched Services & Live Demo Pitch</span>
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                {strategyPreview.matched_services.slice(0, 4).map((svc, i) => (
+                {strategyPreview.matched_services.map((svc, i) => (
                   <div
                     key={i}
                     className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1"
