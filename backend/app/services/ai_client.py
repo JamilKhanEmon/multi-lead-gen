@@ -361,6 +361,17 @@ class AIClient:
                     parsed["_source"] = provider_name
                     parsed["_tokens_used"] = total_toks
                     parsed["_model"] = model
+
+                    # Asynchronously record exact token usage and billing metrics in background
+                    if isinstance(total_toks, (int, float)) and total_toks > 0:
+                        asyncio.create_task(self.record_token_usage(
+                            provider=provider_name,
+                            model=model,
+                            prompt_tokens=int(in_toks) if isinstance(in_toks, (int, float)) else 0,
+                            completion_tokens=int(out_toks) if isinstance(out_toks, (int, float)) else 0,
+                            total_tokens=int(total_toks),
+                        ))
+
                     return parsed
                 else:
                     logger.warning(
@@ -370,6 +381,85 @@ class AIClient:
             logger.warning(f"AIClient [{provider_name}] connection failed: {e}")
 
         return None
+
+    @classmethod
+    async def record_token_usage(
+        cls,
+        provider: str,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        total_tokens: int,
+    ):
+        """Persists exact official token usage and calculates cost from provider billable counters."""
+        try:
+            from app.db.session import AsyncSessionLocal
+            from app.models.ai_settings import AISettings
+            from sqlalchemy import select
+            import datetime
+
+            is_free = True
+            cost_usd = 0.0
+
+            p_lower = (provider or "").lower()
+            m_lower = (model or "").lower()
+
+            if p_lower == "openai":
+                is_free = False
+                if "gpt-4o-mini" in m_lower:
+                    cost_usd = (prompt_tokens * 0.00000015) + (completion_tokens * 0.00000060)
+                elif "gpt-4o" in m_lower:
+                    cost_usd = (prompt_tokens * 0.0000025) + (completion_tokens * 0.00001)
+                else:
+                    cost_usd = (prompt_tokens * 0.00000015) + (completion_tokens * 0.00000060)
+            elif p_lower == "openrouter":
+                if ":free" in m_lower:
+                    is_free = True
+                    cost_usd = 0.0
+                else:
+                    is_free = False
+                    cost_usd = (total_tokens * 0.0000005)
+            else:
+                # Groq free tier, ollama, local
+                is_free = True
+                cost_usd = 0.0
+
+            async with AsyncSessionLocal() as session:
+                stmt = select(AISettings).where(AISettings.is_active == True).order_by(AISettings.created_at.desc()).limit(1)
+                res = await session.execute(stmt)
+                cfg = res.scalar_one_or_none()
+                if not cfg:
+                    return
+
+                stats = dict(cfg.usage_stats_json or {})
+                stats["total_calls"] = stats.get("total_calls", 0) + 1
+                stats["total_tokens"] = stats.get("total_tokens", 0) + total_tokens
+                stats["prompt_tokens"] = stats.get("prompt_tokens", 0) + prompt_tokens
+                stats["completion_tokens"] = stats.get("completion_tokens", 0) + completion_tokens
+                stats["total_cost_usd"] = round(stats.get("total_cost_usd", 0.0) + cost_usd, 6)
+                stats["last_call_at"] = datetime.datetime.utcnow().isoformat()
+
+                by_model = dict(stats.get("by_model", {}))
+                model_key = f"{provider}:{model}"
+                m_stat = dict(by_model.get(model_key, {}))
+                m_stat["provider"] = provider
+                m_stat["model"] = model
+                m_stat["is_free"] = is_free
+                m_stat["tier_label"] = "Free Tier" if is_free else "Paid Tier"
+                m_stat["calls"] = m_stat.get("calls", 0) + 1
+                m_stat["prompt_tokens"] = m_stat.get("prompt_tokens", 0) + prompt_tokens
+                m_stat["completion_tokens"] = m_stat.get("completion_tokens", 0) + completion_tokens
+                m_stat["total_tokens"] = m_stat.get("total_tokens", 0) + total_tokens
+                m_stat["cost_usd"] = round(m_stat.get("cost_usd", 0.0) + cost_usd, 6)
+                m_stat["last_used_at"] = datetime.datetime.utcnow().isoformat()
+                by_model[model_key] = m_stat
+                stats["by_model"] = by_model
+
+                cfg.usage_stats_json = stats
+                session.add(cfg)
+                await session.commit()
+        except Exception as e:
+            logger.warning(f"Failed to record AI token usage: {e}")
 
     @classmethod
     async def test_provider_connection(

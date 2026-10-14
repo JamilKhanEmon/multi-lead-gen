@@ -87,6 +87,7 @@ import {
   PersonaSignatureItem,
   fetchAISettings,
   updateAISettings,
+  resetAIUsageStats,
   testAIConnection,
   AISettings,
   AITestResult,
@@ -446,6 +447,23 @@ export default function AdminPortalPage() {
       setAiErrorMsg(err.message || "Failed to save AI Settings");
     } finally {
       setAiSaving(false);
+    }
+  };
+
+  const [aiResettingUsage, setAiResettingUsage] = useState(false);
+
+  const handleResetAIUsageStats = async () => {
+    if (!confirm("Are you sure you want to reset all token usage counters and billing metrics to zero?")) return;
+    try {
+      setAiResettingUsage(true);
+      const updated = await resetAIUsageStats();
+      setAiSettings(updated);
+      setAiSuccessMsg("AI Usage & Token metrics reset to zero.");
+      setTimeout(() => setAiSuccessMsg(null), 4000);
+    } catch (err: any) {
+      setAiErrorMsg(err.message || "Failed to reset AI usage metrics");
+    } finally {
+      setAiResettingUsage(false);
     }
   };
 
@@ -3445,6 +3463,167 @@ export default function AdminPortalPage() {
               <span>{aiErrorMsg}</span>
             </div>
           )}
+
+          {/* Real-Time AI Token & Billing Meter */}
+          <div className="rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-800 p-5 space-y-4 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Activity className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-white tracking-wide">
+                      Real-Time AI Token & Billing Meter
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      LIVE METER
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Directly calculated from official billable tokens returned by Groq, OpenRouter & OpenAI
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetAIUsageStats}
+                  disabled={aiResettingUsage || aiLoading}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                  title="Reset usage counter to zero"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${aiResettingUsage ? "animate-spin" : ""}`} />
+                  <span>Reset Counter</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4 Metrics Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                <div className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                  <span>Total Tokens Used</span>
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                </div>
+                <div className="text-lg font-bold text-white font-mono">
+                  {(aiSettings?.usage_stats_json?.total_tokens || 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Total billable tokens
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                <div className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                  <span>Prompt / Input</span>
+                  <span className="text-[10px] font-mono text-sky-400">IN</span>
+                </div>
+                <div className="text-lg font-bold text-sky-400 font-mono">
+                  {(aiSettings?.usage_stats_json?.prompt_tokens || 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Input context tokens
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                <div className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                  <span>Completion / Output</span>
+                  <span className="text-[10px] font-mono text-purple-400">OUT</span>
+                </div>
+                <div className="text-lg font-bold text-purple-400 font-mono">
+                  {(aiSettings?.usage_stats_json?.completion_tokens || 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Generated reply tokens
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+                <div className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                  <span>Total Cost (USD)</span>
+                  <span className="text-[10px] font-mono font-bold text-emerald-400">
+                    {(aiSettings?.usage_stats_json?.total_cost_usd || 0) === 0 ? "FREE" : "BILLED"}
+                  </span>
+                </div>
+                <div className="text-lg font-bold text-emerald-400 font-mono">
+                  ${(aiSettings?.usage_stats_json?.total_cost_usd || 0).toFixed(4)}
+                </div>
+                <div className="text-[10px] text-emerald-400/80">
+                  {(aiSettings?.usage_stats_json?.total_cost_usd || 0) === 0 ? "100% Free Tier (Groq / Free models)" : "Official provider charges"}
+                </div>
+              </div>
+            </div>
+
+            {/* Model Breakdown Table */}
+            {aiSettings?.usage_stats_json?.by_model && Object.keys(aiSettings.usage_stats_json.by_model).length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-slate-800/80">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 text-[11px]">
+                    <tr>
+                      <th className="py-2.5 px-3">Provider & Model</th>
+                      <th className="py-2.5 px-3">Tier</th>
+                      <th className="py-2.5 px-3 text-right">API Calls</th>
+                      <th className="py-2.5 px-3 text-right">In / Out Tokens</th>
+                      <th className="py-2.5 px-3 text-right">Total Tokens</th>
+                      <th className="py-2.5 px-3 text-right">Real Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                    {Object.values(aiSettings.usage_stats_json.by_model).map((m: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-slate-900/40 transition">
+                        <td className="py-2.5 px-3">
+                          <div className="font-sans font-medium text-white flex items-center gap-1.5">
+                            <span className="uppercase text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono font-bold">
+                              {m.provider}
+                            </span>
+                            <span className="truncate max-w-[220px]" title={m.model}>
+                              {m.model}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            m.is_free
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                              : "bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                          }`}>
+                            {m.is_free ? "FREE TIER" : "PAID TIER"}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-300">
+                          {m.calls?.toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-400 text-[10px]">
+                          <span className="text-sky-400">{m.prompt_tokens?.toLocaleString()}</span> /{" "}
+                          <span className="text-purple-400">{m.completion_tokens?.toLocaleString()}</span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-white">
+                          {m.total_tokens?.toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-emerald-400">
+                          ${(m.cost_usd || 0).toFixed(4)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-950/60 border border-slate-800/60 rounded-xl text-xs text-slate-400 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-slate-500" />
+                  <span>No AI inference calls recorded yet. Every research query or email drafted will be metered here automatically.</span>
+                </span>
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  Ready & Metered
+                </span>
+              </div>
+            )}
+          </div>
 
           {/* Warning Notice about Model Name Accuracy */}
           <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3">
