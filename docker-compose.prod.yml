@@ -79,6 +79,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app
+      - ./openclaw:/app/openclaw
+      - ./logs:/app/logs
     networks:
       - leadgen_network
     logging: *default-logging
@@ -120,6 +124,10 @@ services:
         condition: service_healthy
       backend:
         condition: service_started
+    volumes:
+      - ./backend/app:/app/app
+      - ./openclaw:/app/openclaw
+      - ./logs:/app/logs
     healthcheck:
       disable: true
     networks:
