@@ -7,13 +7,8 @@ from app.services.ai_client import AIClient, AIClientError
 class DiscoveryOptimizer:
 
     UNIVERSAL_NEGATIVE_KEYWORDS = [
-        "housing society", "residential society", "hostel", "dormitory",
-        "pharmacy", "drug store",
-        "salon", "barber",
-        "cemetery", "graveyard", "place of worship",
-        "courier", "bus station",
         "directory", "directories", "listing", "listings",
-        "goodfirms", "clutch", "crunchbase", "bproperty", "bikroy"
+        "yellowpages", "review platform", "aggregator"
     ]
 
     @classmethod
@@ -160,29 +155,8 @@ class DiscoveryOptimizer:
         if any(bad in name_lower for bad in ["facebook.com", "instagram.com", "youtube.com", "linkedin.com", "google.com/maps", "twitter.com"]):
             return False, f"Candidate name is a social media / platform URL: '{name}'"
 
-        target_country = (plan.get("country") or "").lower().strip()
-        target_location = (plan.get("location") or "").lower().strip()
-        is_bd_target = "bangladesh" in target_country or "bd" in target_country or "bangladesh" in target_location or "bd" in target_location
-
-        if is_bd_target:
-            # 1. Reject explicit foreign national ccTLDs (keep .com, .net, .org, .bd, .io, .co intact)
-            FOREIGN_NATIONAL_TLDS = (".kg", ".np", ".in", ".pk", ".ru", ".lk", ".bt", ".mm", ".co.in", ".com.np", ".com.pk")
-            clean_dom = domain.split("/")[0].split("?")[0]
-            if any(clean_dom.endswith(tld) for tld in FOREIGN_NATIONAL_TLDS):
-                return False, f"Domain '{domain}' has foreign country ccTLD incompatible with target Bangladesh."
-
-            # 2. Reject candidates whose snippet or address explicitly specifies another country/city without BD context
-            FOREIGN_EXPLICIT_REGIONS = [
-                "kathmandu", "nepal", "kyrgyzstan", "bishkek", "mumbai", "delhi", "kolkata",
-                "chennai", "bangalore", "lahore", "karachi", "islamabad"
-            ]
-            full_snippet_text = f"{snippet} {cand_address} {name_lower}"
-            bd_tokens = ["bangladesh", "dhaka", "sylhet", "chittagong", "chattogram", "rajshahi", "khulna", "barishal", "rangpur", "gazipur", "narayanganj", "comilla", "bogra", "uttara", "gulshan", "banani", "dhanmondi"]
-            has_bd_token = any(tok in full_snippet_text for tok in bd_tokens)
-            if not has_bd_token:
-                for f_reg in FOREIGN_EXPLICIT_REGIONS:
-                    if f_reg in full_snippet_text:
-                        return False, f"Candidate snippet explicitly references foreign region '{f_reg}'."
+        req_country = (plan.get("country") or "").lower().strip()
+        req_location = (plan.get("location") or "").lower().strip()
 
         req_sub_city = (plan.get("sub_city") or "").lower().strip()
         req_city = (plan.get("city") or "").lower().strip()
@@ -286,22 +260,6 @@ class DiscoveryOptimizer:
                 if len(pos_l) >= 4 and pos_l in full_text:
                     return True, f"Dynamic AI industry keyword matched: '{pos}'"
 
-        INDUSTRY_SYNONYMS = {
-            "real estate": ["realtor", "realty", "property", "properties", "apartment", "apartments", "housing", "developer", "builders", "flat", "land", "estate", "brokerage", "leasing"],
-            "real_estate": ["realtor", "realty", "property", "properties", "apartment", "apartments", "housing", "developer", "builders", "flat", "land", "estate", "brokerage", "leasing"],
-            "healthcare": ["clinic", "hospital", "doctor", "dental", "dentist", "medical", "physician", "health", "care", "surgery", "therapy"],
-            "legal": ["lawyer", "attorney", "law firm", "advocate", "legal", "solicitor", "counsel", "barrister"],
-            "construction": ["contractor", "builder", "construction", "architecture", "architect", "engineering", "renovation", "interior"],
-            "restaurant": ["cafe", "dining", "eatery", "bistro", "bakery", "food", "kitchen", "grill"],
-            "fitness": ["gym", "fitness", "crossfit", "workout", "trainer", "yoga", "pilates"],
-            "technology": ["software", "tech", "it solutions", "agency", "developer", "digital", "saas", "cloud", "consulting"]
-        }
-        
-        for ind_key, syns in INDUSTRY_SYNONYMS.items():
-            if ind_key in ind_clean or ind_clean in ind_key:
-                for syn in syns:
-                    if len(syn) >= 4 and syn in full_text:
-                        return True, f"Industry synonym verified: '{syn}'"
 
         AMBIGUOUS_TOKENS = {
             "care", "digital", "smart", "home", "prime", "star", "one", 
