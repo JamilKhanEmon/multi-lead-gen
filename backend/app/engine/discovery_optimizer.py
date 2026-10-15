@@ -19,32 +19,44 @@ class DiscoveryOptimizer:
         if not clean_country:
             return []
 
+        # Handle common country typos gracefully
+        if clean_country.lower() in ["bangladseh", "bangldesh", "bagladesh", "bangla", "bd"]:
+            clean_country = "Bangladesh"
+
         cache_key = f"{clean_country.lower()}_{limit}"
-        if cache_key in cls._city_cache:
+        if cache_key in cls._city_cache and len(cls._city_cache[cache_key]) > 1:
             return cls._city_cache[cache_key]
 
         try:
-            ai = AIClient(timeout=12.0)
+            ai = AIClient(timeout=25.0)
             system_prompt = (
-                "You are a global geographic business intelligence system.\n"
-                "Given any country, return a comprehensive JSON list of all major commercial, economic, and business hub cities, "
-                "metropolitan areas, and regional commercial districts across all states/provinces/divisions in that country for nationwide B2B lead discovery.\n"
-                "Return pure JSON with key 'cities': ['City1', 'City2', ...]."
+                "You are an expert global geospatial business intelligence engine.\n"
+                "Your job is to perform a deep, nationwide commercial territory decomposition for targeted B2B lead generation.\n\n"
+                "When given a target country (e.g., Bangladesh, United States, UK, UAE, Germany, etc.):\n"
+                "1. Identify all major administrative divisions, states, or provinces of that country.\n"
+                "2. For each division/state, decompose it into its most prominent commercial business hubs, upazilas, and high-density business districts / sub-cities.\n"
+                "   Example for Bangladesh:\n"
+                "   - Dhaka Division: Uttara, Mirpur, Gulshan, Banani, Badda, Motijheel, Dhanmondi, Tejgaon, Gazipur Sadar, Narayanganj Sadar\n"
+                "   - Sylhet Division: Sylhet Sadar, Zindabazar, Habiganj, Moulvibazar, Sreemangal, Sunamganj\n"
+                "   - Chittagong Division: Agrabad, GEC Circle, Nasirabad, Khatunganj, Cox's Bazar Sadar, Comilla Sadar, Feni\n"
+                "   - Rajshahi Division: Rajshahi Sadar, Bogra Sadar, Pabna, Naogaon\n"
+                "   - Khulna Division: Khulna Sadar, Jessore Sadar, Kushtia\n"
+                "   - Other divisions: Barisal Sadar, Rangpur Sadar, Mymensingh Sadar, Dinajpur\n\n"
+                "3. Return a comprehensive, balanced list of up to {limit} localized commercial territories covering every single division and major economic corridor.\n"
+                "Format: Return pure JSON with key 'cities': ['Sub-City / Area 1, City 1', 'Sub-City / Area 2, City 2', ...]."
             )
-            user_prompt = f"Country: {clean_country}\nReturn up to {limit} major commercial hub cities and regional business centers covering the whole country."
-            result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+            user_prompt = f"Target Country: {clean_country}\nPerform a deep multi-division, multi-subcity commercial territory decomposition covering the entire nation."
+            result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt, max_tokens=1200)
             if isinstance(result, dict) and "cities" in result and isinstance(result["cities"], list):
                 valid_cities = [str(c).strip() for c in result["cities"] if str(c).strip()]
-                if valid_cities:
-                    logger.info(f"DiscoveryOptimizer: Dynamically expanded country '{clean_country}' into {len(valid_cities)} commercial cities.")
+                if len(valid_cities) > 1:
+                    logger.info(f"DiscoveryOptimizer: Deep LLM decomposition for '{clean_country}' produced {len(valid_cities)} sub-city territories.")
                     cls._city_cache[cache_key] = valid_cities[:limit]
                     return valid_cities[:limit]
         except Exception as e:
-            logger.debug(f"DiscoveryOptimizer: Dynamic city expansion fallback: {e}")
+            logger.warning(f"DiscoveryOptimizer: Dynamic city expansion error: {e}")
 
-        fallback = [clean_country]
-        cls._city_cache[cache_key] = fallback
-        return fallback
+        return [clean_country]
 
     @classmethod
     async def optimize_search_plan(
