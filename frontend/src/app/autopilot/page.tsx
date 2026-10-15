@@ -723,7 +723,7 @@ export default function AutopilotPage() {
                           <input
                             type="text"
                             autoFocus
-                            placeholder="Type area (e.g. Sylhet Sadar) & press Enter..."
+                            placeholder="Type area & press Enter..."
                             value={newSubCityVal}
                             onChange={(e) => setNewSubCityVal(e.target.value)}
                             onKeyDown={(e) => {
@@ -822,7 +822,7 @@ export default function AutopilotPage() {
                       </div>
                       <input
                         type="text"
-                        placeholder="Service / Solution Name (e.g. Real Estate CRM & Lead Routing)"
+                        placeholder="Service / Solution Name"
                         value={newServiceName}
                         onChange={(e) => setNewServiceName(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
@@ -836,7 +836,7 @@ export default function AutopilotPage() {
                       />
                       <input
                         type="text"
-                        placeholder="Live Demo offer hook (e.g. 5-Minute Live Interactive Demo)"
+                        placeholder="Live Demo Offer Hook"
                         value={newServiceHook}
                         onChange={(e) => setNewServiceHook(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
@@ -1198,7 +1198,7 @@ export default function AutopilotPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. BD Real Estate & Property Developers"
+                  placeholder="Campaign Name"
                   value={cName}
                   onChange={(e) => setCName(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
@@ -1227,7 +1227,7 @@ export default function AutopilotPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. United States, United Kingdom, Canada, Australia, UAE, Bangladesh"
+                  placeholder="Target Country"
                   value={cCountry}
                   onChange={(e) => setCCountry(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
@@ -1255,7 +1255,7 @@ export default function AutopilotPage() {
                 </div>
                 <input
                   type="text"
-                  placeholder="e.g. Dhaka, New York, London, Toronto, Dubai (Leave empty to scan entire country)"
+                  placeholder="City / Division (Leave empty to scan entire country)"
                   value={cCity}
                   onChange={(e) => setCCity(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
@@ -1302,7 +1302,7 @@ export default function AutopilotPage() {
                   ))}
                   <input
                     type="text"
-                    placeholder={cSubCities.length === 0 ? "e.g. Manhattan, Brooklyn, Uttara, Mirpur, Gulshan (Leave empty to auto-scan all)" : "Add more..."}
+                    placeholder={cSubCities.length === 0 ? "Type sub-city / area & press Enter (Leave empty to auto-scan all)" : "Add more..."}
                     value={subCityInput}
                     onChange={(e) => setSubCityInput(e.target.value)}
                     onKeyDown={handleAddSubCity}
@@ -1336,7 +1336,7 @@ export default function AutopilotPage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Real Estate Developer, Property Agency, Apartment Sales, Building Construction"
+                  placeholder="Target business types / industries (separated by comma)"
                   value={cKeywords}
                   onChange={(e) => setCKeywords(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
@@ -1542,7 +1542,7 @@ export default function AutopilotPage() {
                     </div>
                     <input
                       type="text"
-                      placeholder="Service / Solution Name (e.g. Real Estate CRM)"
+                      placeholder="Service / Solution Name"
                       value={cCustomName}
                       onChange={(e) => setCCustomName(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"

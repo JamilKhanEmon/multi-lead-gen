@@ -2815,7 +2815,7 @@ export default function AdminPortalPage() {
                         type="text"
                         value={svc.wedge}
                         onChange={(e) => handleUpdateServiceField(idx, "wedge", e.target.value)}
-                        placeholder="e.g. Free 5-Minute Live Demo of Real Estate CRM & Installment Flow"
+                        placeholder="Free 5-Minute Live Interactive Demo & Value Offer"
                         className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"
                       />
                     </div>
