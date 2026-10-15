@@ -164,7 +164,7 @@ export default function AutopilotPage() {
         name: cName.trim(),
         keywords: kwList.length ? kwList : ["Business"],
         country: cCountry,
-        sub_cities: cSubCities.length ? cSubCities : ["Dhaka"],
+        sub_cities: cSubCities.length ? cSubCities : [],
         daily_lead_limit: cUnlimited ? 0 : Number(cDailyLimit) || 100,
         daily_email_limit: 50,
         is_unlimited_leads: cUnlimited,
