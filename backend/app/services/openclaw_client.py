@@ -1732,7 +1732,7 @@ class OpenClawClient:
 
         elif skill_name in ("skill-lead-gen", "lead-gen"):
             industry = parameters.get("industry", "Business")
-            location = parameters.get("location", "Dhaka")
+            location = parameters.get("location", "")
             return await LiveResearchEngine.discover_businesses(
                 industry=industry,
                 location=location,

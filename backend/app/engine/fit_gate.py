@@ -190,7 +190,7 @@ class FitGateEngine:
         phone: Optional[str],
         email: Optional[str],
         business_type: Optional[str] = "commercial",
-        city: Optional[str] = "Dhaka",
+        city: Optional[str] = "",
         audit_res: Optional[Dict[str, Any]] = None,
         detected_weaknesses: Optional[List[str]] = None,
         metadata_json: Optional[Dict[str, Any]] = None,

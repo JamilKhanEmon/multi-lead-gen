@@ -1002,7 +1002,7 @@ async def _execute_research_and_qualify(
             phone=payload.get("phone") or (website_data.get("extracted_phone") if website_data else None),
             email=payload.get("email") or (website_data.get("extracted_email") if website_data else None),
             business_type=business_type,
-            city=payload.get("city") or "Dhaka",
+            city=payload.get("city") or payload.get("location") or payload.get("country") or "",
             audit_res=website_data,
             detected_weaknesses=[e["evidence_text"] for e in evidence_records if e.get("evidence_text")],
             metadata_json=payload,

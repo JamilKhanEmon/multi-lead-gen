@@ -1011,7 +1011,7 @@ async def get_lead_detail(
     matched_svc = getattr(lead, "matched_service", None)
 
     if not why_us or not call_script:
-        loc_city = (loc.city if loc else None) or meta.get("city") or "Dhaka"
+        loc_city = (loc.city if loc else None) or meta.get("city") or (loc.country if loc else None) or meta.get("country") or ""
         use_kb = True
         if lead.run and hasattr(lead.run, "use_company_kb"):
             use_kb = bool(lead.run.use_company_kb)
@@ -1438,7 +1438,7 @@ async def evaluate_lead_fit_gate(
     biz = lead.business
     meta = (biz.metadata_json or {}) if biz else {}
     loc = biz.locations[0] if (biz and biz.locations) else None
-    loc_city = (loc.city if loc else None) or meta.get("city") or "Dhaka"
+    loc_city = (loc.city if loc else None) or meta.get("city") or (loc.country if loc else None) or meta.get("country") or ""
     clean_dom = biz.domain if biz else None
     if DeduplicationEngine.is_generic_platform(clean_dom):
         clean_dom = None

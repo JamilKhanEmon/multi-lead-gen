@@ -16,6 +16,7 @@ import {
   Pause,
   Trash2,
   RefreshCw,
+  RotateCcw,
   Clock,
   MapPin,
   ExternalLink,
@@ -164,7 +165,7 @@ export default function AutopilotPage() {
         name: cName.trim(),
         keywords: kwList.length ? kwList : ["Business"],
         country: cCountry,
-        sub_cities: cSubCities.length ? cSubCities : ["Dhaka"],
+        sub_cities: cSubCities.length ? cSubCities : [],
         daily_lead_limit: cUnlimited ? 0 : Number(cDailyLimit) || 100,
         daily_email_limit: 50,
         is_unlimited_leads: cUnlimited,
@@ -209,6 +210,16 @@ export default function AutopilotPage() {
       loadData();
     } catch (err: any) {
       showToast("Failed to toggle campaign status");
+    }
+  };
+
+  const handleResetCampaign = async (id: string) => {
+    try {
+      await toggleAutopilotCampaign(id, true, "IDLE");
+      showToast("✓ Campaign status reset to Idle");
+      loadData();
+    } catch (err: any) {
+      showToast("Failed to reset campaign status");
     }
   };
 
@@ -626,6 +637,15 @@ export default function AutopilotPage() {
 
                   {hasPermission(currentUser, "can_create_autopilot_campaigns", false) && (
                     <div className="flex items-center gap-1">
+                      {camp.status === "RUNNING" && (
+                        <button
+                          onClick={() => handleResetCampaign(camp.id)}
+                          title="Reset status to Idle"
+                          className="p-1.5 rounded-lg hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 transition"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleToggleActive(camp.id, camp.is_active)}
                         title={camp.is_active ? "Pause Campaign" : "Resume Campaign"}
