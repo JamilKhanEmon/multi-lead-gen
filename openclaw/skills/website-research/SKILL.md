@@ -45,8 +45,8 @@ Inspects public website assets using an isolated browser and DOM analyzer to eva
 ## Output Schema
 ```json
 {
-  "url": "https://caredental.com",
-  "proof_link": "https://caredental.com",
+  "url": "https://example.com",
+  "proof_link": "https://example.com",
   "is_accessible": true,
   "status": 200,
   "mobile_responsive": false,
@@ -56,10 +56,10 @@ Inspects public website assets using an isolated browser and DOM analyzer to eva
   "has_online_booking": false,
   "has_meta_pixel": false,
   "has_google_analytics": false,
-  "broken_links_count": 3,
-  "extracted_phone": "+8801712345678",
-  "extracted_email": "info@caredental.com",
-  "evidence_text": "Public website layout breaks on mobile viewports with horizontal scrolling. No click-to-WhatsApp widget or direct lead capture form detected. Proof: https://caredental.com",
+  "broken_links_count": 0,
+  "extracted_phone": "+8801700000000",
+  "extracted_email": "info@example.com",
+  "evidence_text": "Public website layout breaks on mobile viewports with horizontal scrolling. No direct appointment scheduling or interactive lead capture detected. Proof: https://example.com",
   "checked_live": true
 }
 ```

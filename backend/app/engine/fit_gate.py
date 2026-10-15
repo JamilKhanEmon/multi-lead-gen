@@ -418,33 +418,13 @@ class FitGateEngine:
         if matched_service_name and matched_service_name.lower().strip(" :-#*") in DISALLOWED_SERVICE_HEADERS:
             matched_service_name = None
 
-        # Dynamic industry adaptation when Company KB is not yet populated
+        # Dynamic fallback when Company KB has no matching card
         if not matched_service_name:
-            if any(w in b_type or w in company_clean.lower() for w in ["real estate", "property", "developer", "builder", "realtor", "construction", "housing"]):
-                matched_service_name = "Real Estate Sales & CRM Automation System"
-                matched_service_wedge = "5-Minute Interactive Live Demo of Property Sales & Follow-Up Automation"
-                matched_service_features = "Automated buyer inquiry capture, installment tracking, and unsold inventory pipeline"
-                matched_solves = "buyer inquiries slipping through cracks and untracked sales pipelines"
-            elif any(w in b_type or w in company_clean.lower() for w in ["clinic", "dentist", "dental", "doctor", "health", "hospital", "medical", "parlor", "salon"]):
-                matched_service_name = "Digital Patient Scheduling & Clinic Management Portal"
-                matched_service_wedge = "5-Minute Live Interactive Demonstration of Appointment Automation"
-                matched_service_features = "Digital appointment booking, automated SMS/WhatsApp reminders, and digital patient queue"
-                matched_solves = "manual phone coordination chaos, missed appointments, and front-desk friction"
-            elif any(w in b_type or w in company_clean.lower() for w in ["retail", "pos", "store", "shop", "e-commerce", "ecommerce", "supermarket", "grocery", "restaurant", "cafe"]):
-                matched_service_name = "Cloud POS & Automated Inventory / Ordering Platform"
-                matched_service_wedge = "Rapid POS Setup Demonstration & Automated Low-Stock Alert System"
-                matched_service_features = "Barcode billing, automated stock shrinkage alerts, and WhatsApp ordering flow"
-                matched_solves = "manual inventory tracking confusion and checkout bottlenecks"
-            elif any(w in b_type or w in company_clean.lower() for w in ["school", "college", "academy", "education", "institute", "university"]):
-                matched_service_name = "Automated Campus Management & Student Billing Portal"
-                matched_service_wedge = "Live Demonstration of Automated Fee Billing & Parent Notification Portal"
-                matched_service_features = "Digital tuition fee collection, attendance notifications, and parent portal"
-                matched_solves = "manual fee collection queues and paper-heavy student administration"
-            else:
-                matched_service_name = "Digital Workflow & Inbound Sales Automation Platform"
-                matched_service_wedge = "Tailored 5-Minute Live Demonstration & Operational Gap Audit"
-                matched_service_features = "Automated lead capture, instant client WhatsApp routing, and pipeline tracking"
-                matched_solves = "operational bottlenecks, manual coordination delays, and lost client inquiries"
+            clean_b_type = (b_type or "Business").replace("_", " ").title()
+            matched_service_name = f"{clean_b_type} Operations & Workflow Automation System"
+            matched_service_wedge = "Tailored 5-Minute Live Interactive Demonstration"
+            matched_service_features = "Automated customer inquiry capture, instant messaging routing, and digital operations pipeline"
+            matched_solves = "operational bottlenecks, manual coordination delays, and lost client inquiries"
 
         if not matched_service_wedge:
             matched_service_wedge = "Tailored 5-Minute Live Interactive Demonstration"
@@ -458,94 +438,18 @@ class FitGateEngine:
         primary_observation = clean_gaps[0] if clean_gaps else f"Online client intake for {company_clean} relies on manual coordination without automated tracking."
         primary_implication = inferred_opportunities[0] if inferred_opportunities else f"This suggests {company_clean} may be missing prospective client inquiries during peak hours."
 
-        b_type_clean = (b_type or "Business").replace("_", " ").title()
-        BN_INDUSTRY_MAP = {
-            "dental clinic": "ডেন্টাল ক্লিনিক",
-            "dentist": "ডেন্টিস্ট",
-            "dental": "ডেন্টাল প্র্যাকটিস",
-            "clinic": "মেডিকেল ক্লিনিক",
-            "hospital": "হাসপাতাল",
-            "doctor": "ডাক্তার ও চেম্বার",
-            "real estate": "রিয়েল এস্টেট",
-            "real estate agency": "রিয়েল এস্টেট এজেন্সি",
-            "property": "প্রপার্টি ও হাউজিং",
-            "developer": "রিয়েল এস্টেট ডেভেলপার",
-            "restaurant": "রেস্তোরাঁ",
-            "cafe": "ক্যাফে",
-            "supermarket": "সুপারমার্কেট",
-            "retail": "রিটেল শপ",
-            "store": "দোকান ও আউটলেট",
-            "school": "স্কুল ও একাডেমি",
-            "college": "কলেজ",
-            "academy": "শিক্ষা একাডেমি",
-            "salon": "সেলুন",
-            "parlor": "বিউটি পার্লার",
-            "gym": "জিম ও ফিটনেস সেন্টার",
-            "software company": "সফটওয়্যার কোম্পানি",
-            "agency": "এজেন্সি",
-        }
-        b_type_bn = BN_INDUSTRY_MAP.get(b_type.lower().replace("_", " ").strip(), b_type_clean)
-
-        if analyze_website:
-            why_they_need_us = (
-                f"• Verified Technical Gap: {primary_observation}\n"
-                f"• Business Impact: {primary_implication}\n"
-                f"• Strategic Fix: Implementing {matched_service_name} resolves {matched_solves}."
-            )
-            disc_hook = (
-                f"I was reviewing {company_clean}'s digital portal and visitor infrastructure in {city_clean} and noticed: {primary_observation}"
-            )
-            disc_question = (
-                f"When prospective clients search for your services in {city_clean}, how does your team ensure website visitors and inquiries are converted into booked clients?"
-            )
-            bn_hook = (
-                f"আসসালামু আলাইকুম/হ্যালো, আমি কি {company_clean}-এর ওনার বা ম্যানেজমেন্ট টিমের সাথে কথা বলতে পারি? "
-                f"আপনাদের {city_clean or 'লোকাল'}-এর ওয়েবসাইট ও ডিজিটাল সিস্টেম দেখে লক্ষ্য করলাম: {primary_observation}"
-            )
-            bn_question = (
-                f"আপনাদের ওয়েবসাইটে যখন প্রতিদিন সম্ভাব্য কাস্টমাররা আসছে, তারা সহজে বুকিং বা যোগাযোগ করতে পারছে কি না, "
-                f"নাকি ট্র্যাকিং ও অটোমেশনের অভাবে কিছু ক্লায়েন্ট ড্রপ করে অন্য কোথাও চলে যাচ্ছে?"
-            )
-            bn_pitch = (
-                f"আমরা এই ধরনের টেকনিক্যাল সমস্যা সমাধান এবং ওয়েবসাইটের ভিজিটরদের সরাসরি কাস্টমারে কনভার্ট করার জন্য {matched_service_name}-এর একটি ৫ মিনিটের লাইভ ডেমো রেডি করেছি। "
-                f"আপনাদের টিমের জন্য এই সপ্তাহে কি ৫ মিনিট সময় হবে ডেমোটি এক নজর দেখার জন্য?"
-            )
-        else:
-            why_they_need_us = (
-                f"• Verified Operational Gap: {primary_observation}\n"
-                f"• Business Impact: {primary_implication}\n"
-                f"• Strategic Fix: Implementing {matched_service_name} resolves {matched_solves}."
-            )
-            disc_hook = (
-                f"I was reviewing {company_clean}'s local business presence and customer acquisition channels in {city_clean} and noticed: {primary_observation}"
-            )
-            disc_question = (
-                f"When prospective clients reach out to your team from Google Maps or social media in {city_clean}, how does your team ensure inbound inquiries are instantly captured and tracked?"
-            )
-            bn_hook = (
-                f"আসসালামু আলাইকুম/হ্যালো, আমি কি {company_clean}-এর ওনার বা ম্যানেজমেন্ট টিমের সাথে কথা বলতে পারি? "
-                f"আপনাদের {city_clean or 'লোকাল'}-এ অনলাইন উপস্থিতি ও কাস্টমার রেটিং পর্যালোচনা করে লক্ষ্য করলাম: {primary_observation}"
-            )
-            bn_question = (
-                f"গুগল ম্যাপস বা সোশ্যাল মিডিয়া থেকে যখন প্রতিদিন নতুন কাস্টমাররা আপনাদের কল বা মেসেজ দেয়, "
-                f"আপনারা কি সেগুলো ম্যানুয়ালি হ্যান্ডেল করছেন নাকি কোনো স্বয়ংক্রিয় সিআরএম/সিস্টেম আছে যাতে কোনো কাস্টমার বা লিড মিস না হয়?"
-            )
-            bn_pitch = (
-                f"আমরা আপনাদের মতো {b_type_bn}-এর ব্যবসার জন্য একটি স্পেশালাইজড {matched_service_name} সমাধান প্রস্তুত করেছি। "
-                f"কীভাবে প্রতিটি ইনকোয়ারি স্বয়ংক্রিয়ভাবে সেলসে রূপান্তর করা যায়—এই সপ্তাহে কি ৫ মিনিট সময় দিতে পারবেন লাইভ ডেমোটি দেখার জন্য?"
-            )
+        gap_category = "Technical Gap" if analyze_website else "Operational Gap"
+        why_they_need_us = (
+            f"• Verified {gap_category}: {primary_observation}\n"
+            f"• Business Impact: {primary_implication}\n"
+            f"• Strategic Fix: Implementing {matched_service_name} resolves {matched_solves}."
+        )
 
         modules_prefix = "" if "core modules include:" in matched_service_features.lower() else "Core modules include: "
         what_they_need = (
             f"{matched_service_name}: {matched_service_wedge}. "
             f"{modules_prefix}{matched_service_features}."
         )
-
-        agency_name = (company_kb.get("company_name") or "").strip() if (use_company_kb and company_kb) else ""
-        if agency_name:
-            pitch_line = f"At {agency_name}, our {matched_service_name} provides {matched_service_wedge}. Would you be open to a 5-minute preview of the live solution modeled for {company_clean}?"
-        else:
-            pitch_line = f"Our team specializes in resolving this with {matched_service_name} ({matched_service_wedge}). Would you be open to a 5-minute preview of the live solution modeled for {company_clean}?"
 
         call_script = None
 
@@ -627,72 +531,5 @@ class FitGateEngine:
         matched_service: str,
         ai_client: Optional[Any] = None,
     ) -> Optional[str]:
-        """
-        Dynamically uses AIClient to generate a 100% custom, bespoke, non-templated
-        Sales Call Script referencing real audit gaps and genuine local context.
-        """
-        if not ai_client:
-            return None
-
-        clean_gaps = [re.sub(r"\s*\[Proof Link:[^\]]*\]", "", str(g)).strip() for g in verified_gaps if g]
-        gap_text = " • ".join(clean_gaps[:2]) if clean_gaps else "Operational inquiry tracking and client intake friction"
-        clean_ind = (industry or "Commercial Business").replace("_", " ").title()
-
-        system_prompt = (
-            "You are an elite B2B Sales Call Coach crafting a tailored, 30-second telephone discovery call script.\n"
-            "CRITICAL RULES:\n"
-            "1. REAL CONTEXT ONLY: Reference strictly the target company name, city, and real verified gap. Absolutely zero fake filler.\n"
-            "2. NATURAL PHRASING: Never use generic robotic strings like 'Operating commercial entity' or raw code tokens with underscores like 'dental_clinic'.\n"
-            "3. RETURN JSON ONLY with exact keys:\n"
-            "   {\n"
-            "     \"en_hook\": \"1 sentence opening evidence referencing their company name and the verified gap\",\n"
-            "     \"en_question\": \"1 conversational discovery question uncovering their manual pain/friction\",\n"
-            "     \"en_pitch\": \"1 brief sentence offering a 5-minute live preview modeled for their business\",\n"
-            "     \"bn_hook\": \"১টি সাবলীল বাক্য: তাদের কোম্পানি ও আসল সমস্যার কথা উল্লেখ করে ওপেনিং\",\n"
-            "     \"bn_question\": \"১টি স্বাভাবিক প্রশ্ন: তাদের কাস্টমার ইনকোয়ারি ও ফলো-আপের সমস্যা জানার জন্য\",\n"
-            "     \"bn_pitch\": \"১টি সংক্ষিপ্ত বাক্য: সমাধানটির একটি ৫ মিনিটের লাইভ ডেমো দেখার আমন্ত্রণ\"\n"
-            "   }"
-        )
-
-        user_prompt = (
-            f"Target Company: {company_name}\n"
-            f"Location: {city}\n"
-            f"Industry: {clean_ind}\n"
-            f"Real Verified Gaps: {gap_text}\n"
-            f"Our Matched Solution: {matched_service}\n\n"
-            "Generate the unique discovery sales call script JSON."
-        )
-
-        try:
-            res = await ai_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
-            if isinstance(res, dict) and res.get("en_hook") and res.get("bn_hook"):
-                en_hook = str(res["en_hook"]).strip().strip('"')
-                en_q = str(res.get("en_question", "")).strip().strip('"')
-                en_pitch = str(res.get("en_pitch", "")).strip().strip('"')
-                bn_hook = str(res["bn_hook"]).strip().strip('"')
-                bn_q = str(res.get("bn_question", "")).strip().strip('"')
-                bn_pitch = str(res.get("bn_pitch", "")).strip().strip('"')
-
-                return (
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"📞 [EN] SALES CALL SCRIPT (ENGLISH OUTREACH)\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"1. OPENING EVIDENCE & HOOK:\n"
-                    f"   \"Hello, is this {company_name}? {en_hook}\"\n\n"
-                    f"2. DISCOVERY PAIN QUESTION (Listen carefully to their response):\n"
-                    f"   \"{en_q}\"\n\n"
-                    f"3. VALUE PITCH & 5-MIN DEMO OFFER:\n"
-                    f"   \"{en_pitch}\"\n\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"🇧🇩 [BN] সেলস টিম গাইড ও বাংলা স্পিচ (সহজে কথা বলার জন্য)\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"১. কল শুরুর হুক (Opening Hook):\n"
-                    f"   \"{bn_hook}\"\n\n"
-                    f"২. সমস্যা খোঁজার প্রশ্ন (Discovery Question):\n"
-                    f"   \"{bn_q}\"\n\n"
-                    f"৩. সমাধান ও ৫ মিনিটের ডেমো অফার (Closing / Demo Offer):\n"
-                    f"   \"{bn_pitch}\""
-                )
-        except Exception as e:
-            logger.warning(f"FitGateEngine: AI call script generation notice ({e})")
+        # Telephone discovery call scripts are completely disabled and skipped
         return None

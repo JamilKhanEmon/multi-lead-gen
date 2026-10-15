@@ -42,14 +42,14 @@ Examines public ratings, review counts, and customer feedback across Google Maps
 ## Output Schema
 ```json
 {
-  "business_name": "Sultans Dine Dhanmondi",
-  "location": "Dhanmondi, Dhaka",
-  "google_maps_url": "https://www.google.com/maps/search/Sultans%20Dine%20Dhanmondi",
-  "proof_link": "https://www.google.com/maps/search/Sultans%20Dine%20Dhanmondi",
-  "rating": 4.1,
-  "review_count": 840,
+  "business_name": "<Target Business Name>",
+  "location": "<Target Location>",
+  "google_maps_url": "https://www.google.com/maps/search/...",
+  "proof_link": "https://www.google.com/maps/search/...",
+  "rating": 4.2,
+  "review_count": 120,
   "evidence_tag": "MAPS_RATING_GAP",
-  "evidence_text": "Google Maps public rating stands at 4.1★ (840 reviews) with customer review sentiment indicating response bottlenecks. Proof: https://www.google.com/maps/search/Sultans%20Dine%20Dhanmondi",
+  "evidence_text": "Google Maps public profile verified with customer review feedback indicating response bottlenecks.",
   "checked_live": true
 }
 ```

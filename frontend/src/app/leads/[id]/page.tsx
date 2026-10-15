@@ -932,7 +932,7 @@ export default function LeadDetailPage() {
               </div>
               <div className="flex items-center justify-between pt-1">
                 <span className="text-[10px] text-slate-500">
-                  Tailored by NiBiz Soft AI Outreach Engine &bull; Zero template fluff &bull; Signature included
+                  Tailored by AI Outreach Engine &bull; Zero template fluff &bull; Signature included
                 </span>
               </div>
             </div>

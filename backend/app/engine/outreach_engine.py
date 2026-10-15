@@ -199,8 +199,9 @@ class OutreachEngine:
             }
             step_instruction = step_descriptions.get(step, step_descriptions[1])
 
+            sender_agency = (sender_company or "our software and digital solutions team").strip()
             system_prompt = (
-                "You are an elite B2B Sales Director writing personalized, concise, high-converting cold emails on behalf of NiBiz Soft (an enterprise software development & automation firm in Dhaka, Bangladesh).\n\n"
+                f"You are an elite B2B Sales Director writing personalized, concise, high-converting cold emails on behalf of {sender_agency}.\n\n"
                 "STRICT STRUCTURE (Follow this exact 4-part skeleton):\n"
                 f"Line 1 (Greeting): Hi {contact_person},\n"
                 "Line 2 (Hook & Gap): Exactly 1 respectful, natural sentence referencing their company in their city and the specific audited gap/opportunity (e.g. missing direct online booking, manual lead intake, lack of instant inquiry tracking).\n"
@@ -241,7 +242,7 @@ class OutreachEngine:
                 first_line = parts[0].strip()
                 rest = parts[1] if len(parts) > 1 else ""
 
-                # 1. Deduplicate greeting line if name is repeated, e.g. 'Hi Team Novodentbd, Novodentbd,'
+                # 1. Deduplicate greeting line if name is repeated, e.g. 'Hi Team Company, Company,'
                 first_line = re.sub(r"^(Dear|Hello|Hi)\s+([^,]+),\s*\2[,:]?$", r"\1 \2,", first_line, flags=re.IGNORECASE)
                 first_line = re.sub(r"^(Hi\s+Team\s+[\w\s]+),\s*[\w\s]+[,:]?$", r"\1,", first_line, flags=re.IGNORECASE)
 
