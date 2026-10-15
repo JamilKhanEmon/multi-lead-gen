@@ -30,6 +30,7 @@ async def preview_research_strategy(
         location=data.location.strip(),
         analyze_website=data.analyze_website,
         ai_client=ai_client,
+        max_services=data.max_services or 2,
     )
     return preview
 

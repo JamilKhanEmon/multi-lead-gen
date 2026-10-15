@@ -79,7 +79,7 @@ export default function AutopilotPage() {
   const [cDailyLimit, setCDailyLimit] = useState(100);
   const [cUnlimited, setCUnlimited] = useState(false);
   const [cAutoMail, setCAutoMail] = useState(true);
-  const [cUseGlobalTemplate, setCUseGlobalTemplate] = useState(true);
+  const [cUseGlobalTemplate, setCUseGlobalTemplate] = useState(false);
   const [cUseCompanyKb, setCUseCompanyKb] = useState(true);
   const [creatingCampaign, setCreatingCampaign] = useState(false);
   const [runningBatchId, setRunningBatchId] = useState<string | null>(null);
@@ -908,15 +908,15 @@ export default function AutopilotPage() {
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-white block">Use Saved Global Email Template</span>
-                    <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 text-[10px] font-medium">
-                      {cUseGlobalTemplate ? "Admin Template Active" : "AI Pitch Mode"}
+                    <span className="text-xs font-semibold text-white block">Intelligent AI Cold Email Generation</span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-medium">
+                      {!cUseGlobalTemplate ? "AI Dynamic Mode Active" : "Legacy Template Active"}
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-400 block mt-0.5">
-                    {cUseGlobalTemplate
-                      ? "Checked: Uses saved Global Template from Admin Panel with dynamic gap & persona rotation"
-                      : "Unchecked: AI dynamically writes industry-specific adaptive pitch per lead"}
+                    {!cUseGlobalTemplate
+                      ? "Recommended: AI writes hyper-personalized, spam-proof 4-line cold emails tailored to each lead's audited gap"
+                      : "Fallback: Uses legacy fallback template instead of dynamic AI copy generation"}
                   </span>
                 </div>
                 <input

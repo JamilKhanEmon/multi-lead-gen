@@ -55,6 +55,12 @@ export default function ResearchInitiatorPage() {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [selectedSubAreas, setSelectedSubAreas] = useState<string[]>([]);
   const [customAreaInput, setCustomAreaInput] = useState("");
+  const [maxServices, setMaxServices] = useState<number>(0);
+  const [showAddServiceForm, setShowAddServiceForm] = useState(false);
+  const [customServiceName, setCustomServiceName] = useState("");
+  const [customServiceType, setCustomServiceType] = useState<"software" | "marketing">("software");
+  const [customServiceDesc, setCustomServiceDesc] = useState("");
+  const [customServiceHook, setCustomServiceHook] = useState("");
 
   const [activeRun, setActiveRun] = useState<ResearchRun | null>(null);
   const [progressPct, setProgressPct] = useState(15);
@@ -132,6 +138,7 @@ export default function ResearchInitiatorPage() {
         country: country.trim(),
         city: city.trim(),
         analyze_website: analyzeWebsite,
+        max_services: maxServices,
       });
       setStrategyPreview(preview);
       setSelectedSubAreas(preview.sub_areas.map((a) => a.name));
@@ -175,6 +182,33 @@ export default function ResearchInitiatorPage() {
       sub_areas: strategyPreview.sub_areas.filter((a) => a.name !== areaName),
     });
     setSelectedSubAreas((prev) => prev.filter((n) => n !== areaName));
+  };
+
+  const handleAddCustomService = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customServiceName.trim() || !strategyPreview) return;
+    const newService = {
+      name: customServiceName.trim(),
+      type: customServiceType,
+      description: customServiceDesc.trim() || `Tailored ${customServiceType} solution for ${industry || "businesses"}.`,
+      offer_hook: customServiceHook.trim() || (customServiceType === "software" ? "5-Minute Live Interactive Demo" : "5-Minute Interactive Blueprint"),
+    };
+    setStrategyPreview({
+      ...strategyPreview,
+      matched_services: [...(strategyPreview.matched_services || []), newService],
+    });
+    setCustomServiceName("");
+    setCustomServiceDesc("");
+    setCustomServiceHook("");
+    setShowAddServiceForm(false);
+  };
+
+  const handleRemoveService = (index: number) => {
+    if (!strategyPreview) return;
+    setStrategyPreview({
+      ...strategyPreview,
+      matched_services: (strategyPreview.matched_services || []).filter((_, i) => i !== index),
+    });
   };
 
   const dynamicSearchQueries = useMemo(() => {
@@ -235,6 +269,7 @@ export default function ResearchInitiatorPage() {
         use_company_kb: useCompanyKb,
         analyze_website: analyzeWebsite,
         sub_areas: selectedSubAreas,
+        target_services: (strategyPreview?.matched_services || []).map((s) => s.name),
       });
 
       setActiveRun(run);
@@ -718,6 +753,74 @@ export default function ResearchInitiatorPage() {
           </p>
         </div>
 
+        <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+              <Briefcase className="w-4 h-4 text-purple-400" />
+              <span>Service Pitch Cards</span>
+            </label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setMaxServices(0)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  maxServices === 0
+                    ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/30 ring-2 ring-purple-400"
+                    : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+                <span>Auto (LLM Self)</span>
+              </button>
+              {[1, 2, 3, 4, 5].map((num) => (
+                <button
+                  key={num}
+                  type="button"
+                  onClick={() => setMaxServices(num)}
+                  className={`w-8 h-8 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                    maxServices === num
+                      ? "bg-purple-500 text-white shadow-md shadow-purple-500/30 ring-2 ring-purple-400"
+                      : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                  }`}
+                >
+                  {num}
+                </button>
+              ))}
+              <div className="flex items-center gap-1.5 ml-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">
+                <span className="text-[10px] text-slate-400 font-mono">Custom:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={maxServices > 0 ? maxServices : ""}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val) && val >= 1 && val <= 10) {
+                      setMaxServices(val);
+                    } else if (e.target.value === "") {
+                      setMaxServices(0);
+                    }
+                  }}
+                  placeholder="Auto"
+                  className="w-12 bg-transparent text-xs text-white text-center focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            {maxServices === 0 ? (
+              <span className="text-purple-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                <span><strong>LLM Self-Decide (Auto):</strong> AI will autonomously analyze target industry bottlenecks and decide the optimal 2 to 4 highest-converting service cards.</span>
+              </span>
+            ) : (
+              <span>
+                Manual limit active: generating or pulling exactly <strong className="text-purple-300">{maxServices} {maxServices === 1 ? "service card" : "service cards"}</strong> (max 5-10 cards).
+              </span>
+            )}
+          </p>
+        </div>
+
         <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
           <div className="text-xs text-emerald-200 leading-relaxed">
@@ -904,35 +1007,158 @@ export default function ResearchInitiatorPage() {
             </div>
 
             {/* Matched Services from Company KB */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                <Briefcase className="w-3.5 h-3.5 text-purple-400" />
-                <span>Company KB Matched Services & Live Demo Pitch</span>
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                {strategyPreview.matched_services.map((svc, i) => (
-                  <div
-                    key={i}
-                    className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1"
-                  >
-                    <div className="font-semibold text-white flex items-center justify-between">
-                      <span className="truncate">{svc.name}</span>
-                      <span className={`text-[9px] px-1.5 py-0.2 rounded uppercase font-mono ${
-                        svc.type === "software"
-                          ? "bg-purple-500/20 text-purple-300"
-                          : "bg-pink-500/20 text-pink-300"
-                      }`}>
-                        {svc.type}
-                      </span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <Briefcase className="w-3.5 h-3.5 text-purple-400" />
+                  <span>
+                    Company KB Matched Services & Live Demo Pitch
+                    <span className="text-purple-400 font-mono ml-1">
+                      ({strategyPreview.matched_services?.length || 0})
+                    </span>
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAddServiceForm(!showAddServiceForm)}
+                  className="px-2 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 text-[10px] font-semibold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>{showAddServiceForm ? "Close Form" : "Add Custom Service"}</span>
+                </button>
+              </div>
+
+              {/* Add Custom Service Form */}
+              {showAddServiceForm && (
+                <form
+                  onSubmit={handleAddCustomService}
+                  className="p-3 rounded-xl bg-purple-950/30 border border-purple-700/50 space-y-2.5 animate-in fade-in duration-200"
+                >
+                  <div className="flex items-center justify-between text-xs font-semibold text-purple-200">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                      Add New Pitch Card
+                    </span>
+                    <span className="text-[10px] text-purple-400 font-normal">Will be included in outreach</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="sm:col-span-2">
+                      <input
+                        type="text"
+                        value={customServiceName}
+                        onChange={(e) => setCustomServiceName(e.target.value)}
+                        placeholder="Service Name (e.g. Automated Dental WhatsApp CRM)"
+                        required
+                        className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition"
+                      />
                     </div>
-                    <p className="text-[11px] text-slate-400 line-clamp-2">{svc.description}</p>
-                    <div className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
-                      <Check className="w-3 h-3 shrink-0" />
-                      <span>{svc.offer_hook}</span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setCustomServiceType("software")}
+                        className={`flex-1 py-1 rounded-lg text-[10px] font-mono uppercase font-bold transition ${
+                          customServiceType === "software"
+                            ? "bg-purple-600 text-white shadow-sm"
+                            : "bg-slate-800 text-slate-400 hover:text-slate-200"
+                        }`}
+                      >
+                        Software
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomServiceType("marketing")}
+                        className={`flex-1 py-1 rounded-lg text-[10px] font-mono uppercase font-bold transition ${
+                          customServiceType === "marketing"
+                            ? "bg-pink-600 text-white shadow-sm"
+                            : "bg-slate-800 text-slate-400 hover:text-slate-200"
+                        }`}
+                      >
+                        Marketing
+                      </button>
                     </div>
                   </div>
-                ))}
-              </div>
+                  <input
+                    type="text"
+                    value={customServiceDesc}
+                    onChange={(e) => setCustomServiceDesc(e.target.value)}
+                    placeholder="Problem solved / Value proposition (e.g. Convert dental inquiries instantly without delays)"
+                    className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition"
+                  />
+                  <input
+                    type="text"
+                    value={customServiceHook}
+                    onChange={(e) => setCustomServiceHook(e.target.value)}
+                    placeholder="Live Demo Offer Hook (e.g. 5-Minute Live Interactive Demo)"
+                    className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition"
+                  />
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddServiceForm(false)}
+                      className="px-3 py-1 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold transition shadow-md shadow-purple-500/20 cursor-pointer"
+                    >
+                      Save Service Card
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Service Cards Grid */}
+              {strategyPreview.matched_services && strategyPreview.matched_services.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  {strategyPreview.matched_services.map((svc, i) => (
+                    <div
+                      key={i}
+                      className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1 relative group hover:border-slate-700 transition"
+                    >
+                      <div className="font-semibold text-white flex items-center justify-between gap-1">
+                        <span className="truncate pr-1">{svc.name}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded uppercase font-mono ${
+                            svc.type === "software"
+                              ? "bg-purple-500/20 text-purple-300"
+                              : "bg-pink-500/20 text-pink-300"
+                          }`}>
+                            {svc.type}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveService(i)}
+                            className="text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 p-0.5 rounded transition cursor-pointer"
+                            title="Remove this service card"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-slate-400 line-clamp-2">{svc.description}</p>
+                      <div className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                        <Check className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{svc.offer_hook}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-2 text-xs">
+                  <span className="text-[11px] text-slate-400">
+                    No services selected yet. Click "Add Custom Service" to add a pitch card.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddServiceForm(true)}
+                    className="text-xs text-purple-400 hover:text-purple-300 font-semibold underline shrink-0 cursor-pointer"
+                  >
+                    + Add Card
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Modal Actions */}

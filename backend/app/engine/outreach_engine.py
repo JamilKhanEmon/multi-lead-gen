@@ -108,13 +108,41 @@ class OutreachEngine:
                 sender_title = getattr(p, "title", "")
                 sender_company = getattr(p, "company", os.getenv("COMPANY_NAME", ""))
         else:
-            sender_name = lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or ""
-            if str(sender_name).strip().lower() == "test":
-                sender_name = ""
-            sender_title = lead_data.get("sender_title") or ""
-            sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or ""
-            sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
-            sig_block = lead_data.get("signature_text") or ("\n".join(sig_lines) if sig_lines else "")
+            custom_tpl = lead_data.get("custom_template")
+            if custom_tpl:
+                if hasattr(custom_tpl, "render_signature"):
+                    sig_block = custom_tpl.render_signature()
+                elif isinstance(custom_tpl, dict):
+                    parts = []
+                    sign_off = custom_tpl.get("sign_off") or "Sincerely,"
+                    if sign_off:
+                        parts.append(sign_off)
+                    name_line = custom_tpl.get("sender_name") or ""
+                    if custom_tpl.get("sender_title"):
+                        name_line = f"{name_line}\n{custom_tpl['sender_title']}".strip()
+                    if custom_tpl.get("sender_company"):
+                        name_line = f"{name_line}, {custom_tpl['sender_company']}".strip(", ")
+                    if name_line:
+                        parts.append(name_line)
+                    contact_line = []
+                    if custom_tpl.get("sender_email"):
+                        contact_line.append(f"Email: {custom_tpl['sender_email']}")
+                    if custom_tpl.get("sender_phone"):
+                        contact_line.append(f"Phone: {custom_tpl['sender_phone']}")
+                    if contact_line:
+                        parts.append(" | ".join(contact_line))
+                    if custom_tpl.get("sender_website"):
+                        parts.append(custom_tpl["sender_website"])
+                    sig_block = "\n".join(parts).strip()
+            
+            if not sig_block:
+                sender_name = lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or ""
+                if str(sender_name).strip().lower() == "test":
+                    sender_name = ""
+                sender_title = lead_data.get("sender_title") or ""
+                sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or ""
+                sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
+                sig_block = lead_data.get("signature_text") or ("\n".join(sig_lines) if sig_lines else "")
         return sig_block, sender_name, sender_title, sender_company
 
     @classmethod
@@ -128,6 +156,7 @@ class OutreachEngine:
         Dynamically generates hyper-personalized, spam-proof B2B cold emails using LLM.
         Falls back to rule-based template if AI is unavailable or fails.
         """
+        import re
         custom_tpl = lead_data.get("custom_template")
         if custom_tpl and lead_data.get("force_template"):
             return cls.render_email_template(step, lead_data)
@@ -141,7 +170,12 @@ class OutreachEngine:
 
         city = str(lead_data.get("city") or lead_data.get("location") or lead_data.get("address") or "").strip()
         industry = str(lead_data.get("industry") or lead_data.get("business_type") or "General Business").strip()
-        primary_gap = lead_data.get("primary_gap") or "optimizing operational workflows and client acquisition"
+        
+        raw_gap = lead_data.get("primary_gap") or "optimizing operational workflows and client acquisition"
+        primary_gap = re.sub(r"\s*\[Proof Link:[^\]]*\]", "", str(raw_gap), flags=re.IGNORECASE)
+        primary_gap = re.sub(r"\s*\(Proof:[^\)]*\)", "", primary_gap, flags=re.IGNORECASE)
+        primary_gap = re.sub(r"\s+", " ", primary_gap).strip()
+        
         matched_service = lead_data.get("matched_service") or "software and workflow automation"
         website = lead_data.get("website") or ""
 
@@ -170,6 +204,7 @@ class OutreachEngine:
                 "- LENGTH: STRICT MAXIMUM 80 WORDS. Keep paragraphs separated by double newlines. Mobile-friendly.\n"
                 "- NO corporate fluff or clichés ('Hope you are well', 'Allow me to introduce', 'I am writing to').\n"
                 "- NO hardcoded days of the week (never mention Thursday, Monday, etc.).\n"
+                "- NEVER include proof links, URLs, raw data brackets, or citations (e.g. absolutely no '[Proof Link: ...]'). Write completely natural, professional business sentences.\n"
                 "- Do NOT include the sender signature or sign-off at the end (it is attached automatically).\n"
                 "- Output format: Raw JSON only with keys \"subject\" and \"body\": {\"subject\": \"...\", \"body\": \"...\"}"
             )
@@ -225,7 +260,11 @@ class OutreachEngine:
         raw_city = str(lead_data.get("city") or lead_data.get("location") or lead_data.get("address") or "").strip()
         has_real_city = bool(raw_city and raw_city.lower() not in ["your area", "your city", "your office in your city", "n/a", "none", "unknown", ""])
         city = raw_city if has_real_city else ""
-        primary_gap = lead_data.get("primary_gap") or "optimizing your online presence and client acquisition"
+        import re
+        raw_gap = lead_data.get("primary_gap") or "optimizing your online presence and client acquisition"
+        primary_gap = re.sub(r"\s*\[Proof Link:[^\]]*\]", "", str(raw_gap), flags=re.IGNORECASE)
+        primary_gap = re.sub(r"\s*\(Proof:[^\)]*\)", "", primary_gap, flags=re.IGNORECASE)
+        primary_gap = re.sub(r"\s+", " ", primary_gap).strip()
         industry = (lead_data.get("industry") or lead_data.get("business_type") or "").lower()
 
         sig_block, sender_name, sender_title, sender_company = cls._resolve_signature(company_name, lead_data)

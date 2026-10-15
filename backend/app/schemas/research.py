@@ -24,6 +24,7 @@ class StrategyPreviewRequest(BaseModel):
     country: Optional[str] = Field(default="", example="Bangladesh")
     city: Optional[str] = Field(default="", example="Dhaka")
     analyze_website: bool = Field(default=False)
+    max_services: Optional[int] = Field(default=0, ge=0, le=10, description="0 for LLM Self/Auto mode, or 1 to 10 for manual limit")
 
 class ResearchJobResponse(BaseModel):
     id: uuid.UUID

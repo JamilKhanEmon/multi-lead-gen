@@ -272,17 +272,17 @@ class FitGateEngine:
             gmaps_url = metadata_json.get("google_maps_url") or audit_res.get("google_maps_url") or f"https://www.google.com/maps/search/{urllib.parse.quote(company_clean + ' ' + city_clean)}"
             if rating_val is not None:
                 if rating_val < 4.3:
-                    verified_gaps.append(f"Google Maps public rating stands at {rating_val}★ ({rev_label}) with customer review sentiment indicating response bottlenecks. [Proof Link: {gmaps_url}]")
+                    verified_gaps.append(f"Google Maps public rating stands at {rating_val}★ ({rev_label}) with customer review sentiment indicating response bottlenecks.")
                     inferred_opportunities.append(f"Inconsistent review management on Google Maps can divert local prospective buyers in {city_clean} to higher-rated alternatives.")
                     evidence_tags.append("MAPS_RATING_GAP")
                     evidence_signals.append(f"Google Maps rating {rating_val}★ with customer feedback gaps (Proof: {gmaps_url})")
                 else:
-                    verified_gaps.append(f"Strong verified commercial profile on Google Maps ({rating_val}★, {rev_label}) in {city_clean}, but customer intake and booking remain manual without automated CRM. [Proof Link: {gmaps_url}]")
+                    verified_gaps.append(f"Strong verified commercial profile on Google Maps ({rating_val}★, {rev_label}) in {city_clean}, but customer intake and booking remain manual without automated CRM.")
                     inferred_opportunities.append(f"High local buyer demand in {city_clean} creates an immediate opportunity to automate client intake, follow-ups, and sales operations.")
                     evidence_tags.append("LOCAL_DEMAND_AUTOMATION_FIT")
                     evidence_signals.append(f"High-demand local profile ({rating_val}★) lacking automated sales workflow (Proof: {gmaps_url})")
             else:
-                verified_gaps.append(f"Operating commercial entity in {city_clean} without an automated client intake or lead nurturing system. [Proof Link: {gmaps_url}]")
+                verified_gaps.append(f"Operating commercial entity in {city_clean} without an automated client intake or lead nurturing system.")
                 inferred_opportunities.append(f"Managing customer inquiries manually through phone calls leads to missed follow-ups and lost prospects during peak business hours.")
                 evidence_tags.append("MANUAL_OPERATION_BOTTLENECK")
                 evidence_signals.append(f"Manual customer intake bottleneck (Proof: {gmaps_url})")
@@ -302,12 +302,12 @@ class FitGateEngine:
             if fb or ig:
                 social_link = fb or ig
                 if is_dormant:
-                    verified_gaps.append(f"Official Facebook page has been inactive/dormant ({recency_txt or 'no recent posts'}). Profile is losing warm prospective local clients. [Proof Link: {social_link}]")
+                    verified_gaps.append(f"Official Facebook page has been inactive/dormant ({recency_txt or 'no recent posts'}). Profile is losing warm prospective local clients.")
                     inferred_opportunities.append(f"Reviving regular social media posting and running localized campaigns will re-engage warm customers in {city_clean}.")
                     evidence_tags.append("DORMANT_SOCIAL_PAGE")
                     evidence_signals.append(f"Dormant Facebook page with zero recent posts (Proof: {social_link})")
                 else:
-                    verified_gaps.append(f"Active social media business profile detected ({recency_txt or 'active posts'}), but lacks direct automated sales funnels, CRM sync, or instant inquiry booking. [Proof Link: {social_link}]")
+                    verified_gaps.append(f"Active social media business profile detected ({recency_txt or 'active posts'}), but lacks direct automated sales funnels, CRM sync, or instant inquiry booking.")
                     inferred_opportunities.append("Operating social media without automated lead capture leads to delayed responses and lost prospects during off-hours.")
                     evidence_tags.append("SOCIAL_LEAD_FUNNEL_GAP")
                     evidence_signals.append(f"Active social presence lacking automated lead capture funnel (Proof: {social_link})")

@@ -67,6 +67,13 @@ export interface Lead {
   what_they_need?: string;
   discovery_call_script?: string;
   matched_service?: string;
+  outreach_draft?: {
+    subject: string;
+    body: string;
+    full_email?: string;
+    is_llm_generated?: boolean;
+    is_customized?: boolean;
+  };
 }
 
 export interface ParameterCatalogItem {
@@ -248,6 +255,7 @@ export async function previewResearchStrategy(data: {
   country?: string;
   city?: string;
   analyze_website?: boolean;
+  max_services?: number;
 }): Promise<StrategyPreview> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -274,6 +282,7 @@ export async function createResearchRun(data: {
   use_company_kb?: boolean;
   analyze_website?: boolean;
   sub_areas?: string[];
+  target_services?: string[];
 }): Promise<ResearchRun> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -336,6 +345,8 @@ export async function updateLeadDetails(leadId: string, data: {
   matched_service?: string;
   approve_for_outreach?: boolean;
   outreach_status?: string;
+  custom_outreach_subject?: string;
+  custom_outreach_body?: string;
 }): Promise<any> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -348,6 +359,21 @@ export async function updateLeadDetails(leadId: string, data: {
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
     throw new Error(errData.detail || "Failed to update lead details");
+  }
+  return res.json();
+}
+
+export async function regenerateLeadOutreach(leadId: string): Promise<{ subject: string; body: string; full_email: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}/leads/${leadId}/regenerate-outreach`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to regenerate outreach email draft");
   }
   return res.json();
 }
@@ -1175,8 +1201,17 @@ export function renderEmailTemplate(
   const location = lead.address || "your city";
   const website = lead.domain || "official website";
   const phone = lead.phone || "";
-  const primaryGap = lead.primary_gap_summary ? ` (${lead.primary_gap_summary})` : "";
-  const whyTheyNeedUs = (lead as any).why_they_need_us || primaryGap || "";
+  const rawGap = (lead.primary_gap_summary || "")
+    .replace(/\[Proof Link:[^\]]*\]/gi, "")
+    .replace(/\(Proof:[^\)]*\)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const primaryGap = rawGap ? ` (${rawGap})` : "";
+  const whyTheyNeedUs = ((lead as any).why_they_need_us || rawGap || "")
+    .replace(/\[Proof Link:[^\]]*\]/gi, "")
+    .replace(/\(Proof:[^\)]*\)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
   const whatTheyNeed = (lead as any).what_they_need || "";
   const matchedService = (lead as any).matched_service || "";
 
