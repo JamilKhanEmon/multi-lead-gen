@@ -803,12 +803,12 @@ export default function AutopilotPage() {
 
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Target Business Keywords / Topics (comma-separated)
+                  Target Business Keywords (Enter 5-10 comma-separated keywords)
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Software Agency, Dental Clinic, Real Estate"
+                  placeholder="e.g. Dental Clinic, Dentist, Orthodontist, Oral Surgery, Teeth Whitening"
                   value={cKeywords}
                   onChange={(e) => setCKeywords(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-sky-500"
@@ -817,12 +817,12 @@ export default function AutopilotPage() {
 
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Target Country
+                  Target Country (Full Country-Wide Discovery)
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Bangladesh"
+                  placeholder="e.g. United States, Bangladesh, United Arab Emirates, United Kingdom"
                   value={cCountry}
                   onChange={(e) => setCCountry(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-sky-500"
@@ -830,9 +830,14 @@ export default function AutopilotPage() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Sub-Cities & Areas (Type area and press Enter)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Sub-Cities & Areas
+                  </label>
+                  <span className="text-[10px] text-emerald-400 font-medium">
+                    Optional — Leave empty to auto-scan all commercial cities
+                  </span>
+                </div>
                 <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-xl bg-slate-950 border border-slate-800 min-h-[46px]">
                   {cSubCities.map((sc) => (
                     <span
@@ -851,7 +856,7 @@ export default function AutopilotPage() {
                   ))}
                   <input
                     type="text"
-                    placeholder={cSubCities.length === 0 ? "Type city & press Enter..." : "Add more..."}
+                    placeholder={cSubCities.length === 0 ? "Leave empty for whole country, or type city & press Enter..." : "Add more..."}
                     value={subCityInput}
                     onChange={(e) => setSubCityInput(e.target.value)}
                     onKeyDown={handleAddSubCity}
@@ -863,12 +868,12 @@ export default function AutopilotPage() {
               <div className="grid grid-cols-2 gap-4 items-center pt-2">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">
-                    Daily Lead Target
+                    Lead Target Limit (Runs non-stop until reached)
                   </label>
                   <input
                     type="number"
                     min="10"
-                    max="1000"
+                    max="10000"
                     disabled={cUnlimited}
                     value={cDailyLimit}
                     onChange={(e) => setCDailyLimit(Number(e.target.value))}

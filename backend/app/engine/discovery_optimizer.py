@@ -17,6 +17,31 @@ class DiscoveryOptimizer:
     ]
 
     @classmethod
+    async def get_country_commercial_cities(cls, country: str, limit: int = 15) -> List[str]:
+        clean_country = country.strip()
+        if not clean_country:
+            return []
+
+        try:
+            ai = AIClient(timeout=8.0)
+            system_prompt = (
+                "You are a global geographic business intelligence system.\n"
+                "Given any country, return a JSON list of the top commercial, economic, and business hub cities or regions in that country for B2B company discovery.\n"
+                "Return pure JSON with key 'cities': ['City1', 'City2', ...]."
+            )
+            user_prompt = f"Country: {clean_country}\nReturn top {limit} commercial hub cities."
+            result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+            if isinstance(result, dict) and "cities" in result and isinstance(result["cities"], list):
+                valid_cities = [str(c).strip() for c in result["cities"] if str(c).strip()]
+                if valid_cities:
+                    logger.info(f"DiscoveryOptimizer: Dynamically expanded country '{clean_country}' into {len(valid_cities)} commercial cities.")
+                    return valid_cities[:limit]
+        except Exception as e:
+            logger.debug(f"DiscoveryOptimizer: Dynamic city expansion fallback: {e}")
+
+        return [clean_country]
+
+    @classmethod
     async def optimize_search_plan(
         cls,
         industry: str,
