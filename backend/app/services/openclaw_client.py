@@ -105,11 +105,12 @@ class LiveResearchEngine:
             logger.warning(f"Live browser discovery fallback: {e}")
 
         # 2. Multi-engine search expansion across targeted queries (capped to avoid stalls)
-        target_cap = effective_limit if not is_unlimited else 30
+        target_cap = effective_limit if not is_unlimited else 100
         if len(discovered) < target_cap:
             queries = plan.get("search_queries", []) or GeoExpander.build_search_queries(industry, full_location)
-            # Query top targeted queries without hanging on 60+ sequential calls
-            for q in queries[:6]:
+            # Run adequate queries to satisfy target_cap without hanging
+            needed_queries = min(len(queries), max(12, int(target_cap // 2) + 6))
+            for q in queries[:needed_queries]:
                 if len(discovered) >= target_cap:
                     break
                 try:
@@ -132,11 +133,11 @@ class LiveResearchEngine:
         # 3. Supplemental: OSM Directory Search ONLY for entities that have website/domain or direct email
         if len(discovered) < target_cap:
             osm_search_targets = plan.get("osm_queries", [])
-            for target_q in osm_search_targets[:2]:
+            for target_q in osm_search_targets[:5]:
                 if len(discovered) >= target_cap:
                     break
                 try:
-                    places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 25, country, city, sub_city)
+                    places = await loop.run_in_executor(None, cls._fetch_osm_places, target_q, 50, country, city, sub_city)
                     for p in (places or []):
                         if len(discovered) >= target_cap:
                             break

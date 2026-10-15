@@ -33,6 +33,7 @@ import {
   Send,
   Check,
   Plus,
+  Target,
 } from "lucide-react";
 
 export default function ResearchInitiatorPage() {
@@ -56,6 +57,7 @@ export default function ResearchInitiatorPage() {
   const [selectedSubAreas, setSelectedSubAreas] = useState<string[]>([]);
   const [customAreaInput, setCustomAreaInput] = useState("");
   const [maxServices, setMaxServices] = useState<number>(0);
+  const [companyLimit, setCompanyLimit] = useState<number>(50);
   const [showAddServiceForm, setShowAddServiceForm] = useState(false);
   const [customServiceName, setCustomServiceName] = useState("");
   const [customServiceType, setCustomServiceType] = useState<"software" | "marketing">("software");
@@ -263,7 +265,7 @@ export default function ResearchInitiatorPage() {
         location: computedLocation,
         industry: industry.trim(),
         depth,
-        company_limit: 0,
+        company_limit: companyLimit,
         business_type_override: cleanOverride,
         auto_mail_enabled: autoMailEnabled,
         use_company_kb: useCompanyKb,
@@ -821,6 +823,62 @@ export default function ResearchInitiatorPage() {
           </p>
         </div>
 
+        {/* Discovery Target Limit Control */}
+        <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2.5">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+              <Target className="w-4 h-4 text-sky-400" />
+              <span>Target Leads to Discover</span>
+            </label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[20, 50, 100, 200].map((limitVal) => (
+                <button
+                  key={limitVal}
+                  type="button"
+                  onClick={() => setCompanyLimit(limitVal)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                    companyLimit === limitVal
+                      ? "bg-sky-500 text-slate-950 shadow-md shadow-sky-500/30 ring-2 ring-sky-400 font-extrabold"
+                      : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                  }`}
+                >
+                  {limitVal} Leads
+                </button>
+              ))}
+              <div className="flex items-center gap-1.5 ml-1 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                <span className="text-[10px] text-slate-400 font-mono">Custom:</span>
+                <input
+                  type="number"
+                  min={5}
+                  max={500}
+                  value={companyLimit > 0 ? companyLimit : ""}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val) && val >= 1) {
+                      setCompanyLimit(val);
+                    } else if (e.target.value === "") {
+                      setCompanyLimit(0);
+                    }
+                  }}
+                  placeholder="Unlimited"
+                  className="w-16 bg-transparent text-xs text-white text-center focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            {companyLimit === 0 ? (
+              <span className="text-sky-300">
+                <strong>Unlimited Exhaustion:</strong> OpenClaw will crawl all discovered sub-areas and query variations until all available local businesses are found.
+              </span>
+            ) : (
+              <span>
+                OpenClaw will hunt across sub-cities and multi-engine queries until <strong className="text-sky-300 font-bold">{companyLimit} verified commercial entities</strong> are discovered.
+              </span>
+            )}
+          </p>
+        </div>
+
         <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />
           <div className="text-xs text-emerald-200 leading-relaxed">
@@ -869,6 +927,10 @@ export default function ResearchInitiatorPage() {
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
                     {strategyPreview.mode_label}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                    <Target className="w-3 h-3 text-amber-400" />
+                    <span>Target: {companyLimit > 0 ? `${companyLimit} Leads` : "Unlimited"}</span>
                   </span>
                 </div>
                 <h3 className="text-lg font-bold text-white mt-1.5 flex items-center gap-2">
