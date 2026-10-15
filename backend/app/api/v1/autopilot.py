@@ -43,6 +43,7 @@ class CampaignUpdate(BaseModel):
     use_global_template: Optional[bool] = None
     use_company_kb: Optional[bool] = None
     analyze_website: Optional[bool] = None
+    status: Optional[str] = None
     is_active: Optional[bool] = None
 
 class VerifyEmailRequest(BaseModel):

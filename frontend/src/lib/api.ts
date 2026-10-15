@@ -1518,16 +1518,21 @@ export async function createAutopilotCampaign(data: {
 
 export async function toggleAutopilotCampaign(
   campaignId: string,
-  isActive: boolean
+  isActive: boolean,
+  status?: string
 ): Promise<AutopilotCampaign> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
+  const payload: Record<string, any> = { is_active: isActive };
+  if (status) payload.status = status;
+  else if (!isActive) payload.status = "IDLE";
+
   const res = await fetch(`${API_BASE}/autopilot/campaigns/${campaignId}`, {
     method: "PATCH",
     headers,
-    body: JSON.stringify({ is_active: isActive }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Failed to update campaign status");
   return res.json();
