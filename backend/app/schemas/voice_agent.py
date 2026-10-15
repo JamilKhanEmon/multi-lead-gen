@@ -85,8 +85,8 @@ class VoiceCallQueueItemCreate(BaseModel):
     contact_title: Optional[str] = None
     company_name: str
     phone: str
-    country: str = "Bangladesh"
-    language: str = "Bengali"
+    country: str = ""
+    language: str = "English"
     exact_problem: str
     selected_for_call: bool = True
     lead_id: Optional[str] = None
@@ -115,8 +115,8 @@ class VoiceCallQueueItemResponse(BaseModel):
     contact_title: Optional[str] = None
     company_name: str
     phone: str
-    country: str = "Bangladesh"
-    language: str = "Bengali"
+    country: str = ""
+    language: str = "English"
     exact_problem: str
     status: str
     selected_for_call: bool

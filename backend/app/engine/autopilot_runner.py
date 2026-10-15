@@ -79,7 +79,7 @@ class AutopilotRunner:
         # Resolve target sub-cities dynamically if none provided (Zero hardcoding!)
         raw_sub_cities = campaign.sub_cities or []
         sub_cities = [str(c).strip() for c in raw_sub_cities if str(c).strip()]
-        if (not sub_cities or sub_cities == ["Dhaka"] or (len(sub_cities) == 1 and sub_cities[0].strip().lower() in ["dhaka", "all", ""])) and campaign.country:
+        if (not sub_cities or (len(sub_cities) == 1 and sub_cities[0].strip().lower() in ["all", "", (campaign.country or "").strip().lower()])) and campaign.country:
             logger.info(f"[AUTOPILOT] Dynamic expansion: Expanding '{campaign.country}' into commercial hub cities...")
             expanded = await DiscoveryOptimizer.get_country_commercial_cities(campaign.country, limit=50)
             if expanded:
@@ -322,12 +322,14 @@ class AutopilotRunner:
                         verify_note = "No public email address found — queued for review"
 
                     analyze_web = bool(getattr(campaign, "analyze_website", False))
+                    campaign_max_services = int(getattr(campaign, "max_services", 0) or 0)
 
                     metadata_payload = {
                         "source": "autopilot_deep_intelligence",
                         "city": target_city_clean,
                         "keyword": target_keyword,
                         "analyze_website": analyze_web,
+                        "max_services": campaign_max_services,
                         "google_maps_url": cand.get("google_maps_url"),
                         "google_search_url": cand.get("google_search_url"),
                         "contact_consensus": contact_consensus,

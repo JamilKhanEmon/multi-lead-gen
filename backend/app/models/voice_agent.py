@@ -126,8 +126,8 @@ class VoiceCallQueueItem(Base, UUIDMixin, TimestampMixin):
     contact_title: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     company_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     phone: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    country: Mapped[str] = mapped_column(String(100), default="Bangladesh", nullable=False, index=True)
-    language: Mapped[str] = mapped_column(String(50), default="Bengali", nullable=False)
+    country: Mapped[str] = mapped_column(String(100), default="", nullable=False, index=True)
+    language: Mapped[str] = mapped_column(String(50), default="English", nullable=False)
     exact_problem: Mapped[str] = mapped_column(Text, default="Website lacks fast customer response and online booking capabilities", nullable=False)
     
     status: Mapped[str] = mapped_column(String(50), default="READY", nullable=False, index=True)  # READY, CALLING, CONNECTED, INTERESTED, COMPLETED, FAILED

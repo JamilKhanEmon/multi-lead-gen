@@ -422,6 +422,7 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_global_template BOOLEAN DEFAULT TRUE;"))
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS analyze_website BOOLEAN DEFAULT FALSE;"))
+                await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS max_services INTEGER DEFAULT 0;"))
                 await conn.execute(text("UPDATE autopilot_campaigns SET status = 'IDLE' WHERE status = 'RUNNING';"))
                 await conn.execute(text("ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
                 await conn.execute(text("ALTER TABLE company_kb ADD COLUMN IF NOT EXISTS master_kb_notes TEXT;"))

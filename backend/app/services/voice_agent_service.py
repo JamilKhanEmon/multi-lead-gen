@@ -201,7 +201,7 @@ class VoiceAgentService:
 
             meta = biz.metadata_json or {}
             loc = biz.locations[0] if (biz.locations and len(biz.locations) > 0) else None
-            country = loc.country if loc and loc.country else (meta.get("country") or "Bangladesh")
+            country = loc.country if loc and loc.country else (meta.get("country") or "Global")
             
             # Map country to language
             lang = DEFAULT_COUNTRY_LANGUAGE_MAP.get(country, "English")

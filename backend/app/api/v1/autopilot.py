@@ -19,17 +19,18 @@ from app.engine.outreach_engine import OutreachEngine
 router = APIRouter(prefix="/autopilot", tags=["Autopilot & Outreach"])
 
 class CampaignCreate(BaseModel):
-    name: str = Field(..., example="Dhaka IT & Software Outreach")
-    keywords: List[str] = Field(default_factory=lambda: ["Software Agency", "Web Development"])
-    country: str = Field(default="Bangladesh")
-    sub_cities: List[str] = Field(default_factory=lambda: ["Uttara", "Gazipur", "Mirpur", "Tangail"])
-    daily_lead_limit: int = Field(default=100)
+    name: str = Field(..., description="Campaign name")
+    keywords: List[str] = Field(default_factory=list, description="Target industries or business types")
+    country: str = Field(..., description="Target country")
+    sub_cities: List[str] = Field(default_factory=list, description="Target cities or sub-regions")
+    daily_lead_limit: int = Field(default=50)
     daily_email_limit: int = Field(default=50)
     is_unlimited_leads: bool = Field(default=False)
     auto_mail_enabled: bool = Field(default=True)
     use_global_template: bool = Field(default=True)
     use_company_kb: bool = Field(default=True)
     analyze_website: bool = Field(default=False)
+    max_services: int = Field(default=0)
 
 class CampaignUpdate(BaseModel):
     name: Optional[str] = None
@@ -43,6 +44,7 @@ class CampaignUpdate(BaseModel):
     use_global_template: Optional[bool] = None
     use_company_kb: Optional[bool] = None
     analyze_website: Optional[bool] = None
+    max_services: Optional[int] = None
     status: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -102,7 +104,7 @@ async def list_campaigns(
         raw_subs = list(c.sub_cities or [])
         country_str = (c.country or "").strip().lower()
         sub_str = raw_subs[0].strip().lower() if raw_subs else ""
-        needs_expansion = (not raw_subs or len(raw_subs) <= 1) and (not raw_subs or sub_str in ["dhaka", "all", "", country_str, "bangladseh", "bangladesh"])
+        needs_expansion = (not raw_subs or len(raw_subs) <= 1) and (not raw_subs or sub_str in ["all", "", country_str])
 
         if needs_expansion and c.country:
             from app.engine.discovery_optimizer import DiscoveryOptimizer
@@ -154,6 +156,7 @@ async def create_campaign(
         use_global_template=data.use_global_template,
         use_company_kb=data.use_company_kb,
         analyze_website=data.analyze_website,
+        max_services=data.max_services,
         is_active=True,
         status="IDLE",
         created_by_user_id=current_user.id if current_user else None
@@ -218,7 +221,7 @@ async def trigger_campaign_run(
     raw_sub_cities = list(campaign.sub_cities or [])
     c_country_str = (campaign.country or "").strip().lower()
     c_sub_str = raw_sub_cities[0].strip().lower() if raw_sub_cities else ""
-    c_needs_expansion = (not raw_sub_cities or len(raw_sub_cities) <= 1) and (not raw_sub_cities or c_sub_str in ["dhaka", "all", "", c_country_str, "bangladseh", "bangladesh"])
+    c_needs_expansion = (not raw_sub_cities or len(raw_sub_cities) <= 1) and (not raw_sub_cities or c_sub_str in ["all", "", c_country_str])
 
     if c_needs_expansion and campaign.country:
         from app.engine.discovery_optimizer import DiscoveryOptimizer

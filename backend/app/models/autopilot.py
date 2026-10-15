@@ -11,16 +11,17 @@ class AutopilotCampaign(Base, UUIDMixin, TimestampMixin):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     keywords: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
-    country: Mapped[str] = mapped_column(String(100), default="Bangladesh", nullable=False, index=True)
+    country: Mapped[str] = mapped_column(String(100), default="", nullable=False, index=True)
     sub_cities: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     
-    daily_lead_limit: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    daily_lead_limit: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     daily_email_limit: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     is_unlimited_leads: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     auto_mail_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     use_global_template: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     use_company_kb: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     analyze_website: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    max_services: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     
     status: Mapped[str] = mapped_column(String(50), default="IDLE", nullable=False, index=True)
