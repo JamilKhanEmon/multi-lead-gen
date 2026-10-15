@@ -98,12 +98,16 @@ async def list_campaigns(
     now = datetime.now(timezone.utc)
     healed = False
     for c in campaigns:
-        # Auto-expand if legacy sub_cities is only ["Dhaka"] or empty and country is set
+        # Auto-expand if sub_cities has <= 1 item (empty, default Dhaka, or the country name itself)
         raw_subs = list(c.sub_cities or [])
-        if (not raw_subs or raw_subs == ["Dhaka"] or (len(raw_subs) == 1 and raw_subs[0].strip().lower() in ["dhaka", "all", ""])) and c.country:
+        country_str = (c.country or "").strip().lower()
+        sub_str = raw_subs[0].strip().lower() if raw_subs else ""
+        needs_expansion = (not raw_subs or len(raw_subs) <= 1) and (not raw_subs or sub_str in ["dhaka", "all", "", country_str, "bangladseh", "bangladesh"])
+
+        if needs_expansion and c.country:
             from app.engine.discovery_optimizer import DiscoveryOptimizer
             expanded = await DiscoveryOptimizer.get_country_commercial_cities(c.country, limit=50)
-            if expanded:
+            if expanded and len(expanded) > 1:
                 c.sub_cities = expanded
                 healed = True
 
@@ -210,12 +214,16 @@ async def trigger_campaign_run(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
-    # If sub_cities is only Dhaka or empty, dynamically expand to 50 nationwide commercial cities
+    # Auto-expand if sub_cities has <= 1 item (empty, default Dhaka, or the country name itself)
     raw_sub_cities = list(campaign.sub_cities or [])
-    if (not raw_sub_cities or raw_sub_cities == ["Dhaka"] or (len(raw_sub_cities) == 1 and raw_sub_cities[0].strip().lower() in ["dhaka", "all", ""])) and campaign.country:
+    c_country_str = (campaign.country or "").strip().lower()
+    c_sub_str = raw_sub_cities[0].strip().lower() if raw_sub_cities else ""
+    c_needs_expansion = (not raw_sub_cities or len(raw_sub_cities) <= 1) and (not raw_sub_cities or c_sub_str in ["dhaka", "all", "", c_country_str, "bangladseh", "bangladesh"])
+
+    if c_needs_expansion and campaign.country:
         from app.engine.discovery_optimizer import DiscoveryOptimizer
         expanded = await DiscoveryOptimizer.get_country_commercial_cities(campaign.country, limit=50)
-        if expanded:
+        if expanded and len(expanded) > 1:
             campaign.sub_cities = expanded
 
     campaign.status = "RUNNING"
