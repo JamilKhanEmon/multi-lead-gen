@@ -30,6 +30,7 @@ class CampaignCreate(BaseModel):
     use_global_template: bool = Field(default=True)
     use_company_kb: bool = Field(default=True)
     analyze_website: bool = Field(default=False)
+    max_services: int = Field(default=0)
 
 class CampaignUpdate(BaseModel):
     name: Optional[str] = None
@@ -43,6 +44,7 @@ class CampaignUpdate(BaseModel):
     use_global_template: Optional[bool] = None
     use_company_kb: Optional[bool] = None
     analyze_website: Optional[bool] = None
+    max_services: Optional[int] = None
     status: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -154,6 +156,7 @@ async def create_campaign(
         use_global_template=data.use_global_template,
         use_company_kb=data.use_company_kb,
         analyze_website=data.analyze_website,
+        max_services=data.max_services,
         is_active=True,
         status="IDLE",
         created_by_user_id=current_user.id if current_user else None

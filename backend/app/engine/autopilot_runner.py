@@ -322,12 +322,14 @@ class AutopilotRunner:
                         verify_note = "No public email address found — queued for review"
 
                     analyze_web = bool(getattr(campaign, "analyze_website", False))
+                    campaign_max_services = int(getattr(campaign, "max_services", 0) or 0)
 
                     metadata_payload = {
                         "source": "autopilot_deep_intelligence",
                         "city": target_city_clean,
                         "keyword": target_keyword,
                         "analyze_website": analyze_web,
+                        "max_services": campaign_max_services,
                         "google_maps_url": cand.get("google_maps_url"),
                         "google_search_url": cand.get("google_search_url"),
                         "contact_consensus": contact_consensus,

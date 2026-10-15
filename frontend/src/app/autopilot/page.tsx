@@ -88,6 +88,7 @@ export default function AutopilotPage() {
   const [cUseGlobalTemplate, setCUseGlobalTemplate] = useState(false);
   const [cUseCompanyKb, setCUseCompanyKb] = useState(true);
   const [cAnalyzeWebsite, setCAnalyzeWebsite] = useState(false);
+  const [cMaxServices, setCMaxServices] = useState<number>(0);
   const [creatingCampaign, setCreatingCampaign] = useState(false);
   const [runningBatchId, setRunningBatchId] = useState<string | null>(null);
 
@@ -220,6 +221,7 @@ export default function AutopilotPage() {
         use_global_template: cUseGlobalTemplate,
         use_company_kb: cUseCompanyKb,
         analyze_website: cAnalyzeWebsite,
+        max_services: cMaxServices,
       });
       showToast("✓ Autopilot Campaign launched successfully!");
       setShowCreateModal(false);
@@ -590,6 +592,11 @@ export default function AutopilotPage() {
                           <Sparkles className="w-3 h-3" /> Social & Demo Pitch
                         </span>
                       )}
+                      <span className="text-slate-600">•</span>
+                      <span className="text-[10px] text-purple-400 font-medium flex items-center gap-1">
+                        <Briefcase className="w-3 h-3" />
+                        {camp.max_services && camp.max_services > 0 ? `${camp.max_services} Service Cards` : "Auto Pitch Cards"}
+                      </span>
                     </div>
                   </div>
                   <span
@@ -1206,6 +1213,74 @@ export default function AutopilotPage() {
                     <span className="text-sky-300 font-medium flex items-center gap-1">
                       <Sparkles className="w-3.5 h-3.5 shrink-0 text-sky-400" />
                       OFF (Recommended): Social Media & Demo Focus — Skips website scraping if phone/email is found. Pitches Company KB solutions & live software demos without website complaining.
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <Briefcase className="w-4 h-4 text-purple-400" />
+                    <span>Service Pitch Cards</span>
+                  </label>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setCMaxServices(0)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                        cMaxServices === 0
+                          ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/30 ring-2 ring-purple-400"
+                          : "bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800"
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+                      <span>Auto (LLM Self)</span>
+                    </button>
+                    {[1, 2, 3, 4, 5].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setCMaxServices(num)}
+                        className={`w-8 h-8 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                          cMaxServices === num
+                            ? "bg-purple-500 text-white shadow-md shadow-purple-500/30 ring-2 ring-purple-400"
+                            : "bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800"
+                        }`}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                    <div className="flex items-center gap-1.5 ml-1 bg-slate-900 px-2 py-1 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-400 font-mono">Custom:</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={cMaxServices > 0 ? cMaxServices : ""}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value);
+                          if (!isNaN(val) && val >= 1 && val <= 10) {
+                            setCMaxServices(val);
+                          } else if (e.target.value === "") {
+                            setCMaxServices(0);
+                          }
+                        }}
+                        placeholder="Auto"
+                        className="w-12 bg-transparent text-xs text-white text-center focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {cMaxServices === 0 ? (
+                    <span className="text-purple-300 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                      <span><strong>LLM Self-Decide (Auto):</strong> AI will autonomously analyze target industry bottlenecks and decide the optimal 2 to 4 highest-converting service cards.</span>
+                    </span>
+                  ) : (
+                    <span>
+                      Manual limit active: generating or pulling exactly <strong className="text-purple-300">{cMaxServices} {cMaxServices === 1 ? "service card" : "service cards"}</strong> (max 5-10 cards).
                     </span>
                   )}
                 </p>

@@ -1442,6 +1442,7 @@ export interface AutopilotCampaign {
   use_global_template?: boolean;
   use_company_kb?: boolean;
   analyze_website?: boolean;
+  max_services?: number;
   is_active: boolean;
   status: "IDLE" | "RUNNING" | "PAUSED" | "COMPLETED";
   current_city_index: number;
@@ -1499,6 +1500,7 @@ export async function createAutopilotCampaign(data: {
   use_global_template?: boolean;
   use_company_kb?: boolean;
   analyze_website?: boolean;
+  max_services?: number;
 }): Promise<AutopilotCampaign> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
