@@ -1440,6 +1440,8 @@ export interface AutopilotCampaign {
   is_unlimited_leads: boolean;
   auto_mail_enabled: boolean;
   use_global_template?: boolean;
+  use_company_kb?: boolean;
+  analyze_website?: boolean;
   is_active: boolean;
   status: "IDLE" | "RUNNING" | "PAUSED" | "COMPLETED";
   current_city_index: number;
@@ -1496,6 +1498,7 @@ export async function createAutopilotCampaign(data: {
   auto_mail_enabled: boolean;
   use_global_template?: boolean;
   use_company_kb?: boolean;
+  analyze_website?: boolean;
 }): Promise<AutopilotCampaign> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };

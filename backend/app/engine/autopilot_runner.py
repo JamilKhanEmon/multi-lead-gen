@@ -297,10 +297,13 @@ class AutopilotRunner:
                         email_status = "NOT_FOUND"
                         verify_note = "No public email address found — queued for review"
 
+                    analyze_web = bool(getattr(campaign, "analyze_website", False))
+
                     metadata_payload = {
                         "source": "autopilot_deep_intelligence",
                         "city": target_city_clean,
                         "keyword": target_keyword,
+                        "analyze_website": analyze_web,
                         "google_maps_url": cand.get("google_maps_url"),
                         "google_search_url": cand.get("google_search_url"),
                         "detected_weaknesses": detected_weaknesses
@@ -318,7 +321,7 @@ class AutopilotRunner:
                         metadata_json=metadata_payload,
                         company_kb=kb_dict,
                         use_company_kb=use_kb,
-                        analyze_website=metadata_payload.get("analyze_website", False),
+                        analyze_website=analyze_web,
                     )
 
                     fit_tier = gate_eval["fit_tier"]

@@ -29,6 +29,7 @@ class CampaignCreate(BaseModel):
     auto_mail_enabled: bool = Field(default=True)
     use_global_template: bool = Field(default=True)
     use_company_kb: bool = Field(default=True)
+    analyze_website: bool = Field(default=False)
 
 class CampaignUpdate(BaseModel):
     name: Optional[str] = None
@@ -41,6 +42,7 @@ class CampaignUpdate(BaseModel):
     auto_mail_enabled: Optional[bool] = None
     use_global_template: Optional[bool] = None
     use_company_kb: Optional[bool] = None
+    analyze_website: Optional[bool] = None
     is_active: Optional[bool] = None
 
 class VerifyEmailRequest(BaseModel):
@@ -111,6 +113,7 @@ async def create_campaign(
         auto_mail_enabled=data.auto_mail_enabled,
         use_global_template=data.use_global_template,
         use_company_kb=data.use_company_kb,
+        analyze_website=data.analyze_website,
         is_active=True,
         status="IDLE",
         created_by_user_id=current_user.id if current_user else None

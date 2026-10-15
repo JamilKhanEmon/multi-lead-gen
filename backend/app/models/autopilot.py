@@ -20,6 +20,7 @@ class AutopilotCampaign(Base, UUIDMixin, TimestampMixin):
     auto_mail_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     use_global_template: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     use_company_kb: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    analyze_website: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     
     status: Mapped[str] = mapped_column(String(50), default="IDLE", nullable=False, index=True)
