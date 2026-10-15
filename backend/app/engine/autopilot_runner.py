@@ -213,25 +213,48 @@ class AutopilotRunner:
                         except Exception as e:
                             logger.warning(f"[AUTOPILOT DEEP AUDIT FAIL] Audit error for {c_dom}: {e}")
 
-                    if not c_dom or not resolved_email:
-                        try:
-                            deep_hunt = await LiveResearchEngine.enrich_contact_from_web(c_name, f"{target_city_clean}, {campaign.country}")
-                            if deep_hunt.get("domain") and not c_dom:
-                                c_dom = deep_hunt["domain"]
-                                if not audit_res:
-                                    audit_res = await LiveResearchEngine.audit_website(
-                                        url=f"https://{c_dom}",
-                                        canonical_name=c_name,
-                                        location=target_city_clean
-                                    )
-                            if deep_hunt.get("phone") and not c_phone:
-                                c_phone = deep_hunt["phone"]
-                            if deep_hunt.get("email") and not resolved_email:
-                                resolved_email = deep_hunt["email"]
-                        except Exception as e:
-                            logger.debug(f"[AUTOPILOT DEEP HUNT FAIL] Contact hunt error for {c_name}: {e}")
+                    # Always execute multi-source deep hunt (Facebook, Maps, Web Directories, YellowPages)
+                    deep_hunt = {}
+                    try:
+                        deep_hunt = await LiveResearchEngine.enrich_contact_from_web(c_name, f"{target_city_clean}, {campaign.country}")
+                        if deep_hunt.get("domain") and not c_dom:
+                            c_dom = deep_hunt["domain"]
+                            if not audit_res:
+                                audit_res = await LiveResearchEngine.audit_website(
+                                    url=f"https://{c_dom}",
+                                    canonical_name=c_name,
+                                    location=target_city_clean
+                                )
+                    except Exception as e:
+                        logger.debug(f"[AUTOPILOT DEEP HUNT FAIL] Contact hunt error for {c_name}: {e}")
 
-                    if not resolved_email and c_dom and not DeduplicationEngine.is_generic_platform(c_dom):
+                    # Multi-Source Contact Cross-Verification & Majority Vote Consensus (EvidenceEngine)
+                    from app.engine.evidence_engine import EvidenceEngine
+                    discovery_contact = {"phone": c_phone, "email": c_email, "address": cand.get("address")}
+                    website_contact = {
+                        "extracted_phone": audit_res.get("extracted_phone"),
+                        "extracted_email": audit_res.get("extracted_email"),
+                        "extracted_address": audit_res.get("extracted_address"),
+                        "has_whatsapp": audit_res.get("has_whatsapp", False),
+                    }
+                    social_contact = {
+                        "phone": deep_hunt.get("phone"),
+                        "whatsapp_phone": deep_hunt.get("whatsapp_phone"),
+                        "email": deep_hunt.get("email"),
+                        "address": deep_hunt.get("address"),
+                        "source_url": deep_hunt.get("facebook_url") or audit_res.get("facebook_url"),
+                    }
+                    contact_consensus = EvidenceEngine.resolve_contact_consensus(
+                        discovery_contact=discovery_contact,
+                        website_contact=website_contact,
+                        social_contact=social_contact,
+                        target_domain=c_dom,
+                    )
+                    if contact_consensus.get("primary_phone"):
+                        c_phone = contact_consensus["primary_phone"]
+                    if contact_consensus.get("primary_email"):
+                        resolved_email = contact_consensus["primary_email"]
+                    elif not resolved_email and c_dom and not DeduplicationEngine.is_generic_platform(c_dom):
                         resolved_email = f"info@{c_dom}"
 
                     b_type = cand.get("business_type") or "commercial"
@@ -306,6 +329,9 @@ class AutopilotRunner:
                         "analyze_website": analyze_web,
                         "google_maps_url": cand.get("google_maps_url"),
                         "google_search_url": cand.get("google_search_url"),
+                        "contact_consensus": contact_consensus,
+                        "secondary_phone": contact_consensus.get("secondary_phone"),
+                        "whatsapp_phone": contact_consensus.get("whatsapp_phone"),
                         "detected_weaknesses": detected_weaknesses
                     }
 
