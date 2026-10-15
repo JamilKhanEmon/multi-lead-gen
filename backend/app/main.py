@@ -334,6 +334,55 @@ async def autonomous_log_cleanup_daemon():
             logger.debug(f"[STORAGE OPTIMIZER] Cycle note: {e}")
             await asyncio.sleep(3600)
 
+async def autonomous_autopilot_daemon():
+    """
+    Autonomous 24/7 Autopilot Loop:
+    Periodically checks active Autopilot campaigns. If an active campaign hasn't
+    run in the last 24 hours (or has never run), it triggers a batch run.
+    """
+    from app.db.session import AsyncSessionLocal
+    from app.models.autopilot import AutopilotCampaign
+    from app.engine.autopilot_runner import AutopilotRunner
+    from sqlalchemy import select
+    from datetime import datetime, timezone, timedelta
+
+    logger.info("Started Autonomous 24/7 Autopilot Campaign Background Daemon.")
+    await asyncio.sleep(30)
+
+    while True:
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(AutopilotCampaign).where(AutopilotCampaign.is_active == True)
+                res = await session.execute(stmt)
+                active_campaigns = res.scalars().all()
+
+                now = datetime.now(timezone.utc)
+                for campaign in active_campaigns:
+                    if campaign.status == "RUNNING":
+                        continue
+
+                    should_run = False
+                    if not campaign.last_run_at:
+                        should_run = True
+                    else:
+                        time_since_run = now - campaign.last_run_at
+                        if time_since_run >= timedelta(hours=24):
+                            should_run = True
+
+                    if should_run:
+                        logger.info(f"[AUTOPILOT DAEMON] Triggering scheduled autonomous cycle for '{campaign.name}' (ID: {campaign.id})")
+                        try:
+                            await AutopilotRunner.run_campaign_batch(session, campaign)
+                        except Exception as c_err:
+                            logger.error(f"[AUTOPILOT DAEMON] Error running campaign '{campaign.name}': {c_err}")
+
+            await asyncio.sleep(900)  # Check every 15 minutes
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning(f"[AUTOPILOT DAEMON] Cycle warning: {e}. Retrying in 5 minutes...")
+            await asyncio.sleep(300)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} [{settings.ENVIRONMENT}]")
@@ -372,6 +421,7 @@ async def lifespan(app: FastAPI):
                 
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_global_template BOOLEAN DEFAULT TRUE;"))
                 await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
+                await conn.execute(text("ALTER TABLE autopilot_campaigns ADD COLUMN IF NOT EXISTS analyze_website BOOLEAN DEFAULT FALSE;"))
                 await conn.execute(text("ALTER TABLE research_runs ADD COLUMN IF NOT EXISTS use_company_kb BOOLEAN DEFAULT TRUE;"))
                 await conn.execute(text("ALTER TABLE company_kb ADD COLUMN IF NOT EXISTS master_kb_notes TEXT;"))
                 
@@ -409,11 +459,13 @@ async def lifespan(app: FastAPI):
     outreach_daemon_task = asyncio.create_task(autonomous_outreach_scheduler())
     imap_sync_task = asyncio.create_task(autonomous_imap_sync_loop())
     log_cleanup_task = asyncio.create_task(autonomous_log_cleanup_daemon())
+    autopilot_daemon_task = asyncio.create_task(autonomous_autopilot_daemon())
     yield
     listener_task.cancel()
     outreach_daemon_task.cancel()
     imap_sync_task.cancel()
     log_cleanup_task.cancel()
+    autopilot_daemon_task.cancel()
     logger.info("Shutdown complete.")
 
 app = FastAPI(

@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 import re
 import urllib.parse
@@ -15,6 +16,7 @@ from app.engine.email_verifier import EmailVerifier
 from app.engine.outreach_engine import OutreachEngine
 from app.services.openclaw_client import LiveResearchEngine
 from app.engine.deduplication import DeduplicationEngine
+from app.engine.discovery_optimizer import DiscoveryOptimizer
 from app.engine.fit_gate import FitGateEngine, is_appointment_niche
 
 class AutopilotRunner:
@@ -73,16 +75,29 @@ class AutopilotRunner:
                 effective_batch = campaign.batch_size
             else:
                 effective_batch = batch_size
-        sub_cities = campaign.sub_cities or ([campaign.country] if campaign.country else [""])
+
+        # Resolve target sub-cities dynamically if none provided (Zero hardcoding!)
+        raw_sub_cities = campaign.sub_cities or []
+        sub_cities = [str(c).strip() for c in raw_sub_cities if str(c).strip()]
+        if not sub_cities and campaign.country:
+            logger.info(f"[AUTOPILOT] No sub-cities specified. Dynamically expanding '{campaign.country}' into commercial hub cities...")
+            sub_cities = await DiscoveryOptimizer.get_country_commercial_cities(campaign.country, limit=50)
+            if sub_cities:
+                campaign.sub_cities = sub_cities
+                await db.commit()
+
         if not sub_cities:
             sub_cities = [campaign.country] if campaign.country else [""]
 
-        keywords = campaign.keywords or ["Business"]
-        target_keyword = keywords[0] if keywords else "Business"
+        # Multi-keywords support
+        raw_keywords = campaign.keywords or ["Business"]
+        keywords = [str(k).strip() for k in raw_keywords if str(k).strip()]
+        if not keywords:
+            keywords = ["Business"]
 
         mode_desc = "UNLIMITED" if effective_batch <= 0 else f"Target Limit: {effective_batch}"
         logger.info(
-            f"[AUTOPILOT 1-CLICK RUN] Campaign '{campaign.name}' ({mode_desc}) executing for ALL Sub-Cities: {sub_cities} | Keyword: '{target_keyword}'"
+            f"[AUTOPILOT RUN] Campaign '{campaign.name}' ({mode_desc}) executing across {len(sub_cities)} Sub-Cities | Keywords ({len(keywords)}): {keywords}"
         )
 
         campaign.status = "RUNNING"
@@ -104,31 +119,43 @@ class AutopilotRunner:
         total_skipped_duplicates = 0
         total_dispatched_count = 0
 
+        # Search across all keyword and city combinations
+        search_pairs = [(kw, city) for kw in keywords for city in sub_cities]
+
         try:
-            for target_city in sub_cities:
+            for target_keyword, target_city in search_pairs:
                 target_city_clean = target_city.strip()
                 if not target_city_clean:
                     continue
 
-                logger.info(f"[AUTOPILOT] Querying real businesses for '{target_keyword}' in sub-city: '{target_city_clean}'")
+                if effective_batch > 0 and len(all_added_leads) >= effective_batch:
+                    logger.info(f"[AUTOPILOT TARGET REACHED] Satisfied batch quota with {len(all_added_leads)} verified leads.")
+                    break
 
+                logger.info(f"[AUTOPILOT] Querying real businesses for '{target_keyword}' in city: '{target_city_clean}' ({campaign.country})")
+
+                discovered_candidates = []
                 try:
                     discovery_res = await LiveResearchEngine.discover_businesses(
                         industry=target_keyword,
                         country=campaign.country,
                         city=target_city_clean,
                         sub_city=target_city_clean,
-                        company_limit=effective_batch
+                        company_limit=max(15, (effective_batch - len(all_added_leads)) if effective_batch > 0 else 50)
                     )
                     discovered_candidates = discovery_res.get("discovered_companies", [])
                 except Exception as e:
-                    logger.warning(f"[AUTOPILOT] Discovery failed for {target_city_clean}: {e}")
-                    discovered_candidates = []
+                    logger.warning(f"[AUTOPILOT DISCOVERY RESILIENCE] Discovery note for '{target_keyword}' in {target_city_clean}: {e}. Retrying next target...")
+                    await asyncio.sleep(2)
+                    continue
 
                 use_kb = getattr(campaign, "use_company_kb", True)
                 kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
 
                 for cand in discovered_candidates:
+                    if effective_batch > 0 and len(all_added_leads) >= effective_batch:
+                        break
+
                     c_name = (cand.get("canonical_name") or "").strip()
                     c_dom = (cand.get("domain") or "").strip().lower()
                     c_phone = (cand.get("phone") or "").strip()
@@ -153,7 +180,7 @@ class AutopilotRunner:
                     if (c_name_l in generic_names or len(c_name) < 4) and c_dom:
                         clean_brand = c_dom.split(".")[0].replace("-", " ").replace("_", " ")
                         clean_brand = re.sub(r'bd$', '', clean_brand, flags=re.IGNORECASE).strip()
-                        c_name = f"{clean_brand.title()} Real Estate" if "real" not in clean_brand.lower() else clean_brand.title()
+                        c_name = f"{clean_brand.title()} {target_keyword.title()}"
 
                     is_dup = await cls.is_duplicate_business(
                         db=db,
@@ -270,10 +297,13 @@ class AutopilotRunner:
                         email_status = "NOT_FOUND"
                         verify_note = "No public email address found — queued for review"
 
+                    analyze_web = bool(getattr(campaign, "analyze_website", False))
+
                     metadata_payload = {
                         "source": "autopilot_deep_intelligence",
                         "city": target_city_clean,
                         "keyword": target_keyword,
+                        "analyze_website": analyze_web,
                         "google_maps_url": cand.get("google_maps_url"),
                         "google_search_url": cand.get("google_search_url"),
                         "detected_weaknesses": detected_weaknesses
@@ -291,7 +321,7 @@ class AutopilotRunner:
                         metadata_json=metadata_payload,
                         company_kb=kb_dict,
                         use_company_kb=use_kb,
-                        analyze_website=metadata_payload.get("analyze_website", False),
+                        analyze_website=analyze_web,
                     )
 
                     fit_tier = gate_eval["fit_tier"]
@@ -304,10 +334,10 @@ class AutopilotRunner:
                     final_lead_score = gate_eval["fit_score"]
                     is_qualified = True
 
-                    why_they_need_us = gate_eval["why_they_need_us"]
-                    what_they_need = gate_eval["what_they_need"]
-                    matched_service = gate_eval["matched_service"]
-                    discovery_call_script = gate_eval["discovery_call_script"]
+                    why_they_need_us = gate_eval.get("why_they_need_us", "")
+                    what_they_need = gate_eval.get("what_they_need", "")
+                    matched_service = gate_eval.get("matched_service", "")
+                    discovery_call_script = gate_eval.get("discovery_call_script", None)
 
                     lead_primary_gap = " • ".join(gate_eval["verified_gaps"][:2]) if gate_eval.get("verified_gaps") else primary_gap
 
@@ -458,7 +488,6 @@ class AutopilotRunner:
                     await db.commit()
 
                     if effective_batch > 0 and len(all_added_leads) >= effective_batch:
-                        logger.info(f"[AUTOPILOT BATCH COMPLETE] Satisfied batch quota with {len(all_added_leads)} verified email leads.")
                         break
 
                 if effective_batch > 0 and len(all_added_leads) >= effective_batch:

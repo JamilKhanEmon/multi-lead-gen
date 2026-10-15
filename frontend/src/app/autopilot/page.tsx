@@ -19,6 +19,7 @@ import {
   Clock,
   MapPin,
   ExternalLink,
+  Globe2,
   MessageSquare,
   Phone,
   PhoneCall,
@@ -81,6 +82,7 @@ export default function AutopilotPage() {
   const [cAutoMail, setCAutoMail] = useState(true);
   const [cUseGlobalTemplate, setCUseGlobalTemplate] = useState(false);
   const [cUseCompanyKb, setCUseCompanyKb] = useState(true);
+  const [cAnalyzeWebsite, setCAnalyzeWebsite] = useState(false);
   const [creatingCampaign, setCreatingCampaign] = useState(false);
   const [runningBatchId, setRunningBatchId] = useState<string | null>(null);
 
@@ -169,6 +171,7 @@ export default function AutopilotPage() {
         auto_mail_enabled: cAutoMail,
         use_global_template: cUseGlobalTemplate,
         use_company_kb: cUseCompanyKb,
+        analyze_website: cAnalyzeWebsite,
       });
       showToast("✓ Autopilot Campaign launched successfully!");
       setShowCreateModal(false);
@@ -306,19 +309,22 @@ export default function AutopilotPage() {
 
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20">
-              <Zap className="w-5 h-5 fill-current" />
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-500/20 via-sky-500/10 to-indigo-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400 shadow-lg shadow-sky-500/10 shrink-0">
+              <Zap className="w-5 h-5 fill-sky-400/20 text-sky-400" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
-                <span>Autonomous Cold Email & Autopilot Engine</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold uppercase">
-                  Continuous Autopilot
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                  Autonomous Cold Email & Autopilot Engine
+                </h1>
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold tracking-wide uppercase whitespace-nowrap shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  24/7 Autopilot Active
                 </span>
-              </h1>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Multi-zone discovery, de-duplication shield, zero-bounce verification, and anti-spam drip outreach.
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Continuous country-wide discovery, deep AI audits, zero-bounce verification, and safe drip outreach.
               </p>
             </div>
           </div>
@@ -511,9 +517,21 @@ export default function AutopilotPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-bold text-white">{camp.name}</h3>
-                    <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                      <MapPin className="w-3 h-3 text-sky-400" />
-                      <span>{camp.country}</span>
+                    <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                      <div className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-sky-400" />
+                        <span>{camp.country}</span>
+                      </div>
+                      <span className="text-slate-600">•</span>
+                      {camp.analyze_website ? (
+                        <span className="text-[10px] text-pink-400 font-medium flex items-center gap-1">
+                          <Globe2 className="w-3 h-3" /> Full Web Audit
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-sky-400 font-medium flex items-center gap-1">
+                          <Sparkles className="w-3 h-3" /> Social & Demo Pitch
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span
@@ -529,12 +547,32 @@ export default function AutopilotPage() {
                   </span>
                 </div>
 
+                {camp.keywords && camp.keywords.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                      <span className="uppercase">Target Keywords ({camp.keywords.length}):</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {camp.keywords.map((kw) => (
+                        <span
+                          key={kw}
+                          className="text-[10px] px-2 py-0.5 rounded-md font-mono bg-purple-500/10 text-purple-300 border border-purple-500/30 font-medium"
+                        >
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
                     <span className="uppercase">Target Sub-Locations ({camp.sub_cities?.length || 0}):</span>
-                    <span className="text-emerald-400 font-semibold text-[10px]">1-Click Scans All</span>
+                    <span className="text-emerald-400 font-semibold text-[10px]">
+                      {camp.sub_cities?.length && camp.sub_cities.length > 20 ? "AI Nationwide Scan" : "1-Click Scans All"}
+                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
                     {camp.sub_cities?.map((sc) => (
                       <span
                         key={sc}
@@ -803,12 +841,12 @@ export default function AutopilotPage() {
 
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Target Business Keywords / Topics (comma-separated)
+                  Target Business Keywords (Enter 5-10 comma-separated keywords)
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Software Agency, Dental Clinic, Real Estate"
+                  placeholder="e.g. Dental Clinic, Dentist, Orthodontist, Oral Surgery, Teeth Whitening"
                   value={cKeywords}
                   onChange={(e) => setCKeywords(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-sky-500"
@@ -817,12 +855,12 @@ export default function AutopilotPage() {
 
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Target Country
+                  Target Country (Full Country-Wide Discovery)
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Bangladesh"
+                  placeholder="e.g. United States, Bangladesh, United Arab Emirates, United Kingdom"
                   value={cCountry}
                   onChange={(e) => setCCountry(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-sky-500"
@@ -830,9 +868,14 @@ export default function AutopilotPage() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Sub-Cities & Areas (Type area and press Enter)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Sub-Cities & Areas
+                  </label>
+                  <span className="text-[10px] text-emerald-400 font-medium">
+                    Optional — Leave empty to auto-scan all commercial cities
+                  </span>
+                </div>
                 <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-xl bg-slate-950 border border-slate-800 min-h-[46px]">
                   {cSubCities.map((sc) => (
                     <span
@@ -851,7 +894,7 @@ export default function AutopilotPage() {
                   ))}
                   <input
                     type="text"
-                    placeholder={cSubCities.length === 0 ? "Type city & press Enter..." : "Add more..."}
+                    placeholder={cSubCities.length === 0 ? "Leave empty for whole country, or type city & press Enter..." : "Add more..."}
                     value={subCityInput}
                     onChange={(e) => setSubCityInput(e.target.value)}
                     onKeyDown={handleAddSubCity}
@@ -863,12 +906,12 @@ export default function AutopilotPage() {
               <div className="grid grid-cols-2 gap-4 items-center pt-2">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">
-                    Daily Lead Target
+                    Lead Target Limit (Runs non-stop until reached)
                   </label>
                   <input
                     type="number"
                     min="10"
-                    max="1000"
+                    max="10000"
                     disabled={cUnlimited}
                     value={cDailyLimit}
                     onChange={(e) => setCDailyLimit(Number(e.target.value))}
@@ -946,6 +989,35 @@ export default function AutopilotPage() {
                   checked={cUseCompanyKb}
                   onChange={(e) => setCUseCompanyKb(e.target.checked)}
                   className="w-5 h-5 rounded text-purple-500 bg-slate-900 border-slate-700 cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Globe2 className="w-4 h-4 text-pink-400" />
+                    <span className="text-xs font-semibold text-white block">Deep Website Technical Audit</span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                        cAnalyzeWebsite
+                          ? "bg-pink-500/10 text-pink-400 border-pink-500/20"
+                          : "bg-sky-500/10 text-sky-400 border-sky-500/20"
+                      }`}
+                    >
+                      {cAnalyzeWebsite ? "Full Code & Pixel Audit" : "Social & Demo Mode (Recommended)"}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-400 block mt-0.5">
+                    {cAnalyzeWebsite
+                      ? "ON: Scrapes complete website code, mobile layout breaks, GA4/Pixel tracking, and broken link 404s"
+                      : "OFF (Recommended): Scans social presence & phone/WhatsApp/email. Pitches software demos without rejecting businesses lacking websites"}
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={cAnalyzeWebsite}
+                  onChange={(e) => setCAnalyzeWebsite(e.target.checked)}
+                  className="w-5 h-5 rounded text-pink-500 bg-slate-900 border-slate-700 cursor-pointer"
                 />
               </div>
 

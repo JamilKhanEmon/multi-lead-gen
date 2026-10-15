@@ -9,7 +9,11 @@ from app.core.config import settings
 from app.core.logging import logger
 from app.services.openclaw_client import OpenClawClient
 from app.services.ai_client import AIClient
-from app.workers.tasks import handle_discover_businesses, handle_research_and_qualify
+from app.workers.tasks import (
+    handle_discover_businesses,
+    handle_research_and_qualify,
+    handle_autopilot_campaign_run,
+)
 
 BACKOFF_STEPS = [2, 4, 8, 16, 32]
 
@@ -66,6 +70,8 @@ class WorkerRunner:
                         await handle_discover_businesses(task_data, self.openclaw_client)
                     elif task_type in ("research_and_qualify", "website_research"):
                         await handle_research_and_qualify(task_data, self.openclaw_client, self.ai_client)
+                    elif task_type == "autopilot_campaign_run":
+                        await handle_autopilot_campaign_run(task_data)
                     else:
                         logger.warning(f"Unrecognized task type: {task_type}")
 
