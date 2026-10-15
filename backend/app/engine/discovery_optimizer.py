@@ -12,19 +12,20 @@ class DiscoveryOptimizer:
     ]
 
     @classmethod
-    async def get_country_commercial_cities(cls, country: str, limit: int = 15) -> List[str]:
+    async def get_country_commercial_cities(cls, country: str, limit: int = 50) -> List[str]:
         clean_country = country.strip()
         if not clean_country:
             return []
 
         try:
-            ai = AIClient(timeout=8.0)
+            ai = AIClient(timeout=12.0)
             system_prompt = (
                 "You are a global geographic business intelligence system.\n"
-                "Given any country, return a JSON list of the top commercial, economic, and business hub cities or regions in that country for B2B company discovery.\n"
+                "Given any country, return a comprehensive JSON list of all major commercial, economic, and business hub cities, "
+                "metropolitan areas, and regional commercial districts across all states/provinces/divisions in that country for nationwide B2B lead discovery.\n"
                 "Return pure JSON with key 'cities': ['City1', 'City2', ...]."
             )
-            user_prompt = f"Country: {clean_country}\nReturn top {limit} commercial hub cities."
+            user_prompt = f"Country: {clean_country}\nReturn up to {limit} major commercial hub cities and regional business centers covering the whole country."
             result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
             if isinstance(result, dict) and "cities" in result and isinstance(result["cities"], list):
                 valid_cities = [str(c).strip() for c in result["cities"] if str(c).strip()]

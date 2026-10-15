@@ -81,7 +81,7 @@ class AutopilotRunner:
         sub_cities = [str(c).strip() for c in raw_sub_cities if str(c).strip()]
         if not sub_cities and campaign.country:
             logger.info(f"[AUTOPILOT] No sub-cities specified. Dynamically expanding '{campaign.country}' into commercial hub cities...")
-            sub_cities = await DiscoveryOptimizer.get_country_commercial_cities(campaign.country, limit=20)
+            sub_cities = await DiscoveryOptimizer.get_country_commercial_cities(campaign.country, limit=50)
             if sub_cities:
                 campaign.sub_cities = sub_cities
                 await db.commit()
