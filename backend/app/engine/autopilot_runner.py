@@ -79,11 +79,12 @@ class AutopilotRunner:
         # Resolve target sub-cities dynamically if none provided (Zero hardcoding!)
         raw_sub_cities = campaign.sub_cities or []
         sub_cities = [str(c).strip() for c in raw_sub_cities if str(c).strip()]
-        if not sub_cities and campaign.country:
-            logger.info(f"[AUTOPILOT] No sub-cities specified. Dynamically expanding '{campaign.country}' into commercial hub cities...")
-            sub_cities = await DiscoveryOptimizer.get_country_commercial_cities(campaign.country, limit=50)
-            if sub_cities:
-                campaign.sub_cities = sub_cities
+        if (not sub_cities or sub_cities == ["Dhaka"] or (len(sub_cities) == 1 and sub_cities[0].strip().lower() in ["dhaka", "all", ""])) and campaign.country:
+            logger.info(f"[AUTOPILOT] Dynamic expansion: Expanding '{campaign.country}' into commercial hub cities...")
+            expanded = await DiscoveryOptimizer.get_country_commercial_cities(campaign.country, limit=50)
+            if expanded:
+                sub_cities = expanded
+                campaign.sub_cities = expanded
                 await db.commit()
 
         if not sub_cities:

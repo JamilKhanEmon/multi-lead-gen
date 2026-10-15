@@ -94,6 +94,31 @@ async def list_campaigns(
     stmt = select(AutopilotCampaign).order_by(desc(AutopilotCampaign.created_at))
     res = await db.execute(stmt)
     campaigns = res.scalars().all()
+
+    now = datetime.now(timezone.utc)
+    healed = False
+    for c in campaigns:
+        # Auto-expand if legacy sub_cities is only ["Dhaka"] or empty and country is set
+        raw_subs = list(c.sub_cities or [])
+        if (not raw_subs or raw_subs == ["Dhaka"] or (len(raw_subs) == 1 and raw_subs[0].strip().lower() in ["dhaka", "all", ""])) and c.country:
+            from app.engine.discovery_optimizer import DiscoveryOptimizer
+            expanded = await DiscoveryOptimizer.get_country_commercial_cities(c.country, limit=50)
+            if expanded:
+                c.sub_cities = expanded
+                healed = True
+
+        if c.status == "RUNNING":
+            # Auto-reset if campaign is paused OR if it has been RUNNING for > 5 mins
+            is_stale = not c.last_run_at or (now - c.last_run_at).total_seconds() > 300
+            if not c.is_active or is_stale:
+                c.status = "IDLE"
+                healed = True
+    if healed:
+        try:
+            await db.commit()
+        except Exception:
+            pass
+
     return campaigns
 
 @router.post("/campaigns", status_code=status.HTTP_201_CREATED)
@@ -103,11 +128,21 @@ async def create_campaign(
     current_user: User = Depends(get_current_user)
 ):
     check_autopilot_permission(current_user, "can_create_autopilot_campaigns")
+    
+    sub_cities = list(data.sub_cities or [])
+    # If sub_cities was defaulted to ["Dhaka"] by old frontend or left empty, expand to 50 nationwide cities
+    if not sub_cities or sub_cities == ["Dhaka"] or (len(sub_cities) == 1 and sub_cities[0].strip().lower() in ["dhaka", "all", ""]):
+        if data.country:
+            from app.engine.discovery_optimizer import DiscoveryOptimizer
+            expanded = await DiscoveryOptimizer.get_country_commercial_cities(data.country, limit=50)
+            if expanded:
+                sub_cities = expanded
+
     campaign = AutopilotCampaign(
         name=data.name,
         keywords=data.keywords,
         country=data.country,
-        sub_cities=data.sub_cities,
+        sub_cities=sub_cities,
         daily_lead_limit=data.daily_lead_limit,
         daily_email_limit=data.daily_email_limit,
         is_unlimited_leads=data.is_unlimited_leads,
@@ -175,7 +210,16 @@ async def trigger_campaign_run(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
 
+    # If sub_cities is only Dhaka or empty, dynamically expand to 50 nationwide commercial cities
+    raw_sub_cities = list(campaign.sub_cities or [])
+    if (not raw_sub_cities or raw_sub_cities == ["Dhaka"] or (len(raw_sub_cities) == 1 and raw_sub_cities[0].strip().lower() in ["dhaka", "all", ""])) and campaign.country:
+        from app.engine.discovery_optimizer import DiscoveryOptimizer
+        expanded = await DiscoveryOptimizer.get_country_commercial_cities(campaign.country, limit=50)
+        if expanded:
+            campaign.sub_cities = expanded
+
     campaign.status = "RUNNING"
+    campaign.last_run_at = datetime.now(timezone.utc)
     await db.commit()
 
     enqueued = False

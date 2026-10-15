@@ -11,11 +11,17 @@ class DiscoveryOptimizer:
         "yellowpages", "review platform", "aggregator"
     ]
 
+    _city_cache: Dict[str, List[str]] = {}
+
     @classmethod
     async def get_country_commercial_cities(cls, country: str, limit: int = 50) -> List[str]:
         clean_country = country.strip()
         if not clean_country:
             return []
+
+        cache_key = f"{clean_country.lower()}_{limit}"
+        if cache_key in cls._city_cache:
+            return cls._city_cache[cache_key]
 
         try:
             ai = AIClient(timeout=12.0)
@@ -31,11 +37,14 @@ class DiscoveryOptimizer:
                 valid_cities = [str(c).strip() for c in result["cities"] if str(c).strip()]
                 if valid_cities:
                     logger.info(f"DiscoveryOptimizer: Dynamically expanded country '{clean_country}' into {len(valid_cities)} commercial cities.")
+                    cls._city_cache[cache_key] = valid_cities[:limit]
                     return valid_cities[:limit]
         except Exception as e:
             logger.debug(f"DiscoveryOptimizer: Dynamic city expansion fallback: {e}")
 
-        return [clean_country]
+        fallback = [clean_country]
+        cls._city_cache[cache_key] = fallback
+        return fallback
 
     @classmethod
     async def optimize_search_plan(
