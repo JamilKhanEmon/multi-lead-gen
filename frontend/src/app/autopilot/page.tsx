@@ -547,12 +547,32 @@ export default function AutopilotPage() {
                   </span>
                 </div>
 
+                {camp.keywords && camp.keywords.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                      <span className="uppercase">Target Keywords ({camp.keywords.length}):</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {camp.keywords.map((kw) => (
+                        <span
+                          key={kw}
+                          className="text-[10px] px-2 py-0.5 rounded-md font-mono bg-purple-500/10 text-purple-300 border border-purple-500/30 font-medium"
+                        >
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-1">
                   <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
                     <span className="uppercase">Target Sub-Locations ({camp.sub_cities?.length || 0}):</span>
-                    <span className="text-emerald-400 font-semibold text-[10px]">1-Click Scans All</span>
+                    <span className="text-emerald-400 font-semibold text-[10px]">
+                      {camp.sub_cities?.length && camp.sub_cities.length > 20 ? "AI Nationwide Scan" : "1-Click Scans All"}
+                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
                     {camp.sub_cities?.map((sc) => (
                       <span
                         key={sc}
