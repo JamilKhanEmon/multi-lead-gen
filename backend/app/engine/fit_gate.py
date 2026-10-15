@@ -282,10 +282,27 @@ class FitGateEngine:
                     evidence_tags.append("LOCAL_DEMAND_AUTOMATION_FIT")
                     evidence_signals.append(f"High-demand local profile ({rating_val}★) lacking automated sales workflow (Proof: {gmaps_url})")
             else:
-                verified_gaps.append(f"Operating commercial entity in {city_clean} without an automated client intake or lead nurturing system.")
-                inferred_opportunities.append(f"Managing customer inquiries manually through phone calls leads to missed follow-ups and lost prospects during peak business hours.")
-                evidence_tags.append("MANUAL_OPERATION_BOTTLENECK")
-                evidence_signals.append(f"Manual customer intake bottleneck (Proof: {gmaps_url})")
+                # No Maps rating found, look strictly at real presence signals
+                if has_clean_domain:
+                    verified_gaps.append(f"Official web domain ({domain}) lacks direct appointment scheduling or interactive lead capture.")
+                    inferred_opportunities.append(f"Adding interactive booking on {domain} can directly convert visitors into clients.")
+                    evidence_tags.append("NO_ONLINE_BOOKING")
+                    evidence_signals.append(f"Website lacking instant booking channel (Domain: {domain})")
+                elif fb or ig:
+                    verified_gaps.append(f"Operating via social media without an official website or automated inquiry booking funnel.")
+                    inferred_opportunities.append("Reliance solely on social media messages creates manual bottlenecks during busy hours.")
+                    evidence_tags.append("NO_WEBSITE")
+                    evidence_signals.append("Operating without official website")
+                elif has_phone:
+                    verified_gaps.append(f"Customer acquisition relies exclusively on direct phone calls with no verified digital booking channel.")
+                    inferred_opportunities.append("Missing digital booking leaves inquiries unanswered after hours.")
+                    evidence_tags.append("MANUAL_PHONE_ONLY")
+                    evidence_signals.append("Customer acquisition phone-only")
+                else:
+                    verified_gaps.append(f"No verified official website or online inquiry portal found for {company_clean} in {city_clean}.")
+                    inferred_opportunities.append("Establishing an official digital presence will capture local online search traffic.")
+                    evidence_tags.append("NO_DIGITAL_PRESENCE")
+                    evidence_signals.append("No verified website found")
 
             # Social Media Channels & Direct Funnels
             if has_whatsapp is False:
@@ -321,6 +338,13 @@ class FitGateEngine:
             inferred_opportunities.append(f"Opportunity to expand client pipeline for {company_clean} through targeted Meta & video advertising and automated WhatsApp CRM.")
             evidence_tags.append("MARKETING_GROWTH_OPPORTUNITY")
 
+        DISALLOWED_SERVICE_HEADERS = {
+            "company overview", "overview", "company profile", "about us", "who we are", "about",
+            "introduction", "table of contents", "index", "mission", "vision", "services",
+            "our services", "core features", "features", "core modules", "modules", "key features",
+            "summary", "background", "company information", "profile"
+        }
+
         candidate_cards = DEFAULT_GENERIC_CATALOG
         if use_company_kb and company_kb:
             kb_services = company_kb.get("services_json")
@@ -339,8 +363,8 @@ class FitGateEngine:
                         else:
                             svc_title, svc_desc = line[:40], line
                         svc_clean = svc_title.strip()
-                        if svc_clean.lower() in ["core features", "features", "core modules", "modules", "overview", "key features"]:
-                            svc_clean = "Real Estate ERP & Growth Automation" if any(w in b_type for w in ["real estate", "property", "developer"]) else "Custom ERP & Workflow Suite"
+                        if svc_clean.lower().strip(" :-#*") in DISALLOWED_SERVICE_HEADERS or any(bad in svc_clean.lower() for bad in ["company overview", "table of contents"]):
+                            continue
                         virtual_cards.append({
                             "key": f"note_svc_{idx+1}",
                             "name": svc_clean,
@@ -366,6 +390,10 @@ class FitGateEngine:
         matched_service_wedge = best_card.get("wedge")
         matched_service_features = (best_card.get("features") or "").strip().rstrip(".")
         matched_solves = best_card.get("solves_problems")
+
+        # Guard against generic or header-matched names slipping through
+        if matched_service_name and matched_service_name.lower().strip(" :-#*") in DISALLOWED_SERVICE_HEADERS:
+            matched_service_name = None
 
         # Dynamic industry adaptation when Company KB is not yet populated
         if not matched_service_name:
@@ -402,8 +430,38 @@ class FitGateEngine:
         if not matched_solves:
             matched_solves = "operational friction and lead leakage"
 
-        primary_observation = verified_gaps[0] if verified_gaps else f"Inbound customer capture for {company_clean} relies on manual unautomated coordination."
-        primary_implication = inferred_opportunities[0] if inferred_opportunities else f"This suggests {company_clean} may be missing warm prospective client inquiries."
+        clean_gaps = [re.sub(r"\s*\[Proof Link:[^\]]*\]", "", str(g)).strip() for g in verified_gaps]
+        clean_gaps = [g for g in clean_gaps if g]
+        primary_observation = clean_gaps[0] if clean_gaps else f"Online client intake for {company_clean} relies on manual coordination without automated tracking."
+        primary_implication = inferred_opportunities[0] if inferred_opportunities else f"This suggests {company_clean} may be missing prospective client inquiries during peak hours."
+
+        b_type_clean = (b_type or "Business").replace("_", " ").title()
+        BN_INDUSTRY_MAP = {
+            "dental clinic": "ডেন্টাল ক্লিনিক",
+            "dentist": "ডেন্টিস্ট",
+            "dental": "ডেন্টাল প্র্যাকটিস",
+            "clinic": "মেডিকেল ক্লিনিক",
+            "hospital": "হাসপাতাল",
+            "doctor": "ডাক্তার ও চেম্বার",
+            "real estate": "রিয়েল এস্টেট",
+            "real estate agency": "রিয়েল এস্টেট এজেন্সি",
+            "property": "প্রপার্টি ও হাউজিং",
+            "developer": "রিয়েল এস্টেট ডেভেলপার",
+            "restaurant": "রেস্তোরাঁ",
+            "cafe": "ক্যাফে",
+            "supermarket": "সুপারমার্কেট",
+            "retail": "রিটেল শপ",
+            "store": "দোকান ও আউটলেট",
+            "school": "স্কুল ও একাডেমি",
+            "college": "কলেজ",
+            "academy": "শিক্ষা একাডেমি",
+            "salon": "সেলুন",
+            "parlor": "বিউটি পার্লার",
+            "gym": "জিম ও ফিটনেস সেন্টার",
+            "software company": "সফটওয়্যার কোম্পানি",
+            "agency": "এজেন্সি",
+        }
+        b_type_bn = BN_INDUSTRY_MAP.get(b_type.lower().replace("_", " ").strip(), b_type_clean)
 
         if analyze_website:
             why_they_need_us = (
@@ -443,14 +501,14 @@ class FitGateEngine:
             )
             bn_hook = (
                 f"আসসালামু আলাইকুম/হ্যালো, আমি কি {company_clean}-এর ওনার বা ম্যানেজমেন্ট টিমের সাথে কথা বলতে পারি? "
-                f"আপনাদের {city_clean or 'লোকাল'}-এ গুগল ম্যাপস ও কাস্টমার রেটিং পর্যালোচনা করে লক্ষ্য করলাম: {primary_observation}"
+                f"আপনাদের {city_clean or 'লোকাল'}-এ অনলাইন উপস্থিতি ও কাস্টমার রেটিং পর্যালোচনা করে লক্ষ্য করলাম: {primary_observation}"
             )
             bn_question = (
                 f"গুগল ম্যাপস বা সোশ্যাল মিডিয়া থেকে যখন প্রতিদিন নতুন কাস্টমাররা আপনাদের কল বা মেসেজ দেয়, "
                 f"আপনারা কি সেগুলো ম্যানুয়ালি হ্যান্ডেল করছেন নাকি কোনো স্বয়ংক্রিয় সিআরএম/সিস্টেম আছে যাতে কোনো কাস্টমার বা লিড মিস না হয়?"
             )
             bn_pitch = (
-                f"আমরা আপনাদের মতো {b_type or 'লোকাল'}-এর ব্যবসার জন্য একটি স্পেশালাইজড {matched_service_name} প্রস্তুত করেছি। "
+                f"আমরা আপনাদের মতো {b_type_bn}-এর ব্যবসার জন্য একটি স্পেশালাইজড {matched_service_name} সমাধান প্রস্তুত করেছি। "
                 f"কীভাবে প্রতিটি ইনকোয়ারি স্বয়ংক্রিয়ভাবে সেলসে রূপান্তর করা যায়—এই সপ্তাহে কি ৫ মিনিট সময় দিতে পারবেন লাইভ ডেমোটি দেখার জন্য?"
             )
 
@@ -554,3 +612,83 @@ class FitGateEngine:
             "evidence_tags": evidence_tags,
             "evidence_signals": evidence_signals,
         }
+
+    @classmethod
+    async def generate_dynamic_call_script(
+        cls,
+        company_name: str,
+        city: str,
+        industry: str,
+        verified_gaps: List[str],
+        matched_service: str,
+        ai_client: Optional[Any] = None,
+    ) -> Optional[str]:
+        """
+        Dynamically uses AIClient to generate a 100% custom, bespoke, non-templated
+        Sales Call Script referencing real audit gaps and genuine local context.
+        """
+        if not ai_client:
+            return None
+
+        clean_gaps = [re.sub(r"\s*\[Proof Link:[^\]]*\]", "", str(g)).strip() for g in verified_gaps if g]
+        gap_text = " • ".join(clean_gaps[:2]) if clean_gaps else "Operational inquiry tracking and client intake friction"
+        clean_ind = (industry or "Commercial Business").replace("_", " ").title()
+
+        system_prompt = (
+            "You are an elite B2B Sales Call Coach crafting a tailored, 30-second telephone discovery call script.\n"
+            "CRITICAL RULES:\n"
+            "1. REAL CONTEXT ONLY: Reference strictly the target company name, city, and real verified gap. Absolutely zero fake filler.\n"
+            "2. NATURAL PHRASING: Never use generic robotic strings like 'Operating commercial entity' or raw code tokens with underscores like 'dental_clinic'.\n"
+            "3. RETURN JSON ONLY with exact keys:\n"
+            "   {\n"
+            "     \"en_hook\": \"1 sentence opening evidence referencing their company name and the verified gap\",\n"
+            "     \"en_question\": \"1 conversational discovery question uncovering their manual pain/friction\",\n"
+            "     \"en_pitch\": \"1 brief sentence offering a 5-minute live preview modeled for their business\",\n"
+            "     \"bn_hook\": \"১টি সাবলীল বাক্য: তাদের কোম্পানি ও আসল সমস্যার কথা উল্লেখ করে ওপেনিং\",\n"
+            "     \"bn_question\": \"১টি স্বাভাবিক প্রশ্ন: তাদের কাস্টমার ইনকোয়ারি ও ফলো-আপের সমস্যা জানার জন্য\",\n"
+            "     \"bn_pitch\": \"১টি সংক্ষিপ্ত বাক্য: সমাধানটির একটি ৫ মিনিটের লাইভ ডেমো দেখার আমন্ত্রণ\"\n"
+            "   }"
+        )
+
+        user_prompt = (
+            f"Target Company: {company_name}\n"
+            f"Location: {city}\n"
+            f"Industry: {clean_ind}\n"
+            f"Real Verified Gaps: {gap_text}\n"
+            f"Our Matched Solution: {matched_service}\n\n"
+            "Generate the unique discovery sales call script JSON."
+        )
+
+        try:
+            res = await ai_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+            if isinstance(res, dict) and res.get("en_hook") and res.get("bn_hook"):
+                en_hook = str(res["en_hook"]).strip().strip('"')
+                en_q = str(res.get("en_question", "")).strip().strip('"')
+                en_pitch = str(res.get("en_pitch", "")).strip().strip('"')
+                bn_hook = str(res["bn_hook"]).strip().strip('"')
+                bn_q = str(res.get("bn_question", "")).strip().strip('"')
+                bn_pitch = str(res.get("bn_pitch", "")).strip().strip('"')
+
+                return (
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📞 [EN] SALES CALL SCRIPT (ENGLISH OUTREACH)\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"1. OPENING EVIDENCE & HOOK:\n"
+                    f"   \"Hello, is this {company_name}? {en_hook}\"\n\n"
+                    f"2. DISCOVERY PAIN QUESTION (Listen carefully to their response):\n"
+                    f"   \"{en_q}\"\n\n"
+                    f"3. VALUE PITCH & 5-MIN DEMO OFFER:\n"
+                    f"   \"{en_pitch}\"\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🇧🇩 [BN] সেলস টিম গাইড ও বাংলা স্পিচ (সহজে কথা বলার জন্য)\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"১. কল শুরুর হুক (Opening Hook):\n"
+                    f"   \"{bn_hook}\"\n\n"
+                    f"২. সমস্যা খোঁজার প্রশ্ন (Discovery Question):\n"
+                    f"   \"{bn_q}\"\n\n"
+                    f"৩. সমাধান ও ৫ মিনিটের ডেমো অফার (Closing / Demo Offer):\n"
+                    f"   \"{bn_pitch}\""
+                )
+        except Exception as e:
+            logger.warning(f"FitGateEngine: AI call script generation notice ({e})")
+        return None

@@ -43,7 +43,7 @@ FASTAPI_PID=$!
 echo "$FASTAPI_PID" > "$PROJECT_DIR/logs/fastapi.pid"
 echo "[+] FastAPI started on http://127.0.0.1:8000 (PID: $FASTAPI_PID)."
 
-nohup "$PROJECT_DIR/.venv/bin/python3" "$PROJECT_DIR/backend/app/workers/runner.py" > "$PROJECT_DIR/logs/worker.log" 2>&1 &
+(cd "$PROJECT_DIR/backend" && nohup "$PROJECT_DIR/.venv/bin/python3" -m app.workers.runner > "$PROJECT_DIR/logs/worker.log" 2>&1 &)
 WORKER_PID=$!
 echo "$WORKER_PID" > "$PROJECT_DIR/logs/worker.pid"
 echo "[+] Python Worker fleet started (PID: $WORKER_PID)."

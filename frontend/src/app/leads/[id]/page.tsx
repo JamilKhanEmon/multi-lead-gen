@@ -265,11 +265,14 @@ export default function LeadDetailPage() {
         setCustomDraftBody(updatedDraft.body);
         if (lead) {
           (lead as any).outreach_draft = updatedDraft;
+          if (updatedDraft.discovery_call_script) {
+            lead.discovery_call_script = updatedDraft.discovery_call_script;
+          }
           if (lead.explanation_json) {
             lead.explanation_json.outreach_draft = updatedDraft;
           }
         }
-        showToast("Fresh AI outreach draft generated!", "success");
+        showToast("Fresh AI outreach draft and call script generated!", "success");
       }
     } catch (err: any) {
       showToast("Failed to regenerate AI draft: " + err.message, "error");
@@ -661,17 +664,28 @@ export default function LeadDetailPage() {
         </div>
 
         <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2.5">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <span className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
               <PhoneCall className="w-3.5 h-3.5 text-emerald-400" /> Discovery-First Sales Call Script (30-Sec Opener)
             </span>
-            <button
-              onClick={() => copyScriptToClipboard(lead.discovery_call_script || "")}
-              className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold transition border border-emerald-500/30 flex items-center gap-1.5 cursor-pointer"
-            >
-              {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedScript ? "Copied Script!" : "Copy Call Script"}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRegenerateDraft}
+                disabled={isRegeneratingDraft}
+                className="px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-xs font-semibold transition border border-sky-500/30 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="Regenerate bespoke sales script & email draft with AI"
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${isRegeneratingDraft ? "animate-spin text-sky-400" : ""}`} />
+                <span>{isRegeneratingDraft ? "Writing..." : "Regenerate with AI"}</span>
+              </button>
+              <button
+                onClick={() => copyScriptToClipboard(lead.discovery_call_script || "")}
+                className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold transition border border-emerald-500/30 flex items-center gap-1.5 cursor-pointer"
+              >
+                {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedScript ? "Copied Script!" : "Copy Call Script"}</span>
+              </button>
+            </div>
           </div>
           <div className="text-xs text-slate-200 font-mono bg-slate-900/90 p-3.5 rounded-lg border border-slate-800/80 whitespace-pre-wrap leading-relaxed select-all">
             {lead.discovery_call_script || (

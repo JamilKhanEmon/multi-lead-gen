@@ -1402,10 +1402,28 @@ async def regenerate_lead_outreach(
         }
     )
 
+    try:
+        from app.services.ai_client import AIClient
+        from app.engine.fit_gate import FitGateEngine
+        dyn_script = await FitGateEngine.generate_dynamic_call_script(
+            company_name=biz.canonical_name if biz else "Your Business",
+            city=address or "Local Area",
+            industry=biz.business_type if biz else "Commercial Entity",
+            verified_gaps=[lead.primary_gap_summary] if lead.primary_gap_summary else [],
+            matched_service=getattr(lead, "matched_service", None) or "",
+            ai_client=AIClient(),
+        )
+        if dyn_script:
+            lead.discovery_call_script = dyn_script
+    except Exception as script_err:
+        import logging
+        logging.getLogger(__name__).warning(f"Regenerate script error: {script_err}")
+
     outreach_draft = {
         "subject": draft_subj,
         "body": draft_body,
         "full_email": f"Subject: {draft_subj}\n\n{draft_body}",
+        "discovery_call_script": lead.discovery_call_script,
         "is_llm_generated": True
     }
     if isinstance(lead.explanation_json, dict):
@@ -1464,6 +1482,22 @@ async def evaluate_lead_fit_gate(
         use_company_kb=use_kb,
         analyze_website=analyze_web,
     )
+    try:
+        from app.services.ai_client import AIClient
+        dyn_script = await FitGateEngine.generate_dynamic_call_script(
+            company_name=biz.canonical_name if biz else "Business",
+            city=loc_city,
+            industry=biz.business_type if biz else "commercial",
+            verified_gaps=gate_res.get("verified_gaps", []),
+            matched_service=gate_res.get("matched_service") or "",
+            ai_client=AIClient(),
+        )
+        if dyn_script:
+            gate_res["discovery_call_script"] = dyn_script
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Evaluate fit dynamic call script notice: {e}")
+
     lead.fit_tier = gate_res["fit_tier"]
     lead.why_they_need_us = gate_res["why_they_need_us"]
     lead.what_they_need = gate_res["what_they_need"]
