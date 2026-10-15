@@ -1041,11 +1041,11 @@ async def _execute_research_and_qualify(
                 draft_subj, draft_body = await OutreachEngine.render_email(
                     step=1,
                     lead_data={
-                        "company_name": biz.canonical_name if biz else "Your Team",
-                        "contact_person": biz.contact_person if biz else None,
-                        "city": biz.address if biz else "",
-                        "website": getattr(biz, "domain", "") if biz else "",
-                        "industry": biz.business_type if biz else "Commercial Entity",
+                        "company_name": biz_obj.canonical_name if biz_obj else "Your Team",
+                        "contact_person": biz_obj.contact_person if biz_obj else None,
+                        "city": biz_obj.address if biz_obj else "",
+                        "website": getattr(biz_obj, "domain", "") if biz_obj else "",
+                        "industry": biz_obj.business_type if biz_obj else "Commercial Entity",
                         "primary_gap": lead_primary_gap,
                         "why_they_need_us": gate_res.get("why_they_need_us") or lead_primary_gap,
                         "what_they_need": gate_res.get("what_they_need") or "",
@@ -1147,3 +1147,32 @@ async def _execute_research_and_qualify(
 
     return {"status": "SUCCESS", "tier": tier, "score": final_score, "is_qualified": is_qualified}
 
+
+async def handle_autopilot_campaign_run(task_data: Dict[str, Any]):
+    campaign_id_str = task_data.get("campaign_id")
+    if not campaign_id_str:
+        logger.warning("handle_autopilot_campaign_run: Missing campaign_id in task_data.")
+        return
+
+    import uuid
+    from app.db.session import AsyncSessionLocal
+    from app.models.autopilot import AutopilotCampaign
+    from app.engine.autopilot_runner import AutopilotRunner
+    from sqlalchemy import select
+
+    try:
+        campaign_id = uuid.UUID(campaign_id_str)
+    except Exception:
+        logger.error(f"handle_autopilot_campaign_run: Invalid UUID string '{campaign_id_str}'")
+        return
+
+    async with AsyncSessionLocal() as session:
+        stmt = select(AutopilotCampaign).where(AutopilotCampaign.id == campaign_id)
+        res = await session.execute(stmt)
+        campaign = res.scalar_one_or_none()
+        if not campaign:
+            logger.warning(f"handle_autopilot_campaign_run: Campaign {campaign_id} not found in database.")
+            return
+
+        logger.info(f"Worker task: Executing Autopilot Campaign '{campaign.name}' (ID: {campaign.id})")
+        await AutopilotRunner.run_campaign_batch(session, campaign)

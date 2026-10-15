@@ -15,6 +15,7 @@ from app.engine.email_verifier import EmailVerifier
 from app.engine.outreach_engine import OutreachEngine
 from app.services.openclaw_client import LiveResearchEngine
 from app.engine.deduplication import DeduplicationEngine
+from app.engine.discovery_optimizer import DiscoveryOptimizer
 from app.engine.fit_gate import FitGateEngine, is_appointment_niche
 
 class AutopilotRunner:
@@ -304,10 +305,10 @@ class AutopilotRunner:
                     final_lead_score = gate_eval["fit_score"]
                     is_qualified = True
 
-                    why_they_need_us = gate_eval["why_they_need_us"]
-                    what_they_need = gate_eval["what_they_need"]
-                    matched_service = gate_eval["matched_service"]
-                    discovery_call_script = gate_eval["discovery_call_script"]
+                    why_they_need_us = gate_eval.get("why_they_need_us", "")
+                    what_they_need = gate_eval.get("what_they_need", "")
+                    matched_service = gate_eval.get("matched_service", "")
+                    discovery_call_script = gate_eval.get("discovery_call_script", None)
 
                     lead_primary_gap = " • ".join(gate_eval["verified_gaps"][:2]) if gate_eval.get("verified_gaps") else primary_gap
 
