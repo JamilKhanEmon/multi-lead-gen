@@ -353,29 +353,15 @@ class OutreachEngine:
             bdy = bdy.replace("in your city", f"in {city}" if has_real_city else "").replace("..).", ".)")
             return subj, bdy
 
-        if any(w in industry for w in ["dental", "clinic", "health", "medical", "doctor", "care"]):
-            value_pitch = "increase direct patient bookings and modernize your digital inquiry capture"
-        matched_svc = lead_data.get("matched_service") or ""
+        matched_svc = lead_data.get("matched_service") or f"{industry.title() if industry else 'Commercial'} Digital Workflow & Growth Solution"
         has_no_website = bool("Zero official website" in str(primary_gap) or "NO_WEBSITE" in str(lead_data.get("why_they_need_us") or ""))
 
         if has_no_website:
-            value_pitch = f"launch a high-converting branded website and automated client inquiry portal tailored for your {industry or 'business'}"
-            call_to_action = f"see the live interactive software demo and portal prototype we modeled for {company_name}"
-        elif any(w in industry for w in ["clinic", "doctor", "dental", "dentist", "healthcare", "therapy"]):
-            value_pitch = f"streamline patient bookings and automate appointment coordination with {matched_svc or 'custom clinic software'}"
-            call_to_action = f"see a 5-minute interactive live software demo and patient acquisition system for {company_name}"
-        elif any(w in industry for w in ["real estate", "property", "developer", "realty", "builder"]):
-            value_pitch = f"capture high-intent property buyers and automate lead follow-ups with {matched_svc or 'custom real estate CRM software'}"
-            call_to_action = f"walk through a 5-minute interactive live software demo and buyer acquisition funnel for {company_name}"
-        elif any(w in industry for w in ["restaurant", "cafe", "food", "dining", "catering"]):
-            value_pitch = f"drive direct table reservations and WhatsApp customer inquiries with {matched_svc or 'automated ordering software'}"
-            call_to_action = f"check out the 5-minute live software demo we modeled for {company_name}"
-        elif any(w in industry for w in ["roofing", "contractor", "plumbing", "hvac", "solar", "construction"]):
-            value_pitch = f"convert local project inquiries and automate quotes with {matched_svc or 'contractor management software'}"
-            call_to_action = f"see the 5-minute live software demonstration prepared for {company_name}"
+            value_pitch = f"launch a high-converting digital portal and automated client inquiry funnel tailored for your {industry or 'business'}"
+            call_to_action = f"see the live interactive software demo and prototype we modeled for {company_name}"
         else:
-            value_pitch = f"automate client acquisition and eliminate manual operational delays with {matched_svc or 'specialized growth software'}"
-            call_to_action = f"review a brief 5-minute interactive live software demo prepared for {company_name}"
+            value_pitch = f"automate client inquiry response, eliminate operational bottlenecks, and scale customer conversions with {matched_svc}"
+            call_to_action = f"walk through a brief 5-minute interactive live software demo prepared for {company_name}"
 
         if step == 2:
             subject = f"Following up: Live Demo & Solution for {company_name}"

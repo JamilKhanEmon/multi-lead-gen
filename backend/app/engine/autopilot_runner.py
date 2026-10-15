@@ -351,6 +351,7 @@ class AutopilotRunner:
                         company_kb=kb_dict,
                         use_company_kb=use_kb,
                         analyze_website=analyze_web,
+                        target_services=campaign.target_services,
                     )
 
                     fit_tier = gate_eval["fit_tier"]

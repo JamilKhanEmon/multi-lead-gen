@@ -1030,7 +1030,7 @@ export default function ResearchInitiatorPage() {
                       handleAddCustomArea();
                     }
                   }}
-                  placeholder="Add custom area or thana (e.g. Badda, Savar, Khilkhet)..."
+                  placeholder="Add custom micro-area or district..."
                   className="flex-1 px-3 py-2 rounded-xl bg-slate-950/90 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
                 />
                 <button
@@ -1109,7 +1109,7 @@ export default function ResearchInitiatorPage() {
                         type="text"
                         value={customServiceName}
                         onChange={(e) => setCustomServiceName(e.target.value)}
-                        placeholder="Service Name (e.g. Automated Dental WhatsApp CRM)"
+                        placeholder="Service / Solution Name"
                         required
                         className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition"
                       />
@@ -1143,14 +1143,14 @@ export default function ResearchInitiatorPage() {
                     type="text"
                     value={customServiceDesc}
                     onChange={(e) => setCustomServiceDesc(e.target.value)}
-                    placeholder="Problem solved / Value proposition (e.g. Convert dental inquiries instantly without delays)"
+                    placeholder="Problem solved / Value proposition"
                     className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition"
                   />
                   <input
                     type="text"
                     value={customServiceHook}
                     onChange={(e) => setCustomServiceHook(e.target.value)}
-                    placeholder="Live Demo Offer Hook (e.g. 5-Minute Live Interactive Demo)"
+                    placeholder="Live Demo Offer Hook"
                     className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition"
                   />
                   <div className="flex items-center justify-end gap-2 pt-1">

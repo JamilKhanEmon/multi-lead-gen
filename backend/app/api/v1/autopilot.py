@@ -31,6 +31,7 @@ class CampaignCreate(BaseModel):
     use_company_kb: bool = Field(default=True)
     analyze_website: bool = Field(default=False)
     max_services: int = Field(default=0)
+    target_services: Optional[List[Any]] = Field(default_factory=list)
 
 class CampaignUpdate(BaseModel):
     name: Optional[str] = None
@@ -45,6 +46,7 @@ class CampaignUpdate(BaseModel):
     use_company_kb: Optional[bool] = None
     analyze_website: Optional[bool] = None
     max_services: Optional[int] = None
+    target_services: Optional[List[Any]] = None
     status: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -113,6 +115,23 @@ async def list_campaigns(
                 c.sub_cities = expanded
                 healed = True
 
+        # Auto-match pitch cards if empty
+        if not c.target_services and c.keywords:
+            try:
+                from app.engine.strategy_engine import StrategyEngine
+                primary_kw = c.keywords[0] if c.keywords else "Business"
+                matched = await StrategyEngine.match_kb_services(
+                    db_session=db,
+                    industry=primary_kw,
+                    location=c.country or "",
+                    max_services=c.max_services or 0,
+                )
+                if matched:
+                    c.target_services = matched
+                    healed = True
+            except Exception as ex:
+                logger.warning(f"Failed to auto-populate target_services for campaign {c.id}: {ex}")
+
         if c.status == "RUNNING":
             # Auto-reset if campaign is paused OR if it has been RUNNING for > 5 mins
             is_stale = not c.last_run_at or (now - c.last_run_at).total_seconds() > 300
@@ -137,18 +156,33 @@ async def create_campaign(
     
     sub_cities = list(data.sub_cities or [])
     # If sub_cities was defaulted to ["Dhaka"] by old frontend or left empty, expand to 50 nationwide cities
-    if not sub_cities or sub_cities == ["Dhaka"] or (len(sub_cities) == 1 and sub_cities[0].strip().lower() in ["dhaka", "all", ""]):
+    if not sub_cities or (len(sub_cities) == 1 and sub_cities[0].strip().lower() in ["all", "", data.country.strip().lower()]):
         if data.country:
             from app.engine.discovery_optimizer import DiscoveryOptimizer
             expanded = await DiscoveryOptimizer.get_country_commercial_cities(data.country, limit=50)
             if expanded:
                 sub_cities = expanded
 
+    target_services = list(data.target_services or [])
+    if not target_services and data.keywords:
+        try:
+            from app.engine.strategy_engine import StrategyEngine
+            primary_kw = data.keywords[0] if data.keywords else "Business"
+            target_services = await StrategyEngine.match_kb_services(
+                db_session=db,
+                industry=primary_kw,
+                location=data.country or "",
+                max_services=data.max_services or 0,
+            )
+        except Exception as ex:
+            logger.warning(f"Failed to generate target_services on create: {ex}")
+
     campaign = AutopilotCampaign(
         name=data.name,
         keywords=data.keywords,
         country=data.country,
         sub_cities=sub_cities,
+        target_services=target_services,
         daily_lead_limit=data.daily_lead_limit,
         daily_email_limit=data.daily_email_limit,
         is_unlimited_leads=data.is_unlimited_leads,

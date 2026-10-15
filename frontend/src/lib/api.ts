@@ -1429,12 +1429,20 @@ export async function deleteUser(userId: string): Promise<{ status: string; mess
   return res.json();
 }
 
+export interface AutopilotServiceCard {
+  name: string;
+  type?: "software" | "marketing" | string;
+  description?: string;
+  offer_hook?: string;
+}
+
 export interface AutopilotCampaign {
   id: string;
   name: string;
   keywords: string[];
   country: string;
   sub_cities: string[];
+  target_services?: AutopilotServiceCard[] | any[];
   daily_lead_limit: number;
   daily_email_limit: number;
   is_unlimited_leads: boolean;
@@ -1501,6 +1509,7 @@ export async function createAutopilotCampaign(data: {
   use_company_kb?: boolean;
   analyze_website?: boolean;
   max_services?: number;
+  target_services?: any[];
 }): Promise<AutopilotCampaign> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
