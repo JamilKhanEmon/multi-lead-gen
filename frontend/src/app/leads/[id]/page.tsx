@@ -662,37 +662,6 @@ export default function LeadDetailPage() {
             </div>
           </div>
         </div>
-
-        <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 space-y-2.5">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <span className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
-              <PhoneCall className="w-3.5 h-3.5 text-emerald-400" /> Discovery-First Sales Call Script (30-Sec Opener)
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleRegenerateDraft}
-                disabled={isRegeneratingDraft}
-                className="px-2.5 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-xs font-semibold transition border border-sky-500/30 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                title="Regenerate bespoke sales script & email draft with AI"
-              >
-                <Sparkles className={`w-3.5 h-3.5 ${isRegeneratingDraft ? "animate-spin text-sky-400" : ""}`} />
-                <span>{isRegeneratingDraft ? "Writing..." : "Regenerate with AI"}</span>
-              </button>
-              <button
-                onClick={() => copyScriptToClipboard(lead.discovery_call_script || "")}
-                className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold transition border border-emerald-500/30 flex items-center gap-1.5 cursor-pointer"
-              >
-                {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedScript ? "Copied Script!" : "Copy Call Script"}</span>
-              </button>
-            </div>
-          </div>
-          <div className="text-xs text-slate-200 font-mono bg-slate-900/90 p-3.5 rounded-lg border border-slate-800/80 whitespace-pre-wrap leading-relaxed select-all">
-            {lead.discovery_call_script || (
-              `1. OPENING EVIDENCE:\n   "Hello, is this ${lead.business_name}? I was reviewing your online presence and noticed: ${lead.why_they_need_us || lead.primary_gap_summary || "solvable gaps in online visibility"}.\n\n2. DISCOVERY QUESTION (Wait for their answer):\n   "How are you currently handling inbound client acquisition and follow-ups right now?"\n\n3. VALUE PITCH (${lead.matched_service || ""}):\n   "We specialize in solving this with quick setup. Would you be open to a 5-minute preview of the custom audit report we prepared for ${lead.business_name}?"`
-            )}
-          </div>
-        </div>
       </div>
 
       <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
@@ -920,14 +889,40 @@ export default function LeadDetailPage() {
             </div>
 
             <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[10px] font-semibold text-sky-300 uppercase tracking-wider flex items-center gap-1.5">
                   <Mail className="w-3.5 h-3.5 text-sky-400" />
-                  Admin-Synced B2B Cold Outreach Draft
+                  AI-Powered B2B Cold Outreach Draft
                 </span>
-                <span className="text-[10px] text-sky-400 bg-sky-500/10 border border-sky-500/30 px-2 py-0.5 rounded font-mono truncate max-w-[200px]">
-                  Subject: {activeSubject}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRegenerateDraft}
+                    disabled={isRegeneratingDraft}
+                    className="px-2.5 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 text-[11px] font-semibold transition border border-sky-500/30 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title="Regenerate fresh bespoke email draft with AI"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isRegeneratingDraft ? "animate-spin text-sky-400" : ""}`} />
+                    <span>{isRegeneratingDraft ? "Writing with AI..." : "Regenerate with AI"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyOutreachEmail}
+                    className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium flex items-center gap-1 transition border border-slate-700 cursor-pointer"
+                  >
+                    {copiedEmail ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        <span className="text-emerald-400">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Copy Email</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
               <div className="text-[11px] text-slate-200 font-sans bg-slate-900/80 p-3 rounded-lg border border-slate-800 whitespace-pre-wrap leading-relaxed select-all">
                 <div className="text-slate-400 font-mono text-[10px] pb-2 border-b border-slate-800/80 mb-2">
@@ -937,25 +932,8 @@ export default function LeadDetailPage() {
               </div>
               <div className="flex items-center justify-between pt-1">
                 <span className="text-[10px] text-slate-500">
-                  Global template configured by Admin &bull; Signature included
+                  Tailored by AI Outreach Engine &bull; Zero template fluff &bull; Signature included
                 </span>
-                <button
-                  type="button"
-                  onClick={handleCopyOutreachEmail}
-                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium flex items-center gap-1 transition border border-slate-700"
-                >
-                  {copiedEmail ? (
-                    <>
-                      <Check className="w-3 h-3 text-emerald-400" />
-                      <span className="text-emerald-400">Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3 h-3" />
-                      <span>Copy Email</span>
-                    </>
-                  )}
-                </button>
               </div>
             </div>
           </div>

@@ -1,13 +1,13 @@
 ---
 name: "skill-lead-gen"
-description: "Demand-side lead pipeline for N I Biz Soft: catch buying signals (broken sites, ad spenders, hiring, manual ops) → fit-gate → prospect only leads with evidence → discovery-first script → store in local PostgreSQL system database and display in UI dashboard (No external Google Sheet required)."
+description: "Demand-side autonomous B2B lead generation pipeline: detect verified buying signals (broken digital funnels, ad spenders, manual ops) → fit-gate → prospect only leads with real evidence → store in local PostgreSQL system database and display in UI dashboard."
 ---
 
-# skill-lead-gen — Demand-Side Lead Pipeline for N I Biz Soft (System-Native)
+# skill-lead-gen — Demand-Side Autonomous Lead Pipeline (System-Native)
 
-End-to-end pipeline: **Aggregate candidates → Dedup → FIT GATE → Prospect → Call Script → Store in Database**.
+End-to-end pipeline: **Aggregate candidates → Dedup → FIT GATE → Prospect → Store in Database**.
 v2 Pipeline is DEMAND-SIDE. We no longer pitch every scraped business.
-A lead only gets prospected, scored, or handed to employees if it has **live evidence of a buying signal** matched to a **specific NiBiz service**. No evidence → silently dropped. Goal: employees only call leads with a documented, specific reason to buy.
+A lead only gets prospected, scored, or handed to sales if it has **live evidence of a buying signal** matched to a **specific company service catalog solution**. No evidence → silently dropped. Goal: outreach only targets leads with a documented, specific reason to buy.
 
 ## Trigger
 User asks for leads (e.g., "find me leads for restaurants in Chattogram", "run lead gen real estate").
@@ -47,7 +47,7 @@ For each gate-passed lead:
 3. Record:
    - `why_they_need_us`: Live verified evidence / pain point.
    - `what_they_need`: Specific solution + wedge offer.
-   - `matched_service`: Best-fit service from NiBiz service matrix.
+   - `matched_service`: Best-fit service from company service matrix.
 
 ## Stage 3 — 30-Second Discovery-First Call Script
 Employees pitch AFTER one discovery question, not before:

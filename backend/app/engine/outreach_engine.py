@@ -168,6 +168,12 @@ class OutreachEngine:
         else:
             contact_person = f"Team {company_name}"
 
+        # Clean duplicate 'Team Team' or repeated company name in contact_person
+        contact_person = re.sub(r"^(Team\s+)+", "Team ", contact_person, flags=re.IGNORECASE)
+        c_parts = contact_person.split()
+        if len(c_parts) >= 3 and c_parts[0].lower() == "team" and c_parts[1].lower() == c_parts[2].lower():
+            contact_person = f"Team {c_parts[1]}"
+
         city = str(lead_data.get("city") or lead_data.get("location") or lead_data.get("address") or "").strip()
         industry = str(lead_data.get("industry") or lead_data.get("business_type") or "General Business").strip()
         
@@ -184,7 +190,7 @@ class OutreachEngine:
         try:
             if ai_client is None:
                 from app.services.ai_client import AIClient
-                ai_client = AIClient(timeout=10.0)
+                ai_client = AIClient(timeout=12.0)
 
             step_descriptions = {
                 1: "Step 1 Initial Cold Outreach: Introduce high-value growth opportunity or operational software solution, mention specific gap respectfully, offer a 5-minute interactive live software demo or walkthrough sometime this week or early next week.",
@@ -193,16 +199,17 @@ class OutreachEngine:
             }
             step_instruction = step_descriptions.get(step, step_descriptions[1])
 
+            sender_agency = (sender_company or "our software and digital solutions team").strip()
             system_prompt = (
-                "You are an elite B2B Sales Director writing personalized, concise, high-converting cold emails.\n\n"
+                f"You are an elite B2B Sales Director writing personalized, concise, high-converting cold emails on behalf of {sender_agency}.\n\n"
                 "STRICT STRUCTURE (Follow this exact 4-part skeleton):\n"
                 f"Line 1 (Greeting): Hi {contact_person},\n"
-                "Line 2 (Hook & Gap): Exactly 1 sentence referencing their company and the audited gap/bottleneck respectfully.\n"
-                "Line 3 (Value & Solution): 1-2 sentences highlighting how the matched solution solves this and drives ROI.\n"
-                "Line 4 (Low-Friction CTA): Exactly 1 sentence asking for a 5-minute brief walkthrough or chat sometime this week or early next week.\n\n"
+                "Line 2 (Hook & Gap): Exactly 1 respectful, natural sentence referencing their company in their city and the specific audited gap/opportunity (e.g. missing direct online booking, manual lead intake, lack of instant inquiry tracking).\n"
+                "Line 3 (Value & Solution): 1-2 concise sentences highlighting how our matched solution solves this friction and drives immediate ROI.\n"
+                "Line 4 (Low-Friction CTA): Exactly 1 friendly sentence asking for a 5-minute brief interactive walkthrough or chat sometime this week or early next week.\n\n"
                 "CRITICAL CONSTRAINTS:\n"
                 "- LENGTH: STRICT MAXIMUM 80 WORDS. Keep paragraphs separated by double newlines. Mobile-friendly.\n"
-                "- NO corporate fluff or clichés ('Hope you are well', 'Allow me to introduce', 'I am writing to').\n"
+                "- TONE: Human, conversational, executive-level. NO corporate fluff or clichés ('Hope you are well', 'Allow me to introduce', 'I am writing to').\n"
                 "- NO hardcoded days of the week (never mention Thursday, Monday, etc.).\n"
                 "- NEVER include proof links, URLs, raw data brackets, or citations (e.g. absolutely no '[Proof Link: ...]'). Write completely natural, professional business sentences.\n"
                 "- Do NOT include the sender signature or sign-off at the end (it is attached automatically).\n"
@@ -221,13 +228,31 @@ class OutreachEngine:
                 "Generate the subject line and short body following the exact 4-part structure."
             )
 
-            res = await ai_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+            res = await ai_client.analyze(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=650,
+            )
             if isinstance(res, dict) and res.get("subject") and res.get("body"):
                 llm_subject = str(res["subject"]).strip().strip('"')
                 llm_body = str(res["body"]).strip()
 
-                import re
-                llm_body = re.sub(r"^(Dear|Hello|Hi)\s+(there|sir|madam|team)[,:]?", f"Hi {contact_person},", llm_body, flags=re.IGNORECASE)
+                # Clean greeting on the first line only without touching the rest of the body
+                parts = llm_body.split("\n", 1)
+                first_line = parts[0].strip()
+                rest = parts[1] if len(parts) > 1 else ""
+
+                # 1. Deduplicate greeting line if name is repeated, e.g. 'Hi Team Company, Company,'
+                first_line = re.sub(r"^(Dear|Hello|Hi)\s+([^,]+),\s*\2[,:]?$", r"\1 \2,", first_line, flags=re.IGNORECASE)
+                first_line = re.sub(r"^(Hi\s+Team\s+[\w\s]+),\s*[\w\s]+[,:]?$", r"\1,", first_line, flags=re.IGNORECASE)
+
+                # 2. If generic greeting, substitute specific contact person
+                if re.match(r"^(Dear|Hello|Hi)\s+(there|sir|madam|sir/madam|all|team)[,:]?$", first_line, flags=re.IGNORECASE):
+                    first_line = f"Hi {contact_person},"
+                elif not re.match(r"^(Dear|Hello|Hi)\b", first_line, flags=re.IGNORECASE):
+                    first_line = f"Hi {contact_person},\n\n{first_line}"
+
+                llm_body = f"{first_line}\n{rest}" if rest else first_line
 
                 # Guardrail: If LLM produced an excessively long essay (> 130 words), fall back to crisp template
                 word_count = len(llm_body.split())

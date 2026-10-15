@@ -44,15 +44,15 @@ Discovers real, active commercial business entities matching requested industry 
 {
   "discovered_companies": [
     {
-      "canonical_name": "Comfort Diagnostic Centre",
-      "industry": "diagnostic center",
-      "location": "Dhanmondi, Dhaka",
-      "website": "https://comfortdiagnostic.com",
-      "phone": "+8801711234567",
-      "address": "House 16, Road 5, Dhanmondi, Dhaka",
-      "rating": 4.2,
-      "review_count": 310,
-      "source_url": "https://www.google.com/maps/search/Comfort%20Diagnostic%20Centre%20Dhanmondi",
+      "canonical_name": "<Target Commercial Entity>",
+      "industry": "<target_industry>",
+      "location": "<target_location>",
+      "website": "https://example.com",
+      "phone": "+8801700000000",
+      "address": "<Physical Street Address, City>",
+      "rating": 4.5,
+      "review_count": 85,
+      "source_url": "https://www.google.com/maps/search/...",
       "confidence": 0.95
     }
   ],

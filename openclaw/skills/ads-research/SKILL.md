@@ -38,13 +38,13 @@ Examines public advertising transparency registries (Meta Ad Library) to detect 
 ## Output Schema
 ```json
 {
-  "canonical_name": "Skyline Properties",
-  "domain": "skylinepropertiesbd.com",
-  "meta_ads_url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q=Skyline%20Properties&search_type=keyword_unordered&media_type=all",
-  "proof_link": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q=Skyline%20Properties&search_type=keyword_unordered&media_type=all",
+  "canonical_name": "<Target Business Name>",
+  "domain": "example.com",
+  "meta_ads_url": "https://www.facebook.com/ads/library/?...",
+  "proof_link": "https://www.facebook.com/ads/library/?...",
   "has_pixel_signal": false,
   "funnel_friction_detected": true,
-  "evidence_text": "Meta Ad Library transparency link: https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q=Skyline%20Properties. Website Meta Pixel: Missing - ad spend and remarketing attribution cannot be tracked.",
+  "evidence_text": "Meta Ad Library verification check completed. Official website lacks retargeting pixel or direct lead capture funnel.",
   "checked_live": true
 }
 ```

@@ -48,16 +48,16 @@ Inspects public brand profiles on Facebook and Instagram to detect live buying s
 ## Output Schema
 ```json
 {
-  "canonical_name": "Care Dental Clinic",
-  "domain": "caredental.com",
-  "facebook_url": "https://www.facebook.com/caredentalbd",
-  "proof_link": "https://www.facebook.com/caredentalbd",
+  "canonical_name": "<Target Business Name>",
+  "domain": "example.com",
+  "facebook_url": "https://www.facebook.com/example-biz",
+  "proof_link": "https://www.facebook.com/example-biz",
   "has_facebook": true,
   "is_dormant": true,
-  "post_recency_text": "Last post detected from Oct 2024",
+  "post_recency_text": "Last post detected from several months ago",
   "has_whatsapp": false,
   "comment_neglect_detected": true,
-  "evidence_text": "Public Facebook page verified at https://www.facebook.com/caredentalbd. Activity check: Last post detected from Oct 2024 (Dormant profile losing organic clients). Proof: https://www.facebook.com/caredentalbd",
+  "evidence_text": "Public social page verified. Activity check indicates dormant posting schedule with delayed inquiry follow-ups.",
   "checked_live": true
 }
 ```
