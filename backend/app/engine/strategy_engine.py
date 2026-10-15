@@ -148,12 +148,14 @@ class StrategyEngine:
         industry: str,
         location: str = "",
         ai_client: Optional[AIClient] = None,
+        max_services: int = 0,
     ) -> List[Dict[str, Any]]:
         from app.models.company_kb import CompanyKB
         from sqlalchemy import select
 
         kb_name = ""
         kb_context_parts = []
+        raw_kb_services = []
         try:
             stmt = select(CompanyKB).where(CompanyKB.is_active == True).order_by(CompanyKB.created_at.desc()).limit(1)
             res = await db_session.execute(stmt)
@@ -166,6 +168,7 @@ class StrategyEngine:
                 if kb.master_kb_notes:
                     kb_context_parts.append(f"Master Overview: {kb.master_kb_notes[:1200]}")
                 if kb.services_json and isinstance(kb.services_json, list):
+                    raw_kb_services = kb.services_json
                     for s in kb.services_json:
                         s_name = s.get("name") or s.get("key") or ""
                         s_desc = s.get("features") or s.get("description") or ""
@@ -174,27 +177,61 @@ class StrategyEngine:
         except Exception as e:
             logger.warning(f"StrategyEngine KB load error: {e}")
 
+        is_auto = not max_services or max_services <= 0
+        limit_desc = "the top 2 to 4" if is_auto else f"the top {max_services}"
+        exact_desc = "2 to 4 distinct" if is_auto else f"exactly {max_services}"
+        slice_limit = 5 if is_auto else max_services
+
+        # 1. If Company KB has services configured, directly format and return up to limit
+        if raw_kb_services:
+            formatted_kb = []
+            for s in raw_kb_services:
+                if not isinstance(s, dict):
+                    continue
+                name = (s.get("name") or s.get("key") or "").strip()
+                if not name:
+                    continue
+                desc = (s.get("description") or s.get("solves_problems") or s.get("features") or "").strip()
+                wedge = (s.get("wedge") or "").strip()
+                stype = str(s.get("type", "")).lower()
+                if stype not in ["software", "marketing"]:
+                    combined = f"{name} {desc} {wedge}".lower()
+                    if any(k in combined for k in ["software", "crm", "app", "portal", "system", "saas", "dashboard", "bot", "platform", "tool", "website", "web"]):
+                        stype = "software"
+                    else:
+                        stype = "marketing"
+                offer_hook = (s.get("offer_hook") or wedge or (
+                    "5-Minute Live Interactive Software Demo" if stype == "software" else "5-Minute Interactive Growth Blueprint"
+                )).strip()
+                formatted_kb.append({
+                    "name": name,
+                    "type": stype,
+                    "description": desc,
+                    "offer_hook": offer_hook,
+                })
+            if formatted_kb:
+                return formatted_kb[:slice_limit]
+
         if ai_client is None:
             ai_client = AIClient()
 
         kb_context = "\n".join(kb_context_parts) if kb_context_parts else (
-            "Analyze the target industry and propose modern B2B software, workflow automation, and digital growth solutions tailored specifically to their operational bottlenecks."
+            f"Tailored B2B services and workflow automation specifically for {industry}."
         )
 
         company_identifier = kb_name if kb_name else "our company"
         system_prompt = (
             f"You are the Chief Solutions Architect and Sales Strategist for {company_identifier}. "
-            "Given the target industry and target location, analyze our offerings and capabilities "
-            "and dynamically decide the top 2 to 4 highest-converting services and live demo hooks to pitch. "
+            f"Given the target industry ({industry}) and target location ({location}), analyze our offerings and capabilities "
+            f"and dynamically decide {limit_desc} highest-converting services and live demo hooks to pitch. "
             "CRITICAL: The recommendations MUST be tailored precisely to the specific bottlenecks, workflows, and high-value needs of this specific industry. "
-            "DO NOT return generic placeholders. Be specific to the industry. "
-            "Output strictly raw JSON without conversation or markdown."
+            "Output strictly raw JSON with key 'services'."
         )
         user_prompt = (
             f"Target Industry: {industry}\n"
             f"Target Location: {location}\n"
             f"Company KB Context:\n{kb_context}\n\n"
-            "Select or craft 2 to 4 distinct, high-impact services for this industry. Format strictly as:\n"
+            f"Select or craft {exact_desc}, high-impact services for this industry. Format strictly as:\n"
             '{"services": [\n'
             '  {\n'
             '    "name": "Specific Software or Growth Product Name",\n'
@@ -207,10 +244,23 @@ class StrategyEngine:
 
         try:
             res = await ai_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt, max_tokens=800)
-            services = res.get("services")
+            services = None
+            if isinstance(res, dict):
+                for k in ["services", "matched_services", "recommendations", "offerings", "solutions", "data", "items"]:
+                    if isinstance(res.get(k), list) and len(res[k]) > 0:
+                        services = res[k]
+                        break
+                if services is None:
+                    for val in res.values():
+                        if isinstance(val, list) and len(val) > 0 and isinstance(val[0], dict):
+                            services = val
+                            break
+            elif isinstance(res, list):
+                services = res
+
             if isinstance(services, list) and len(services) >= 1:
                 formatted = []
-                for s in services[:6]:
+                for s in services[:slice_limit]:
                     if isinstance(s, dict) and s.get("name"):
                         formatted.append({
                             "name": str(s.get("name")).strip(),
@@ -219,37 +269,12 @@ class StrategyEngine:
                             "offer_hook": str(s.get("offer_hook") or "5-Minute Live Interactive Demo").strip(),
                         })
                 if formatted:
-                    return formatted
+                    return formatted[:slice_limit]
         except Exception as e:
-            logger.warning(f"StrategyEngine AI service matching failed: {e}. Falling back to rule-based defaults.")
+            logger.warning(f"StrategyEngine AI service matching failed: {e}")
 
-        # High-conversion service offerings fallback only if AI fails
-        return [
-            {
-                "name": f"{industry} High-Intent Meta & Video Ad Lead Funnel",
-                "type": "marketing",
-                "description": f"Acquire qualified local clients and buyer inquiries for {industry} with optimized video & social campaigns.",
-                "offer_hook": "5-Minute Campaign Strategy & Competitor Blueprint"
-            },
-            {
-                "name": f"Automated {industry} CRM & Instant WhatsApp Follow-up System",
-                "type": "software",
-                "description": f"Convert {industry} inbound inquiries instantly without manual messaging delays using custom CRM automation.",
-                "offer_hook": "5-Minute Live Interactive Software Demo"
-            },
-            {
-                "name": f"Branded {industry} Official Website & Inbound Booking Portal",
-                "type": "software",
-                "description": f"Launch a dedicated high-converting web presence for {industry} businesses currently operating exclusively on social media.",
-                "offer_hook": "5-Minute Interactive Live Demo"
-            },
-            {
-                "name": f"{industry} Smart Inventory & Order Workflow Automation",
-                "type": "software",
-                "description": f"Streamline daily stock tracking, sales order processing, and customer billing for {industry} businesses.",
-                "offer_hook": "5-Minute Live Software Walkthrough"
-            }
-        ]
+        # No fallback: strictly return empty list if nothing matched or generated
+        return []
 
     @classmethod
     async def generate_strategy_preview(
@@ -259,6 +284,7 @@ class StrategyEngine:
         location: str,
         analyze_website: bool = False,
         ai_client: Optional[AIClient] = None,
+        max_services: int = 0,
     ) -> Dict[str, Any]:
         """
         Builds complete strategy preview for Admin Review & Approval.
@@ -275,6 +301,7 @@ class StrategyEngine:
             industry=industry,
             location=location,
             ai_client=ai_client,
+            max_services=max_services,
         )
 
         return {

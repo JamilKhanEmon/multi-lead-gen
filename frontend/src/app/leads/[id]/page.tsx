@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { fetchLeadDetail, submitLeadFeedback, updateLeadDetails, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate, evaluateLeadFitGate, fetchPersonaSignatures, PersonaSignatureItem } from "@/lib/api";
+import { fetchLeadDetail, submitLeadFeedback, updateLeadDetails, deleteLead, fetchEmailTemplate, renderEmailTemplate, EmailTemplate, evaluateLeadFitGate, fetchPersonaSignatures, PersonaSignatureItem, regenerateLeadOutreach } from "@/lib/api";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -231,23 +231,70 @@ export default function LeadDetailPage() {
   };
 
   const leadGapText = lead?.why_they_need_us || lead?.primary_gap_summary || "growth opportunities in your digital client acquisition";
-  const renderedOutreach = emailTemplate && lead
-    ? renderEmailTemplate(emailTemplate, lead, personaSignatures)
-    : {
-      subject: `Quick inquiry regarding ${lead?.business_name || "your office"} in ${lead?.address || "your area"}`,
-      body: `Hi ${lead?.contact_person || (lead?.business_name ? `Team ${lead.business_name}` : "Team")},\n\nI recently came across ${lead?.business_name || "your business"} located in ${lead?.address || "your area"}. We noticed ${leadGapText}.\n\nWould you be open to a quick 3-minute discussion or a sample preview prepared for your business?`,
-      fullEmail: "",
-    };
+  
+  // Prefer the LLM-generated outreach draft from backend (what will directly be sent!)
+  const backendDraft = (lead as any)?.outreach_draft || lead?.explanation_json?.outreach_draft;
 
-  const activeSubject = isEditingDraft ? customDraftSubject : renderedOutreach.subject;
-  const activeBody = isEditingDraft ? customDraftBody : renderedOutreach.body;
+  const renderedOutreach = backendDraft && backendDraft.subject && backendDraft.body
+    ? {
+        subject: backendDraft.subject,
+        body: backendDraft.body,
+        fullEmail: backendDraft.full_email || `Subject: ${backendDraft.subject}\n\n${backendDraft.body}`,
+        isLlm: true,
+      }
+    : (emailTemplate && lead
+      ? { ...renderEmailTemplate(emailTemplate, lead, personaSignatures), isLlm: false }
+      : {
+        subject: `Quick inquiry regarding ${lead?.business_name || "your office"} in ${lead?.address || "your area"}`,
+        body: `Hi ${lead?.contact_person || (lead?.business_name ? `Team ${lead.business_name}` : "Team")},\n\nI recently came across ${lead?.business_name || "your business"} located in ${lead?.address || "your area"}. We noticed ${leadGapText}.\n\nWould you be open to a quick 3-minute discussion or a sample preview prepared for your business?`,
+        fullEmail: "",
+        isLlm: false,
+      });
 
-  const handleToggleEditDraft = () => {
+  const activeSubject = isEditingDraft ? customDraftSubject : (customDraftSubject || renderedOutreach.subject);
+  const activeBody = isEditingDraft ? customDraftBody : (customDraftBody || renderedOutreach.body);
+
+  const [isRegeneratingDraft, setIsRegeneratingDraft] = useState(false);
+  const handleRegenerateDraft = async () => {
+    if (!lead) return;
+    setIsRegeneratingDraft(true);
+    try {
+      const updatedDraft = await regenerateLeadOutreach(leadId);
+      if (updatedDraft && updatedDraft.subject && updatedDraft.body) {
+        setCustomDraftSubject(updatedDraft.subject);
+        setCustomDraftBody(updatedDraft.body);
+        if (lead) {
+          (lead as any).outreach_draft = updatedDraft;
+          if (lead.explanation_json) {
+            lead.explanation_json.outreach_draft = updatedDraft;
+          }
+        }
+        showToast("Fresh AI outreach draft generated!", "success");
+      }
+    } catch (err: any) {
+      showToast("Failed to regenerate AI draft: " + err.message, "error");
+    } finally {
+      setIsRegeneratingDraft(false);
+    }
+  };
+
+  const handleToggleEditDraft = async () => {
     if (!isEditingDraft) {
       setCustomDraftSubject(activeSubject);
       setCustomDraftBody(activeBody);
+      setIsEditingDraft(true);
+    } else {
+      try {
+        await updateLeadDetails(leadId, {
+          custom_outreach_subject: customDraftSubject,
+          custom_outreach_body: customDraftBody,
+        });
+        showToast("Draft updated and saved for dispatch!", "success");
+      } catch (e: any) {
+        console.error("Failed to persist custom draft:", e);
+      }
+      setIsEditingDraft(false);
     }
-    setIsEditingDraft(!isEditingDraft);
   };
 
   const handleCopyOutreachEmail = () => {
@@ -1289,8 +1336,9 @@ export default function LeadDetailPage() {
             Recommended Agency Solution & Outreach Pitch
           </h3>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20">
-              Admin-Synced Outreach Template
+            <span className="text-[10px] font-mono px-2.5 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/20 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-sky-400" />
+              {renderedOutreach.isLlm ? "Direct LLM Outbound Draft" : "Admin-Synced Outreach Template"}
             </span>
           </div>
         </div>
@@ -1300,18 +1348,33 @@ export default function LeadDetailPage() {
         </p>
 
         <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800/80 space-y-3">
-          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+          <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex flex-wrap items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-slate-200">
               <Mail className="w-4 h-4 text-sky-400" /> Ready-to-Send Executive Outreach Draft
+              {renderedOutreach.isLlm && (
+                <span className="ml-1.5 px-2 py-0.5 rounded-full text-[9px] font-medium bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5 text-sky-400" /> Direct LLM Draft
+                </span>
+              )}
             </span>
             <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleRegenerateDraft}
+                disabled={isRegeneratingDraft}
+                className="px-2.5 py-1 rounded bg-sky-950/80 hover:bg-sky-900/80 text-sky-300 border border-sky-800/80 text-[10px] font-semibold transition flex items-center gap-1 shadow-sm disabled:opacity-50"
+                title="Ask LLM to write a fresh personalized cold email"
+              >
+                <Sparkles className={`w-3 h-3 text-sky-400 ${isRegeneratingDraft ? 'animate-spin' : ''}`} />
+                <span>{isRegeneratingDraft ? "Generating..." : "Regenerate with AI"}</span>
+              </button>
               <button
                 type="button"
                 onClick={handleToggleEditDraft}
                 className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-[10px] font-semibold transition flex items-center gap-1"
               >
                 <Edit3 className="w-3 h-3 text-sky-400" />
-                <span>{isEditingDraft ? "Done Editing" : "Customize for this Lead"}</span>
+                <span>{isEditingDraft ? "Done & Save Draft" : "Customize for this Lead"}</span>
               </button>
             </div>
           </div>
@@ -1344,9 +1407,13 @@ export default function LeadDetailPage() {
           )}
 
           <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-t border-slate-800/80">
-            <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
+            <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>Universal enterprise template configured by Admin &bull; Signature included</span>
+              <span>
+                {renderedOutreach.isLlm 
+                  ? "Direct LLM personalized cold email ready for outbound dispatch • Auto-signature included"
+                  : "Outreach template configured with auto-signature • Ready for dispatch"}
+              </span>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">

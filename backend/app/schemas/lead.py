@@ -121,6 +121,7 @@ class LeadDetailResponse(LeadResponse):
     outreach_logs: List[Dict[str, Any]] = []
     outreach_status: Optional[str] = None
     deal_status: Optional[str] = None
+    outreach_draft: Optional[Dict[str, Any]] = None
 
 class LeadUpdate(BaseModel):
     email: Optional[str] = None
@@ -137,6 +138,8 @@ class LeadUpdate(BaseModel):
     matched_service: Optional[str] = None
     approve_for_outreach: Optional[bool] = None
     outreach_status: Optional[str] = None
+    custom_outreach_subject: Optional[str] = None
+    custom_outreach_body: Optional[str] = None
 
 class StaggeredDispatchCreate(BaseModel):
     lead_ids: Optional[List[uuid.UUID]] = None

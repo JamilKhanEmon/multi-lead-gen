@@ -1022,13 +1022,44 @@ async def _execute_research_and_qualify(
             await session.commit()
             return {"status": "REJECTED", "business_id": str(business_id), "reason": "DROPPED by fit gate"}
 
+        import re
+        raw_gaps = gate_res.get("verified_gaps", [])
+        clean_gaps = [re.sub(r"\s*\[Proof Link:[^\]]*\]", "", str(g)).strip() for g in raw_gaps]
+
         if isinstance(explanation, dict):
-            explanation["verified_gaps"] = gate_res.get("verified_gaps", [])
+            explanation["verified_gaps"] = clean_gaps
             explanation["inferred_opportunities"] = gate_res.get("inferred_opportunities", [])
             explanation["recommended_services"] = gate_res.get("recommended_services", [])
             explanation["matched_service_url"] = gate_res.get("matched_service_url", "")
 
-        lead_primary_gap = " • ".join(gate_res["verified_gaps"][:2]) if gate_res.get("verified_gaps") else gap_summary
+        lead_primary_gap = " • ".join(clean_gaps[:2]) if clean_gaps else gap_summary
+        lead_primary_gap = re.sub(r"\s*\[Proof Link:[^\]]*\]", "", str(lead_primary_gap)).strip()
+
+        if is_qualified and has_email and isinstance(explanation, dict):
+            try:
+                from app.engine.outreach_engine import OutreachEngine
+                draft_subj, draft_body = await OutreachEngine.render_email(
+                    step=1,
+                    lead_data={
+                        "company_name": biz.canonical_name if biz else "Your Team",
+                        "contact_person": biz.contact_person if biz else None,
+                        "city": biz.address if biz else "",
+                        "website": getattr(biz, "domain", "") if biz else "",
+                        "industry": biz.business_type if biz else "Commercial Entity",
+                        "primary_gap": lead_primary_gap,
+                        "why_they_need_us": gate_res.get("why_they_need_us") or lead_primary_gap,
+                        "what_they_need": gate_res.get("what_they_need") or "",
+                        "matched_service": gate_res.get("matched_service") or "",
+                    }
+                )
+                explanation["outreach_draft"] = {
+                    "subject": draft_subj,
+                    "body": draft_body,
+                    "full_email": f"Subject: {draft_subj}\n\n{draft_body}",
+                    "is_llm_generated": True,
+                }
+            except Exception as e:
+                logger.warning(f"Worker outreach draft generation: {e}")
 
         if lead:
             lead.run_id = valid_run_id

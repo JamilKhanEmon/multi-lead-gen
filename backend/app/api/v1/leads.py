@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import desc, text
 from app.api.deps import get_db, get_current_user
 from app.models.lead import Lead, LeadScore, LeadFeedback
@@ -18,9 +19,12 @@ from app.models.business import Business
 from app.models.evidence import Evidence
 from app.models.research import ResearchJob
 from app.models.audit import User
+from app.models.email_template import EmailTemplate, PersonaSignature
 from app.engine.discovery_optimizer import DiscoveryOptimizer
 from app.engine.deduplication import DeduplicationEngine, GENERIC_PLATFORM_DOMAINS
 from app.engine.fit_gate import FitGateEngine
+from app.engine.outreach_engine import OutreachEngine
+from app.core.logging import logger
 from app.schemas.lead import (
     LeadResponse,
     LeadDetailResponse,
@@ -1040,6 +1044,56 @@ async def get_lead_detail(
         lead.discovery_call_script = call_script
         lead.matched_service = matched_svc
 
+    import re
+    if lead.primary_gap_summary and "[Proof Link:" in lead.primary_gap_summary:
+        lead.primary_gap_summary = re.sub(r"\s*\[Proof Link:[^\]]*\]", "", lead.primary_gap_summary).strip()
+    if why_us and "[Proof Link:" in why_us:
+        why_us = re.sub(r"\s*\[Proof Link:[^\]]*\]", "", why_us).strip()
+        lead.why_they_need_us = why_us
+
+    # Retrieve or dynamically generate LLM outreach draft so user sees exact outbound email
+    outreach_draft = (lead.explanation_json or {}).get("outreach_draft")
+    if not outreach_draft:
+        try:
+            t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
+            t_res = await db.execute(t_stmt)
+            active_tpl = t_res.scalar_one_or_none()
+
+            p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
+            p_res = await db.execute(p_stmt)
+            active_personas = p_res.scalars().all()
+
+            draft_subj, draft_body = await OutreachEngine.render_email(
+                step=1,
+                lead_data={
+                    "company_name": biz.canonical_name if biz else "Your Team",
+                    "contact_person": biz.contact_person if biz else None,
+                    "city": address or "",
+                    "website": getattr(biz, "domain", "") if biz else "",
+                    "industry": btype,
+                    "primary_gap": lead.primary_gap_summary,
+                    "why_they_need_us": why_us or lead.primary_gap_summary,
+                    "what_they_need": what_need or "",
+                    "matched_service": matched_svc or "",
+                    "personas": active_personas,
+                    "custom_template": active_tpl,
+                }
+            )
+            outreach_draft = {
+                "subject": draft_subj,
+                "body": draft_body,
+                "full_email": f"Subject: {draft_subj}\n\n{draft_body}",
+                "is_llm_generated": True
+            }
+            if isinstance(lead.explanation_json, dict):
+                lead.explanation_json = {**lead.explanation_json, "outreach_draft": outreach_draft}
+            else:
+                lead.explanation_json = {"outreach_draft": outreach_draft}
+            flag_modified(lead, "explanation_json")
+            await db.commit()
+        except Exception as e:
+            logger.warning(f"Notice rendering LLM draft in get_lead_detail: {e}")
+
     try:
         await db.commit()
     except Exception:
@@ -1104,6 +1158,7 @@ async def get_lead_detail(
         outreach_logs=outreach_logs_list,
         outreach_status=lead.outreach_status,
         deal_status=lead.deal_status,
+        outreach_draft=outreach_draft,
         created_at=lead.created_at,
     )
 
@@ -1263,6 +1318,23 @@ async def update_lead_details(
     if data.matched_service is not None:
         lead.matched_service = data.matched_service.strip()
 
+    if data.custom_outreach_subject is not None or data.custom_outreach_body is not None:
+        curr_draft = (lead.explanation_json or {}).get("outreach_draft") or {}
+        new_subj = data.custom_outreach_subject if data.custom_outreach_subject is not None else curr_draft.get("subject", "")
+        new_body = data.custom_outreach_body if data.custom_outreach_body is not None else curr_draft.get("body", "")
+        updated_draft = {
+            **curr_draft,
+            "subject": new_subj,
+            "body": new_body,
+            "full_email": f"Subject: {new_subj}\n\n{new_body}",
+            "is_customized": True,
+        }
+        if isinstance(lead.explanation_json, dict):
+            lead.explanation_json = {**lead.explanation_json, "outreach_draft": updated_draft}
+        else:
+            lead.explanation_json = {"outreach_draft": updated_draft}
+        flag_modified(lead, "explanation_json")
+
     if data.approve_for_outreach is True:
         has_already_sent = bool(lead.followup_step and lead.followup_step > 0) or bool(lead.last_contacted_at)
         has_replied = lead.outreach_status in ("REPLIED_HOT", "REPLIED_NEUTRAL", "DISCARDED")
@@ -1278,6 +1350,72 @@ async def update_lead_details(
 
     await db.commit()
     return await get_lead_detail(lead_id=lead.id, db=db, current_user=current_user)
+
+@router.post("/{lead_id}/regenerate-outreach")
+async def regenerate_lead_outreach(
+    lead_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    stmt = (
+        select(Lead)
+        .options(
+            selectinload(Lead.business).selectinload(Business.locations),
+        )
+        .where((Lead.id == lead_id) | (Lead.business_id == lead_id))
+    )
+    res = await db.execute(stmt)
+    lead = res.scalar_one_or_none()
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+    biz = lead.business
+    loc = biz.locations[0] if (biz and biz.locations) else None
+    address = (biz.address if biz and biz.address else None) or (loc.address if loc else None)
+
+    t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
+    t_res = await db.execute(t_stmt)
+    active_tpl = t_res.scalar_one_or_none()
+
+    p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
+    p_res = await db.execute(p_stmt)
+    active_personas = p_res.scalars().all()
+
+    if lead.primary_gap_summary and "[Proof Link:" in lead.primary_gap_summary:
+        import re
+        lead.primary_gap_summary = re.sub(r"\s*\[Proof Link:[^\]]*\]", "", lead.primary_gap_summary).strip()
+
+    draft_subj, draft_body = await OutreachEngine.render_email(
+        step=1,
+        lead_data={
+            "company_name": biz.canonical_name if biz else "Your Team",
+            "contact_person": biz.contact_person if biz else None,
+            "city": address or "",
+            "website": getattr(biz, "domain", "") if biz else "",
+            "industry": biz.business_type if biz else "Commercial Entity",
+            "primary_gap": lead.primary_gap_summary,
+            "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
+            "what_they_need": getattr(lead, "what_they_need", None) or "",
+            "matched_service": getattr(lead, "matched_service", None) or "",
+            "personas": active_personas,
+            "custom_template": active_tpl,
+        }
+    )
+
+    outreach_draft = {
+        "subject": draft_subj,
+        "body": draft_body,
+        "full_email": f"Subject: {draft_subj}\n\n{draft_body}",
+        "is_llm_generated": True
+    }
+    if isinstance(lead.explanation_json, dict):
+        lead.explanation_json = {**lead.explanation_json, "outreach_draft": outreach_draft}
+    else:
+        lead.explanation_json = {"outreach_draft": outreach_draft}
+    flag_modified(lead, "explanation_json")
+    await db.commit()
+
+    return outreach_draft
 
 @router.post("/{lead_id}/evaluate-fit", response_model=LeadDetailResponse)
 async def evaluate_lead_fit_gate(
@@ -1400,22 +1538,27 @@ async def dispatch_staggered_outreach(
             continue
 
         recipient = biz.email.strip()
-        subject, body = await OutreachEngine.render_email(
-            step=1,
-            lead_data={
-                "company_name": biz.canonical_name,
-                "contact_person": biz.contact_person or "Executive",
-                "city": biz.address or "",
-                "website": getattr(biz, "domain", ""),
-                "industry": getattr(biz, "business_type", ""),
-                "primary_gap": lead.primary_gap_summary,
-                "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
-                "what_they_need": getattr(lead, "what_they_need", None) or "",
-                "matched_service": getattr(lead, "matched_service", None) or "",
-                "personas": active_personas,
-                "custom_template": active_tpl
-            }
-        )
+        cached_draft = (lead.explanation_json or {}).get("outreach_draft")
+        if cached_draft and cached_draft.get("subject") and cached_draft.get("body"):
+            subject = cached_draft["subject"]
+            body = cached_draft["body"]
+        else:
+            subject, body = await OutreachEngine.render_email(
+                step=1,
+                lead_data={
+                    "company_name": biz.canonical_name,
+                    "contact_person": biz.contact_person or "Executive",
+                    "city": biz.address or "",
+                    "website": getattr(biz, "domain", ""),
+                    "industry": getattr(biz, "business_type", ""),
+                    "primary_gap": lead.primary_gap_summary,
+                    "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
+                    "what_they_need": getattr(lead, "what_they_need", None) or "",
+                    "matched_service": getattr(lead, "matched_service", None) or "",
+                    "personas": active_personas,
+                    "custom_template": active_tpl
+                }
+            )
 
         success, note = await OutreachEngine.dispatch_smtp_email(
             recipient_email=recipient,
