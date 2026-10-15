@@ -2,7 +2,8 @@ import os
 import re
 import unicodedata
 from typing import Dict, Any, Optional, Tuple, List
-from urllib.parse import urlparse
+import urllib.parse
+from urllib.parse import urlparse, quote
 from app.core.logging import logger
 
 DEFAULT_GENERIC_CATALOG: List[Dict[str, Any]] = []
@@ -60,6 +61,47 @@ class FitGateEngine:
         norm = norm.lower().strip()
         norm = re.sub(r"[^\w\s]", " ", norm)
         return re.sub(r"\s+", " ", norm).strip()
+
+    @staticmethod
+    def parse_master_kb_products(kb_notes: str) -> List[Dict[str, Any]]:
+        """
+        Parses master_kb_notes into structured product cards with target industries,
+        overview, core features, problems solved, and value wedge.
+        Prevents internal bullet points (like 'Production Scheduling & Batch Tracking')
+        from being wrongly treated as standalone services.
+        """
+        if not kb_notes or not kb_notes.strip():
+            return []
+
+        # Split by numbered headings like '1. ', '2. ', etc.
+        blocks = re.split(r'\n(?=\d+\.\s+)', kb_notes.strip())
+        products = []
+        for b in blocks:
+            header_match = re.match(r'^(\d+)\.\s+([^\n:]+):?', b.strip())
+            if not header_match:
+                continue
+            p_num = header_match.group(1)
+            p_name = header_match.group(2).strip()
+
+            url_m = re.search(r'[-*]\s*Website Link:\s*([^\n]+)', b, re.IGNORECASE)
+            overview_m = re.search(r'[-*]\s*Overview:\s*([^\n]+)', b, re.IGNORECASE)
+            ind_m = re.search(r'[-*]\s*Target Industries:\s*([^\n]+)', b, re.IGNORECASE)
+            feat_m = re.search(r'[-*]\s*(?:Core )?Features:\s*([\s\S]*?)(?=[-*]\s*(?:Problems Solved|Value Wedge)|$)', b, re.IGNORECASE)
+            prob_m = re.search(r'[-*]\s*Problems Solved:\s*([^\n]+)', b, re.IGNORECASE)
+            wedge_m = re.search(r'[-*]\s*(?:Value Wedge|Wedge):\s*([^\n]+)', b, re.IGNORECASE)
+
+            products.append({
+                'key': f'prod_{p_num}',
+                'name': p_name,
+                'url': url_m.group(1).strip() if url_m else '',
+                'overview': overview_m.group(1).strip() if overview_m else '',
+                'target_industries': ind_m.group(1).strip() if ind_m else '',
+                'features': re.sub(r'\s+', ' ', feat_m.group(1)).strip() if feat_m else (overview_m.group(1).strip() if overview_m else ''),
+                'solves_problems': prob_m.group(1).strip() if prob_m else '',
+                'wedge': wedge_m.group(1).strip() if wedge_m else '5-Minute Tailored Interactive Walkthrough',
+            })
+
+        return products
 
     @classmethod
     def match_service_cards(
@@ -353,28 +395,9 @@ class FitGateEngine:
             else:
                 kb_notes = (company_kb.get("master_kb_notes") or "").strip()
                 if kb_notes:
-                    parsed_lines = [l.strip().lstrip("-•*").strip() for l in kb_notes.split("\n") if l.strip()]
-                    virtual_cards = []
-                    for idx, line in enumerate(parsed_lines):
-                        if len(line) < 5:
-                            continue
-                        if ":" in line:
-                            svc_title, svc_desc = line.split(":", 1)
-                        else:
-                            svc_title, svc_desc = line[:40], line
-                        svc_clean = svc_title.strip()
-                        if svc_clean.lower().strip(" :-#*") in DISALLOWED_SERVICE_HEADERS or any(bad in svc_clean.lower() for bad in ["company overview", "table of contents"]):
-                            continue
-                        virtual_cards.append({
-                            "key": f"note_svc_{idx+1}",
-                            "name": svc_clean,
-                            "wedge": "Tailored workflow demonstration & gap audit",
-                            "features": svc_desc.strip(),
-                            "solves_problems": "operational bottlenecks and manual coordination delays",
-                            "description": svc_desc.strip(),
-                        })
-                    if virtual_cards:
-                        candidate_cards = virtual_cards
+                    prods = cls.parse_master_kb_products(kb_notes)
+                    if prods:
+                        candidate_cards = prods
 
         ranked_cards = cls.match_service_cards(
             candidate_cards=candidate_cards,
@@ -524,26 +547,7 @@ class FitGateEngine:
         else:
             pitch_line = f"Our team specializes in resolving this with {matched_service_name} ({matched_service_wedge}). Would you be open to a 5-minute preview of the live solution modeled for {company_clean}?"
 
-        call_script = (
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📞 [EN] SALES CALL SCRIPT (ENGLISH OUTREACH)\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"1. OPENING EVIDENCE & HOOK:\n"
-            f"   \"Hello, is this {company_clean}? {disc_hook}\"\n\n"
-            f"2. DISCOVERY PAIN QUESTION (Listen carefully to their response):\n"
-            f"   \"{disc_question}\"\n\n"
-            f"3. VALUE PITCH & 5-MIN DEMO OFFER:\n"
-            f"   \"{pitch_line}\"\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🇧🇩 [BN] সেলস টিম গাইড ও বাংলা স্পিচ (সহজে কথা বলার জন্য)\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"১. কল শুরুর হুক (Opening Hook):\n"
-            f"   \"{bn_hook}\"\n\n"
-            f"২. সমস্যা খোঁজার প্রশ্ন (Discovery Question):\n"
-            f"   \"{bn_question}\"\n\n"
-            f"৩. সমাধান ও ৫ মিনিটের ডেমো অফার (Closing / Demo Offer):\n"
-            f"   \"{bn_pitch}\""
-        )
+        call_script = None
 
         # Calibrated 0-100 Score
         # 1. Verified Gaps (0 - 30 pts)

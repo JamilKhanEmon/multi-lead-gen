@@ -696,6 +696,23 @@ class MockAIClient:
 
             return {"label": "NEUTRAL", "reason": "Prospect response is non-committal or generic inquiry"}
 
+        # Handle cold email generation request
+        if "email step" in full_context or "cold email" in full_context:
+            co_m = re.search(r"target company:\s*([^\n]+)", user_prompt, re.IGNORECASE)
+            rec_m = re.search(r"recipient:\s*([^\n]+)", user_prompt, re.IGNORECASE)
+            sol_m = re.search(r"matched solution:\s*([^\n]+)", user_prompt, re.IGNORECASE)
+            gap_m = re.search(r"identified gap:\s*([^\n]+)", user_prompt, re.IGNORECASE)
+
+            c_name = co_m.group(1).strip() if co_m else "your team"
+            r_name = rec_m.group(1).strip() if rec_m else f"Team {c_name}"
+            s_name = sol_m.group(1).strip() if sol_m else "our specialized enterprise software"
+            g_name = gap_m.group(1).strip() if gap_m else "streamlining client inquiries"
+
+            return {
+                "subject": f"Modernizing inquiry capture for {c_name}",
+                "body": f"Hi {r_name},\n\nI was reviewing {c_name}'s online client channels and noticed: {g_name}.\n\nOur {s_name} automates this workflow directly, eliminating response delays and converting prospective clients instantly.\n\nWould you be open to a 5-minute interactive walkthrough sometime this week?"
+            }
+
         services = []
         findings = []
 

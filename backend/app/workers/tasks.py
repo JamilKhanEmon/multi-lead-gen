@@ -1050,7 +1050,8 @@ async def _execute_research_and_qualify(
                         "why_they_need_us": gate_res.get("why_they_need_us") or lead_primary_gap,
                         "what_they_need": gate_res.get("what_they_need") or "",
                         "matched_service": gate_res.get("matched_service") or "",
-                    }
+                    },
+                    ai_client=ollama_client,
                 )
                 explanation["outreach_draft"] = {
                     "subject": draft_subj,
@@ -1060,21 +1061,6 @@ async def _execute_research_and_qualify(
                 }
             except Exception as e:
                 logger.warning(f"Worker outreach draft generation: {e}")
-
-        if is_qualified:
-            try:
-                dyn_script = await FitGateEngine.generate_dynamic_call_script(
-                    company_name=business_name,
-                    city=payload.get("city") or (biz.address if biz else "") or "Local Area",
-                    industry=business_type,
-                    verified_gaps=clean_gaps,
-                    matched_service=gate_res.get("matched_service") or "",
-                    ai_client=ollama_client,
-                )
-                if dyn_script:
-                    gate_res["discovery_call_script"] = dyn_script
-            except Exception as e:
-                logger.warning(f"Worker dynamic call script generation notice: {e}")
 
         if lead:
             lead.run_id = valid_run_id
