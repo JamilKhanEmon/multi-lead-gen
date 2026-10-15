@@ -38,6 +38,8 @@ import {
   Lock,
   Users,
   Loader2,
+  Briefcase,
+  Target,
 } from "lucide-react";
 import {
   fetchLeads,
