@@ -306,19 +306,22 @@ export default function AutopilotPage() {
 
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
         <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20">
-              <Zap className="w-5 h-5 fill-current" />
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-500/20 via-sky-500/10 to-indigo-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400 shadow-lg shadow-sky-500/10 shrink-0">
+              <Zap className="w-5 h-5 fill-sky-400/20 text-sky-400" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
-                <span>Autonomous Cold Email & Autopilot Engine</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold uppercase">
-                  Continuous Autopilot
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+                  Autonomous Cold Email & Autopilot Engine
+                </h1>
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold tracking-wide uppercase whitespace-nowrap shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  24/7 Autopilot Active
                 </span>
-              </h1>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Multi-zone discovery, de-duplication shield, zero-bounce verification, and anti-spam drip outreach.
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Continuous country-wide discovery, deep AI audits, zero-bounce verification, and safe drip outreach.
               </p>
             </div>
           </div>
