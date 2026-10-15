@@ -363,7 +363,7 @@ export async function updateLeadDetails(leadId: string, data: {
   return res.json();
 }
 
-export async function regenerateLeadOutreach(leadId: string): Promise<{ subject: string; body: string; full_email: string }> {
+export async function regenerateLeadOutreach(leadId: string): Promise<{ subject: string; body: string; full_email: string; discovery_call_script?: string; is_llm_generated?: boolean }> {
   const token = getStoredToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
