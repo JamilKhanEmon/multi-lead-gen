@@ -96,6 +96,18 @@ export default function AutopilotPage() {
   const [newSubCityVal, setNewSubCityVal] = useState("");
   const [expandedSubCities, setExpandedSubCities] = useState<Record<string, boolean>>({});
 
+  const [addingServiceCampId, setAddingServiceCampId] = useState<string | null>(null);
+  const [newServiceName, setNewServiceName] = useState("");
+  const [newServiceType, setNewServiceType] = useState<"software" | "marketing">("software");
+  const [newServiceDesc, setNewServiceDesc] = useState("");
+  const [newServiceHook, setNewServiceHook] = useState("");
+
+  const [cCustomServices, setCCustomServices] = useState<any[]>([]);
+  const [cShowAddCustomService, setCShowAddCustomService] = useState(false);
+  const [cCustomName, setCCustomName] = useState("");
+  const [cCustomType, setCCustomType] = useState<"software" | "marketing">("software");
+  const [cCustomDesc, setCCustomDesc] = useState("");
+
   const [reviewEmailInput, setReviewEmailInput] = useState<Record<string, string>>({});
   const [verifyingLeadId, setVerifyingLeadId] = useState<string | null>(null);
 
@@ -188,6 +200,42 @@ export default function AutopilotPage() {
     }
   };
 
+  const handleAddServiceToCampaign = async (camp: AutopilotCampaign) => {
+    if (!newServiceName.trim()) return;
+    const cleanName = newServiceName.trim();
+    const currentServices = (camp.target_services || []) as any[];
+    const newCard = {
+      name: cleanName,
+      type: newServiceType,
+      description: newServiceDesc.trim() || `${cleanName} digital solution for high-converting lead generation.`,
+      offer_hook: newServiceHook.trim() || "5-Minute Live Interactive Software Demo",
+    };
+    const updated = [...currentServices, newCard];
+    try {
+      await updateAutopilotCampaign(camp.id, { target_services: updated });
+      showToast(`✓ Added pitch card "${cleanName}"!`);
+      setNewServiceName("");
+      setNewServiceDesc("");
+      setNewServiceHook("");
+      setAddingServiceCampId(null);
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || "Failed to add pitch card");
+    }
+  };
+
+  const handleRemoveServiceFromCampaign = async (camp: AutopilotCampaign, indexToRemove: number) => {
+    const currentServices = (camp.target_services || []) as any[];
+    const updated = currentServices.filter((_, idx) => idx !== indexToRemove);
+    try {
+      await updateAutopilotCampaign(camp.id, { target_services: updated });
+      showToast(`✓ Removed pitch card`);
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || "Failed to remove pitch card");
+    }
+  };
+
   const handleCreateCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hasPermission(currentUser, "can_create_autopilot_campaigns", false)) {
@@ -222,9 +270,11 @@ export default function AutopilotPage() {
         use_company_kb: cUseCompanyKb,
         analyze_website: cAnalyzeWebsite,
         max_services: cMaxServices,
+        target_services: cCustomServices,
       });
       showToast("✓ Autopilot Campaign launched successfully!");
       setShowCreateModal(false);
+      setCCustomServices([]);
       loadData();
     } catch (err: any) {
       showToast(err.message || "Failed to create campaign");
@@ -715,6 +765,165 @@ export default function AutopilotPage() {
                       )
                     )}
                   </div>
+                </div>
+
+                {/* TARGET SERVICE PITCH CARDS */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-800/60">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                    <span className="uppercase flex items-center gap-1.5 text-purple-300 font-semibold">
+                      <Briefcase className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Service Pitch Cards ({camp.target_services?.length || 0}):</span>
+                    </span>
+                    {hasPermission(currentUser, "can_create_autopilot_campaigns", false) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddingServiceCampId(addingServiceCampId === camp.id ? null : camp.id);
+                          setNewServiceName("");
+                          setNewServiceDesc("");
+                          setNewServiceHook("");
+                        }}
+                        className="text-purple-400 hover:text-purple-300 transition flex items-center gap-1 font-sans font-semibold text-[10px] cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>{addingServiceCampId === camp.id ? "Close Form" : "+ Add Pitch Card"}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Inline Add Pitch Card Form */}
+                  {addingServiceCampId === camp.id && (
+                    <div className="p-2.5 rounded-xl bg-purple-950/30 border border-purple-700/50 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-purple-200 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-purple-400" />
+                          New Pitch Card
+                        </span>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setNewServiceType("software")}
+                            className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase transition ${
+                              newServiceType === "software" ? "bg-purple-600 text-white" : "bg-slate-800 text-slate-400"
+                            }`}
+                          >
+                            Software
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewServiceType("marketing")}
+                            className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase transition ${
+                              newServiceType === "marketing" ? "bg-pink-600 text-white" : "bg-slate-800 text-slate-400"
+                            }`}
+                          >
+                            Marketing
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Service / Solution Name (e.g. Real Estate CRM & Lead Routing)"
+                        value={newServiceName}
+                        onChange={(e) => setNewServiceName(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Problem solved / Value proposition"
+                        value={newServiceDesc}
+                        onChange={(e) => setNewServiceDesc(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Live Demo offer hook (e.g. 5-Minute Live Interactive Demo)"
+                        value={newServiceHook}
+                        onChange={(e) => setNewServiceHook(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                      />
+                      <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setAddingServiceCampId(null)}
+                          className="px-2 py-0.5 rounded text-[10px] text-slate-400 hover:text-slate-200"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddServiceToCampaign(camp)}
+                          className="px-3 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white font-semibold text-[10px] transition cursor-pointer"
+                        >
+                          Save Card
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cards Grid */}
+                  {camp.target_services && camp.target_services.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-0.5">
+                      {camp.target_services.map((svc: any, idx: number) => {
+                        const sName = typeof svc === "string" ? svc : (svc.name || "Custom Solution");
+                        const sType = typeof svc === "object" ? (svc.type || "software") : "software";
+                        const sDesc = typeof svc === "object" ? (svc.description || svc.features || "") : "";
+                        const sHook = typeof svc === "object" ? (svc.offer_hook || svc.wedge || "5-Minute Live Interactive Demo") : "5-Minute Live Interactive Demo";
+                        return (
+                          <div
+                            key={idx}
+                            className="p-2.5 rounded-xl bg-slate-950/80 border border-purple-900/40 hover:border-purple-600/60 transition space-y-1 relative group"
+                          >
+                            <div className="flex items-start justify-between gap-1">
+                              <span className="font-semibold text-white text-[11px] leading-tight line-clamp-1">{sName}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className={`text-[8px] font-mono uppercase px-1 py-0.2 rounded font-bold ${
+                                  sType === "marketing" ? "bg-pink-500/20 text-pink-300 border border-pink-500/30" : "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                                }`}>
+                                  {sType}
+                                </span>
+                                {hasPermission(currentUser, "can_create_autopilot_campaigns", false) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveServiceFromCampaign(camp, idx)}
+                                    className="text-slate-500 hover:text-rose-400 p-0.5 transition cursor-pointer"
+                                    title="Remove this pitch card"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            {sDesc && <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">{sDesc}</p>}
+                            <div className="text-[9px] text-emerald-400 font-mono flex items-center gap-1 pt-0.5">
+                              <Check className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                              <span className="truncate">{sHook}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded-lg bg-slate-950/40 border border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
+                        AI matches tailored pitch cards from Company KB per niche during runs.
+                      </span>
+                      {hasPermission(currentUser, "can_create_autopilot_campaigns", false) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAddingServiceCampId(camp.id);
+                            setNewServiceName("");
+                            setNewServiceDesc("");
+                            setNewServiceHook("");
+                          }}
+                          className="text-purple-400 hover:text-purple-300 font-semibold underline shrink-0 cursor-pointer ml-2"
+                        >
+                          + Add Card
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/60 text-xs">
@@ -1284,6 +1493,105 @@ export default function AutopilotPage() {
                     </span>
                   )}
                 </p>
+
+                {/* Custom Services Added in Modal */}
+                {cCustomServices.length > 0 && (
+                  <div className="space-y-1 pt-1 border-t border-slate-800/80">
+                    <span className="text-[10px] font-mono text-purple-300 uppercase block">Selected Pitch Cards ({cCustomServices.length}):</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {cCustomServices.map((cs, idx) => (
+                        <div key={idx} className="p-2 rounded-lg bg-slate-900 border border-purple-500/40 flex items-start justify-between gap-1">
+                          <div>
+                            <div className="text-[11px] font-semibold text-white">{cs.name}</div>
+                            <div className="text-[9px] text-slate-400 line-clamp-1">{cs.description}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setCCustomServices(cCustomServices.filter((_, i) => i !== idx))}
+                            className="text-slate-500 hover:text-rose-400 p-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Add Custom Pitch Card in Modal */}
+                {cShowAddCustomService ? (
+                  <div className="p-2.5 rounded-xl bg-purple-950/40 border border-purple-700/60 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-purple-200">Custom Pitch Card</span>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setCCustomType("software")}
+                          className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase ${cCustomType === "software" ? "bg-purple-600 text-white" : "bg-slate-800 text-slate-400"}`}
+                        >
+                          Software
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCCustomType("marketing")}
+                          className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase ${cCustomType === "marketing" ? "bg-pink-600 text-white" : "bg-slate-800 text-slate-400"}`}
+                        >
+                          Marketing
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Service / Solution Name (e.g. Real Estate CRM)"
+                      value={cCustomName}
+                      onChange={(e) => setCCustomName(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Value proposition / problem solved"
+                      value={cCustomDesc}
+                      onChange={(e) => setCCustomDesc(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                    />
+                    <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setCShowAddCustomService(false)}
+                        className="px-2 py-0.5 rounded text-[10px] text-slate-400"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!cCustomName.trim()) return;
+                          setCCustomServices([...cCustomServices, {
+                            name: cCustomName.trim(),
+                            type: cCustomType,
+                            description: cCustomDesc.trim() || `${cCustomName.trim()} solution.`,
+                            offer_hook: "5-Minute Live Interactive Software Demo",
+                          }]);
+                          setCCustomName("");
+                          setCCustomDesc("");
+                          setCShowAddCustomService(false);
+                        }}
+                        className="px-3 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white font-semibold text-[10px]"
+                      >
+                        Add Card
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setCShowAddCustomService(true)}
+                    className="text-[11px] text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1 cursor-pointer pt-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Custom Pitch Card to Campaign</span>
+                  </button>
+                )}
               </div>
 
               <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2.5">

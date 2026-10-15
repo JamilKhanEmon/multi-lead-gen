@@ -13,6 +13,7 @@ class AutopilotCampaign(Base, UUIDMixin, TimestampMixin):
     keywords: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     country: Mapped[str] = mapped_column(String(100), default="", nullable=False, index=True)
     sub_cities: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    target_services: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     
     daily_lead_limit: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     daily_email_limit: Mapped[int] = mapped_column(Integer, default=50, nullable=False)

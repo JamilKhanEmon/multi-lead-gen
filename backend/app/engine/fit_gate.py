@@ -197,6 +197,7 @@ class FitGateEngine:
         company_kb: Optional[Dict[str, Any]] = None,
         use_company_kb: bool = True,
         analyze_website: bool = False,
+        target_services: Optional[List[Any]] = None,
     ) -> Dict[str, Any]:
         audit_res = audit_res or {}
         detected_weaknesses = detected_weaknesses or []
@@ -388,7 +389,9 @@ class FitGateEngine:
         }
 
         candidate_cards = DEFAULT_GENERIC_CATALOG
-        if use_company_kb and company_kb:
+        if target_services and len(target_services) > 0:
+            candidate_cards = target_services
+        elif use_company_kb and company_kb:
             kb_services = company_kb.get("services_json")
             if isinstance(kb_services, list) and len(kb_services) > 0:
                 candidate_cards = kb_services
