@@ -46,6 +46,7 @@ import {
   toggleAutopilotCampaign,
   runAutopilotBatch,
   deleteAutopilotCampaign,
+  updateAutopilotCampaign,
   fetchAutopilotAnalytics,
   fetchAutopilotActivity,
   humanVerifyLeadEmail,
@@ -76,16 +77,21 @@ export default function AutopilotPage() {
   const [cName, setCName] = useState("");
   const [cKeywords, setCKeywords] = useState("");
   const [cCountry, setCCountry] = useState("");
+  const [cCity, setCCity] = useState("");
   const [cSubCities, setCSubCities] = useState<string[]>([]);
   const [subCityInput, setSubCityInput] = useState("");
-  const [cDailyLimit, setCDailyLimit] = useState(100);
+  const [cDailyLimit, setCDailyLimit] = useState(50);
   const [cUnlimited, setCUnlimited] = useState(false);
-  const [cAutoMail, setCAutoMail] = useState(true);
+  const [cAutoMail, setCAutoMail] = useState(false);
   const [cUseGlobalTemplate, setCUseGlobalTemplate] = useState(false);
   const [cUseCompanyKb, setCUseCompanyKb] = useState(true);
   const [cAnalyzeWebsite, setCAnalyzeWebsite] = useState(false);
   const [creatingCampaign, setCreatingCampaign] = useState(false);
   const [runningBatchId, setRunningBatchId] = useState<string | null>(null);
+
+  const [addingSubCityCampId, setAddingSubCityCampId] = useState<string | null>(null);
+  const [newSubCityVal, setNewSubCityVal] = useState("");
+  const [expandedSubCities, setExpandedSubCities] = useState<Record<string, boolean>>({});
 
   const [reviewEmailInput, setReviewEmailInput] = useState<Record<string, string>>({});
   const [verifyingLeadId, setVerifyingLeadId] = useState<string | null>(null);
@@ -148,6 +154,37 @@ export default function AutopilotPage() {
     setCSubCities(cSubCities.filter((c) => c !== tag));
   };
 
+  const handleAddSubCityToCampaign = async (camp: AutopilotCampaign) => {
+    if (!newSubCityVal.trim()) return;
+    const clean = newSubCityVal.trim();
+    const currentSubs = camp.sub_cities || [];
+    if (currentSubs.includes(clean)) {
+      showToast("This area is already added");
+      return;
+    }
+    const updated = [...currentSubs, clean];
+    try {
+      await updateAutopilotCampaign(camp.id, { sub_cities: updated });
+      showToast(`✓ Added "${clean}" to campaign!`);
+      setNewSubCityVal("");
+      setAddingSubCityCampId(null);
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || "Failed to add location");
+    }
+  };
+
+  const handleRemoveSubCityFromCampaign = async (camp: AutopilotCampaign, subCityToRemove: string) => {
+    const updated = (camp.sub_cities || []).filter((sc) => sc !== subCityToRemove);
+    try {
+      await updateAutopilotCampaign(camp.id, { sub_cities: updated });
+      showToast(`Removed "${subCityToRemove}"`);
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || "Failed to remove location");
+    }
+  };
+
   const handleCreateCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!hasPermission(currentUser, "can_create_autopilot_campaigns", false)) {
@@ -158,15 +195,23 @@ export default function AutopilotPage() {
       showToast("Please enter a campaign name");
       return;
     }
+    if (!cCountry.trim()) {
+      showToast("Please enter target country");
+      return;
+    }
     setCreatingCampaign(true);
     try {
       const kwList = cKeywords.split(",").map((k) => k.trim()).filter(Boolean);
+      const initialSubs = [...cSubCities];
+      if (cCity.trim() && !initialSubs.some(s => s.toLowerCase().includes(cCity.trim().toLowerCase()))) {
+        initialSubs.unshift(cCity.trim());
+      }
       await createAutopilotCampaign({
         name: cName.trim(),
         keywords: kwList.length ? kwList : ["Business"],
-        country: cCountry,
-        sub_cities: cSubCities.length ? cSubCities : [],
-        daily_lead_limit: cUnlimited ? 0 : Number(cDailyLimit) || 100,
+        country: cCountry.trim(),
+        sub_cities: initialSubs,
+        daily_lead_limit: cUnlimited ? 0 : Number(cDailyLimit) || 50,
         daily_email_limit: 50,
         is_unlimited_leads: cUnlimited,
         auto_mail_enabled: cAutoMail,
@@ -576,22 +621,90 @@ export default function AutopilotPage() {
                   </div>
                 )}
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
                     <span className="uppercase">Target Sub-Locations ({camp.sub_cities?.length || 0}):</span>
-                    <span className="text-emerald-400 font-semibold text-[10px]">
-                      {camp.sub_cities?.length && camp.sub_cities.length > 20 ? "AI Nationwide Scan" : "1-Click Scans All"}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {camp.sub_cities && camp.sub_cities.length > 8 && (
+                        <button
+                          type="button"
+                          onClick={() => setExpandedSubCities(prev => ({ ...prev, [camp.id]: !prev[camp.id] }))}
+                          className="text-sky-400 hover:text-sky-300 font-sans font-semibold text-[10px]"
+                        >
+                          {expandedSubCities[camp.id] ? "Collapse ▲" : `View All (${camp.sub_cities.length}) ▼`}
+                        </button>
+                      )}
+                      <span className="text-emerald-400 font-semibold text-[10px]">
+                        {camp.sub_cities?.length && camp.sub_cities.length > 20 ? "AI Nationwide Scan" : "1-Click Scans All"}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+                  <div className={`flex flex-wrap gap-1 pr-1 transition-all ${expandedSubCities[camp.id] ? "max-h-80 overflow-y-auto" : "max-h-24 overflow-y-auto"}`}>
                     {camp.sub_cities?.map((sc) => (
                       <span
                         key={sc}
-                        className="text-[10px] px-2 py-0.5 rounded-md font-mono bg-sky-500/10 text-sky-300 border border-sky-500/30 flex items-center gap-1 font-medium"
+                        className="text-[10px] px-2 py-0.5 rounded-md font-mono bg-sky-500/10 text-sky-300 border border-sky-500/30 flex items-center gap-1 font-medium group"
                       >
                         <span className="text-[8px] text-emerald-400">✓</span> {sc}
+                        {hasPermission(currentUser, "can_create_autopilot_campaigns", false) && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSubCityFromCampaign(camp, sc)}
+                            title={`Remove ${sc}`}
+                            className="opacity-40 group-hover:opacity-100 hover:text-rose-400 ml-0.5"
+                          >
+                            ×
+                          </button>
+                        )}
                       </span>
                     ))}
+                    {hasPermission(currentUser, "can_create_autopilot_campaigns", false) && (
+                      addingSubCityCampId === camp.id ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            autoFocus
+                            placeholder="Type area (e.g. Sylhet Sadar) & press Enter..."
+                            value={newSubCityVal}
+                            onChange={(e) => setNewSubCityVal(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddSubCityToCampaign(camp);
+                              } else if (e.key === "Escape") {
+                                setAddingSubCityCampId(null);
+                              }
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-slate-950 border border-sky-500 text-white focus:outline-none min-w-[170px]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddSubCityToCampaign(camp)}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold"
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAddingSubCityCampId(null)}
+                            className="text-[10px] px-1 text-slate-400 hover:text-white"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAddingSubCityCampId(camp.id);
+                            setNewSubCityVal("");
+                          }}
+                          className="text-[10px] px-2 py-0.5 rounded-md font-mono bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-sky-300 border border-dashed border-slate-700 flex items-center gap-1 transition"
+                        >
+                          + Add Area
+                        </button>
+                      )
+                    )}
                   </div>
                 </div>
 
@@ -822,20 +935,21 @@ export default function AutopilotPage() {
 
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-5 shadow-2xl relative">
+          <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-5 shadow-2xl relative my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30">
-                  <Plus className="w-5 h-5" />
+                <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30">
+                  <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Create Autopilot Campaign</h3>
+                  <h3 className="text-base font-bold text-white">Launch Autonomous Autopilot Campaign</h3>
                   <p className="text-xs text-slate-400">
-                    Set discovery topics and sub-cities for continuous automated outreach.
+                    OpenClaw autonomously discovers real local businesses, audits their live channels, and qualifies high-intent B2B leads.
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setShowCreateModal(false)}
                 className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
               >
@@ -846,55 +960,111 @@ export default function AutopilotPage() {
             <form onSubmit={handleCreateCampaign} className="space-y-4">
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Campaign Name
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>Campaign Name</span>
+                    <span className="text-[10px] normal-case bg-sky-500/10 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded-full font-normal">
+                      Required
+                    </span>
+                  </label>
+                  {cName && (
+                    <button
+                      type="button"
+                      onClick={() => setCName("")}
+                      className="text-xs text-slate-400 hover:text-slate-200 transition"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Dhaka IT & Software Firms Outreach"
+                  placeholder="e.g. BD Real Estate & Property Developers"
                   value={cName}
                   onChange={(e) => setCName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-sky-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Target Business Keywords (Enter 5-10 comma-separated keywords)
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Globe2 className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Country</span>
+                    <span className="text-[10px] normal-case bg-sky-500/10 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded-full font-normal">
+                      Required
+                    </span>
+                  </label>
+                  {cCountry && (
+                    <button
+                      type="button"
+                      onClick={() => setCCountry("")}
+                      className="text-xs text-slate-400 hover:text-slate-200 transition"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Dental Clinic, Dentist, Orthodontist, Oral Surgery, Teeth Whitening"
-                  value={cKeywords}
-                  onChange={(e) => setCKeywords(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-sky-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">
-                  Target Country (Full Country-Wide Discovery)
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. United States, Bangladesh, United Arab Emirates, United Kingdom"
+                  placeholder="e.g. United States, United Kingdom, Canada, Australia, UAE, Bangladesh"
                   value={cCountry}
                   onChange={(e) => setCCountry(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-sky-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500 transition"
                 />
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-slate-300">
-                    Sub-Cities & Areas
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>City / Division</span>
+                    <span className="text-[10px] normal-case bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-normal">
+                      Optional
+                    </span>
                   </label>
-                  <span className="text-[10px] text-emerald-400 font-medium">
-                    Optional — Leave empty to auto-scan all commercial cities
-                  </span>
+                  {cCity && (
+                    <button
+                      type="button"
+                      onClick={() => setCCity("")}
+                      className="text-xs text-slate-400 hover:text-slate-200 transition"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  placeholder="e.g. Dhaka, New York, London, Toronto, Dubai (Leave empty to scan entire country)"
+                  value={cCity}
+                  onChange={(e) => setCCity(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  If left empty, OpenClaw will scan across all major divisions and commercial hub cities nationwide.
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Sub-City / Area / District</span>
+                    <span className="text-[10px] normal-case bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-normal">
+                      Optional
+                    </span>
+                  </label>
+                  {cSubCities.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCSubCities([])}
+                      className="text-xs text-slate-400 hover:text-slate-200 transition"
+                    >
+                      Clear All
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 p-2 rounded-xl bg-slate-950 border border-slate-800 min-h-[46px]">
                   {cSubCities.map((sc) => (
@@ -914,131 +1084,189 @@ export default function AutopilotPage() {
                   ))}
                   <input
                     type="text"
-                    placeholder={cSubCities.length === 0 ? "Leave empty for whole country, or type city & press Enter..." : "Add more..."}
+                    placeholder={cSubCities.length === 0 ? "e.g. Manhattan, Brooklyn, Uttara, Mirpur, Gulshan (Leave empty to auto-scan all)" : "Add more..."}
                     value={subCityInput}
                     onChange={(e) => setSubCityInput(e.target.value)}
                     onKeyDown={handleAddSubCity}
-                    className="flex-1 min-w-[120px] bg-transparent text-xs text-white focus:outline-none px-2 py-1"
+                    className="flex-1 min-w-[140px] bg-transparent text-xs text-white focus:outline-none px-2 py-1"
                   />
                 </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  If left empty, OpenClaw will autonomously scan across all districts and neighborhoods of the target area.
+                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 items-center pt-2">
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">
-                    Lead Target Limit (Runs non-stop until reached)
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Briefcase className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Business Type / Industry</span>
+                    <span className="text-[10px] normal-case bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-full font-normal">
+                      Required
+                    </span>
                   </label>
-                  <input
-                    type="number"
-                    min="10"
-                    max="10000"
-                    disabled={cUnlimited}
-                    value={cDailyLimit}
-                    onChange={(e) => setCDailyLimit(Number(e.target.value))}
-                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white disabled:opacity-40"
-                  />
+                  {cKeywords && (
+                    <button
+                      type="button"
+                      onClick={() => setCKeywords("")}
+                      className="text-xs text-slate-400 hover:text-slate-200 transition"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Real Estate Developer, Property Agency, Apartment Sales, Building Construction"
+                  value={cKeywords}
+                  onChange={(e) => setCKeywords(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+                />
+              </div>
 
-                <div className="flex items-center gap-2 pt-5">
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
+                    <Send className="w-4 h-4 text-sky-400" />
+                    <span>Auto-Send Cold Outreach Emails</span>
+                  </label>
                   <input
                     type="checkbox"
-                    id="unlimited_checkbox"
-                    checked={cUnlimited}
-                    onChange={(e) => setCUnlimited(e.target.checked)}
-                    className="w-4 h-4 rounded text-sky-500 bg-slate-950 border-slate-700"
+                    checked={cAutoMail}
+                    onChange={(e) => setCAutoMail(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-sky-500 focus:ring-sky-500 cursor-pointer"
                   />
-                  <label htmlFor="unlimited_checkbox" className="text-xs text-slate-300 cursor-pointer">
-                    Unlimited (No daily cap)
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {cAutoMail ? (
+                    <span className="text-emerald-400 font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                      ON: Step-1 cold outreach email will automatically be sent to valid leads as soon as discovered.
+                    </span>
+                  ) : (
+                    <span className="text-amber-400 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                      OFF: Emails won't send automatically. Valid leads will be held in the Outreach Queue for human-paced batch mailing.
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
+                    <Building2 className="w-4 h-4 text-purple-400" />
+                    <span>Use Company KB & Branded Pitch</span>
                   </label>
+                  <input
+                    type="checkbox"
+                    checked={cUseCompanyKb}
+                    onChange={(e) => setCUseCompanyKb(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-purple-500 focus:ring-purple-500 cursor-pointer"
+                  />
                 </div>
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div>
-                  <span className="text-xs font-semibold text-white block">Auto-Dispatch Emails</span>
-                  <span className="text-[11px] text-slate-400">
-                    Immediately queue verified leads for automated 2-4m outreach
-                  </span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={cAutoMail}
-                  onChange={(e) => setCAutoMail(e.target.checked)}
-                  className="w-5 h-5 rounded text-sky-500 bg-slate-900 border-slate-700 cursor-pointer"
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-white block">Intelligent AI Cold Email Generation</span>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-medium">
-                      {!cUseGlobalTemplate ? "AI Dynamic Mode Active" : "Legacy Template Active"}
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {cUseCompanyKb ? (
+                    <span className="text-purple-400 font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-purple-400" />
+                      ON: Company KB Active — Uses your agency profile & custom service catalog from Admin for discovery call pitch & value wedges.
                     </span>
-                  </div>
-                  <span className="text-[11px] text-slate-400 block mt-0.5">
-                    {!cUseGlobalTemplate
-                      ? "Recommended: AI writes hyper-personalized, spam-proof 4-line cold emails tailored to each lead's audited gap"
-                      : "Fallback: Uses legacy fallback template instead of dynamic AI copy generation"}
-                  </span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={cUseGlobalTemplate}
-                  onChange={(e) => setCUseGlobalTemplate(e.target.checked)}
-                  className="w-5 h-5 rounded text-sky-500 bg-slate-900 border-slate-700 cursor-pointer"
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-white block">Use Company KB & Branded Pitch</span>
-                    <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-medium">
-                      {cUseCompanyKb ? "Company KB Active" : "Generic AI Mode"}
+                  ) : (
+                    <span className="text-amber-400 font-medium flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                      OFF: Generic AI Pitch Mode — Zero company branding; consultative B2B digital transformation pitch.
                     </span>
-                  </div>
-                  <span className="text-[11px] text-slate-400 block mt-0.5">
-                    {cUseCompanyKb
-                      ? "Checked: Uses company profile & custom service catalog from Admin for discovery call pitch & value wedges"
-                      : "Unchecked: Zero company branding; pitches clean consultative B2B digital transformation"}
-                  </span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={cUseCompanyKb}
-                  onChange={(e) => setCUseCompanyKb(e.target.checked)}
-                  className="w-5 h-5 rounded text-purple-500 bg-slate-900 border-slate-700 cursor-pointer"
-                />
+                  )}
+                </p>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <div>
-                  <div className="flex items-center gap-2">
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-2 cursor-pointer">
                     <Globe2 className="w-4 h-4 text-pink-400" />
-                    <span className="text-xs font-semibold text-white block">Deep Website Technical Audit</span>
-                    <span
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-medium border ${
-                        cAnalyzeWebsite
-                          ? "bg-pink-500/10 text-pink-400 border-pink-500/20"
-                          : "bg-sky-500/10 text-sky-400 border-sky-500/20"
+                    <span>Deep Website Technical Audit</span>
+                  </label>
+                  <input
+                    type="checkbox"
+                    checked={cAnalyzeWebsite}
+                    onChange={(e) => setCAnalyzeWebsite(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-pink-500 focus:ring-pink-500 cursor-pointer"
+                  />
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {cAnalyzeWebsite ? (
+                    <span className="text-pink-300 font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-pink-400" />
+                      ON: Full Website Audit — Scrapes complete code, mobile layout breaks, GA4/Pixel tracking, and broken link 404s.
+                    </span>
+                  ) : (
+                    <span className="text-sky-300 font-medium flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+                      OFF (Recommended): Social Media & Demo Focus — Skips website scraping if phone/email is found. Pitches Company KB solutions & live software demos without website complaining.
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <Target className="w-4 h-4 text-emerald-400" />
+                    <span>Target Leads to Discover</span>
+                  </label>
+                  <span className="text-xs font-mono text-emerald-400 font-semibold">
+                    {cUnlimited ? "Unlimited" : `${cDailyLimit} Leads`}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[20, 50, 100, 200].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => {
+                        setCUnlimited(false);
+                        setCDailyLimit(preset);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                        !cUnlimited && cDailyLimit === preset
+                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                          : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800"
                       }`}
                     >
-                      {cAnalyzeWebsite ? "Full Code & Pixel Audit" : "Social & Demo Mode (Recommended)"}
-                    </span>
+                      {preset} Leads
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setCUnlimited(true)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                      cUnlimited
+                        ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                        : "bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800"
+                    }`}
+                  >
+                    Unlimited
+                  </button>
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    <span className="text-[11px] text-slate-400">Custom:</span>
+                    <input
+                      type="number"
+                      min="10"
+                      max="10000"
+                      disabled={cUnlimited}
+                      value={cDailyLimit}
+                      onChange={(e) => {
+                        setCUnlimited(false);
+                        setCDailyLimit(Number(e.target.value));
+                      }}
+                      className="w-20 px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 disabled:opacity-40"
+                    />
                   </div>
-                  <span className="text-[11px] text-slate-400 block mt-0.5">
-                    {cAnalyzeWebsite
-                      ? "ON: Scrapes complete website code, mobile layout breaks, GA4/Pixel tracking, and broken link 404s"
-                      : "OFF (Recommended): Scans social presence & phone/WhatsApp/email. Pitches software demos without rejecting businesses lacking websites"}
-                  </span>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={cAnalyzeWebsite}
-                  onChange={(e) => setCAnalyzeWebsite(e.target.checked)}
-                  className="w-5 h-5 rounded text-pink-500 bg-slate-900 border-slate-700 cursor-pointer"
-                />
+                <p className="text-[11px] text-slate-500">
+                  OpenClaw will hunt across sub-cities and multi-engine queries until {cUnlimited ? "unlimited verified leads are discovered" : `${cDailyLimit} verified commercial entities are discovered`}.
+                </p>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
@@ -1052,9 +1280,19 @@ export default function AutopilotPage() {
                 <button
                   type="submit"
                   disabled={creatingCampaign}
-                  className="px-5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-sky-500/20"
+                  className="px-5 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-sky-500/20 flex items-center gap-1.5"
                 >
-                  {creatingCampaign ? "Creating..." : "Save & Launch Autopilot"}
+                  {creatingCampaign ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Creating Campaign...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Save & Launch Autopilot</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
