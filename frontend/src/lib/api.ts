@@ -1538,6 +1538,23 @@ export async function toggleAutopilotCampaign(
   return res.json();
 }
 
+export async function updateAutopilotCampaign(
+  campaignId: string,
+  data: Partial<AutopilotCampaign>
+): Promise<AutopilotCampaign> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/autopilot/campaigns/${campaignId}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update campaign");
+  return res.json();
+}
+
 export async function runAutopilotBatch(campaignId: string): Promise<any> {
   const token = getStoredToken();
   const headers: Record<string, string> = {};
