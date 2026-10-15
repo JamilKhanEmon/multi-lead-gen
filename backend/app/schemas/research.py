@@ -19,10 +19,10 @@ class ResearchRunCreate(BaseModel):
     sub_areas: List[str] = Field(default_factory=list, description="Approved list of sub-areas to crawl")
 
 class StrategyPreviewRequest(BaseModel):
-    industry: str = Field(..., example="Real Estate")
-    location: str = Field(..., example="Dhaka, Bangladesh")
-    country: Optional[str] = Field(default="", example="Bangladesh")
-    city: Optional[str] = Field(default="", example="Dhaka")
+    industry: str = Field(..., description="Target business type / industry")
+    location: str = Field(..., description="Target location or region")
+    country: Optional[str] = Field(default="", description="Target country")
+    city: Optional[str] = Field(default="", description="Target city")
     analyze_website: bool = Field(default=False)
     max_services: Optional[int] = Field(default=0, ge=0, le=10, description="0 for LLM Self/Auto mode, or 1 to 10 for manual limit")
 
