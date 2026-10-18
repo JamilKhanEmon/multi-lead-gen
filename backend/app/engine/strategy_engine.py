@@ -151,11 +151,13 @@ class StrategyEngine:
         max_services: int = 0,
     ) -> List[Dict[str, Any]]:
         from app.models.company_kb import CompanyKB
+        from app.engine.fit_gate import FitGate
         from sqlalchemy import select
 
         kb_name = ""
         kb_context_parts = []
         raw_kb_services = []
+        parsed_master_cards = []
         try:
             stmt = select(CompanyKB).where(CompanyKB.is_active == True).order_by(CompanyKB.created_at.desc()).limit(1)
             res = await db_session.execute(stmt)
@@ -166,7 +168,9 @@ class StrategyEngine:
                 if kb.tagline_experience:
                     kb_context_parts.append(f"Tagline/Experience: {kb.tagline_experience}")
                 if kb.master_kb_notes:
-                    kb_context_parts.append(f"Master Overview: {kb.master_kb_notes[:1200]}")
+                    kb_notes = kb.master_kb_notes.strip()
+                    parsed_master_cards = FitGate.parse_master_kb_products(kb_notes)
+                    kb_context_parts.append(f"Master Overview: {kb_notes[:4000]}")
                 if kb.services_json and isinstance(kb.services_json, list):
                     raw_kb_services = kb.services_json
                     for s in kb.services_json:
@@ -182,21 +186,31 @@ class StrategyEngine:
         exact_desc = "2 to 4 distinct" if is_auto else f"exactly {max_services}"
         slice_limit = 5 if is_auto else max_services
 
-        # 1. If Company KB has services configured, directly format and return up to limit
-        if raw_kb_services:
+        # 1. First, match from candidate cards (either services_json or parsed master_kb_notes)
+        candidate_cards = raw_kb_services if raw_kb_services else parsed_master_cards
+        if candidate_cards:
+            ranked_cards = FitGate.match_service_cards(
+                candidate_cards=candidate_cards,
+                business_type=industry,
+                business_name=location,
+                detected_gap_tags=["LOCAL_DEMAND_AUTOMATION_FIT"],
+                has_domain=True,
+            )
+            cards_to_format = ranked_cards if ranked_cards else candidate_cards
+
             formatted_kb = []
-            for s in raw_kb_services:
+            for s in cards_to_format:
                 if not isinstance(s, dict):
                     continue
                 name = (s.get("name") or s.get("key") or "").strip()
                 if not name:
                     continue
-                desc = (s.get("description") or s.get("solves_problems") or s.get("features") or "").strip()
-                wedge = (s.get("wedge") or "").strip()
+                desc = (s.get("description") or s.get("solves_problems") or s.get("features") or s.get("overview") or "").strip()
+                wedge = (s.get("wedge") or s.get("offer_hook") or "5-Minute Live Interactive Software Demo").strip()
                 stype = str(s.get("type", "")).lower()
                 if stype not in ["software", "marketing"]:
                     combined = f"{name} {desc} {wedge}".lower()
-                    if any(k in combined for k in ["software", "crm", "app", "portal", "system", "saas", "dashboard", "bot", "platform", "tool", "website", "web"]):
+                    if any(k in combined for k in ["software", "crm", "app", "portal", "system", "saas", "dashboard", "bot", "platform", "tool", "website", "web", "iot", "erp", "pos"]):
                         stype = "software"
                     else:
                         stype = "marketing"
@@ -206,10 +220,11 @@ class StrategyEngine:
                 formatted_kb.append({
                     "name": name,
                     "type": stype,
-                    "description": desc,
+                    "description": desc[:300],
                     "offer_hook": offer_hook,
                 })
             if formatted_kb:
+                logger.info(f"StrategyEngine: Successfully matched {len(formatted_kb[:slice_limit])} services from KB for '{industry}': {[x['name'] for x in formatted_kb[:slice_limit]]}")
                 return formatted_kb[:slice_limit]
 
         if ai_client is None:
@@ -246,7 +261,7 @@ class StrategyEngine:
             res = await ai_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt, max_tokens=800)
             services = None
             if isinstance(res, dict):
-                for k in ["services", "matched_services", "recommendations", "offerings", "solutions", "data", "items"]:
+                for k in ["services", "matched_services", "recommendations", "offerings", "solutions", "data", "items", "products"]:
                     if isinstance(res.get(k), list) and len(res[k]) > 0:
                         services = res[k]
                         break
@@ -261,14 +276,27 @@ class StrategyEngine:
             if isinstance(services, list) and len(services) >= 1:
                 formatted = []
                 for s in services[:slice_limit]:
-                    if isinstance(s, dict) and s.get("name"):
+                    if isinstance(s, dict):
+                        name = str(s.get("name") or s.get("service_name") or s.get("title") or s.get("service") or s.get("product") or "").strip()
+                        desc = str(s.get("description") or s.get("overview") or s.get("details") or s.get("features") or s.get("solves_problems") or "").strip()
+                        hook = str(s.get("offer_hook") or s.get("wedge") or "5-Minute Live Interactive Demo").strip()
+                        stype = "software" if str(s.get("type", "")).lower() == "software" else "marketing"
+                        if name:
+                            formatted.append({
+                                "name": name,
+                                "type": stype,
+                                "description": desc[:300],
+                                "offer_hook": hook,
+                            })
+                    elif isinstance(s, str) and s.strip():
                         formatted.append({
-                            "name": str(s.get("name")).strip(),
-                            "type": "software" if str(s.get("type", "")).lower() == "software" else "marketing",
-                            "description": str(s.get("description", "")).strip(),
-                            "offer_hook": str(s.get("offer_hook") or "5-Minute Live Interactive Demo").strip(),
+                            "name": s.strip(),
+                            "type": "software",
+                            "description": f"Tailored solution specifically for {industry}",
+                            "offer_hook": "5-Minute Live Interactive Software Demo",
                         })
                 if formatted:
+                    logger.info(f"StrategyEngine: LLM matched {len(formatted)} services for '{industry}': {[x['name'] for x in formatted]}")
                     return formatted[:slice_limit]
         except Exception as e:
             logger.warning(f"StrategyEngine AI service matching failed: {e}")
