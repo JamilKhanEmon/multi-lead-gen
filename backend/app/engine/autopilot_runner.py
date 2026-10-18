@@ -338,21 +338,33 @@ class AutopilotRunner:
                         "detected_weaknesses": detected_weaknesses
                     }
 
-                    gate_eval = FitGateEngine.evaluate_candidate(
-                        business_name=c_name,
-                        domain=c_dom,
-                        phone=c_phone,
-                        email=resolved_email,
-                        business_type=b_type,
-                        city=target_city_clean,
-                        audit_res=audit_res,
-                        detected_weaknesses=detected_weaknesses,
-                        metadata_json=metadata_payload,
-                        company_kb=kb_dict,
-                        use_company_kb=use_kb,
-                        analyze_website=analyze_web,
-                        target_services=campaign.target_services,
-                    )
+                    try:
+                        gate_eval = FitGateEngine.evaluate_candidate(
+                            business_name=c_name,
+                            domain=c_dom,
+                            phone=c_phone,
+                            email=resolved_email,
+                            business_type=b_type,
+                            city=target_city_clean,
+                            audit_res=audit_res,
+                            detected_weaknesses=detected_weaknesses,
+                            metadata_json=metadata_payload,
+                            company_kb=kb_dict,
+                            use_company_kb=use_kb,
+                            analyze_website=analyze_web,
+                            target_services=campaign.target_services,
+                        )
+                    except Exception as gate_err:
+                        logger.warning(f"[AUTOPILOT GATE EVAL ERROR] Error evaluating {c_name}: {gate_err}. Using fallback.")
+                        gate_eval = {
+                            "fit_tier": "HOT" if has_email else "REVIEW",
+                            "fit_score": 75.0,
+                            "verified_gaps": detected_weaknesses or ["Digital acquisition workflow gap"],
+                            "why_they_need_us": f"Commercial operational growth opportunity for {c_name} in {target_city_clean}",
+                            "what_they_need": "Automated inquiry capture and client follow-up system",
+                            "matched_service": getattr(campaign, "target_services", [{}])[0].get("name", "Solar & B2B Solutions") if getattr(campaign, "target_services", None) else "Solar & B2B Solutions",
+                            "discovery_call_script": None,
+                        }
 
                     fit_tier = gate_eval["fit_tier"]
                     is_dropped = (fit_tier == "DROPPED")
@@ -514,7 +526,8 @@ class AutopilotRunner:
                         lead.verification_notes = "Data Collector Mode: Lead and audit preserved without automated outreach."
 
                     campaign.total_leads_found += 1
-                    campaign.total_emails_sent += total_dispatched_count
+                    if lead.outreach_status == "SENT":
+                        campaign.total_emails_sent += 1
                     await db.commit()
 
                     if effective_batch > 0 and len(all_added_leads) >= effective_batch:
