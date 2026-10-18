@@ -134,8 +134,14 @@ class FitGateEngine:
             score = 10.0
 
             industry_overlap = prospect_tokens.intersection(ind_tokens)
+            card_ind_lower = card_industries.lower()
+            is_broad_offering = any(u in card_ind_lower for u in ["any organization", "corporate", "b2b", "enterprises", "all", "general", "custom", "startups", "firms"])
+
             if industry_overlap:
-                score += 35.0 + min(len(industry_overlap) * 5.0, 20.0)
+                score += 45.0 + min(len(industry_overlap) * 10.0, 30.0)
+            elif ind_tokens and not is_broad_offering:
+                # Specialized vertical offering with zero overlap to this prospect
+                score -= 25.0
 
             if not has_domain:
                 if any(w in feat_tokens or w in prob_tokens for w in ["web", "website", "landing", "online", "presence"]):
