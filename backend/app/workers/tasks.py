@@ -804,17 +804,23 @@ async def _execute_research_and_qualify(
         )
 
     target_ind = business_type or payload.get("industry") or "Commercial"
-    is_industry_fit, fit_reason = await DiscoveryOptimizer.verify_industry_fit(
+    fit_res = await DiscoveryOptimizer.verify_industry_fit(
         target_industry=target_ind,
         business_name=business_name,
         domain=domain or "",
         page_title=website_data.get("page_title") or website_data.get("title") or "",
         meta_description=website_data.get("meta_description") or "",
         heading=website_data.get("heading") or "",
+        page_text_summary=website_data.get("page_text_summary") or "",
+        phone=website_data.get("extracted_phone") or payload.get("phone") or "",
+        email=website_data.get("extracted_email") or payload.get("email") or "",
+        location=payload.get("location") or payload.get("city") or "",
         positive_keywords=payload.get("positive_keywords"),
         negative_keywords=payload.get("negative_keywords"),
         ollama_client=ollama_client,
     )
+    is_industry_fit, fit_reason = fit_res[0], fit_res[1]
+    ai_insights = getattr(fit_res, "insights", {})
     if not is_industry_fit:
         logger.warning(f"Industry Gate: Entity '{business_name}' failed relevance check for '{target_ind}': {fit_reason}")
 
@@ -919,6 +925,10 @@ async def _execute_research_and_qualify(
             for key in ["cms_platform", "has_meta_pixel", "has_google_analytics", "meta_ads_url", "rendered_by"]:
                 if website_data.get(key) is not None:
                     current_meta[key] = website_data[key]
+            if ai_insights.get("killer_pitch"):
+                current_meta["ai_killer_pitch"] = ai_insights["killer_pitch"]
+            if ai_insights.get("core_offerings"):
+                current_meta["ai_core_offerings"] = ai_insights["core_offerings"]
 
             # Save multi-source contact consensus metadata
             current_meta["contact_consensus"] = {

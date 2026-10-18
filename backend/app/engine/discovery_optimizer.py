@@ -294,6 +294,15 @@ class DiscoveryOptimizer:
 
         return True, "Valid commercial entity"
 
+class IndustryFitResult(tuple):
+    def __new__(cls, is_fit: bool, reason: str, insights: Optional[Dict[str, Any]] = None):
+        return super().__new__(cls, (is_fit, reason))
+
+    def __init__(self, is_fit: bool, reason: str, insights: Optional[Dict[str, Any]] = None):
+        self.is_fit = is_fit
+        self.reason = reason
+        self.insights = insights or {}
+
     @classmethod
     async def verify_industry_fit(
         cls,
@@ -303,6 +312,10 @@ class DiscoveryOptimizer:
         page_title: str = "",
         meta_description: str = "",
         heading: str = "",
+        page_text_summary: str = "",
+        phone: str = "",
+        email: str = "",
+        location: str = "",
         negative_keywords: Optional[List[str]] = None,
         positive_keywords: Optional[List[str]] = None,
         ollama_client: Optional[Any] = None,
@@ -314,59 +327,69 @@ class DiscoveryOptimizer:
         domain_l = (domain or "").lower()
         meta_desc_l = (meta_description or "").lower()
         heading_l = (heading or "").lower()
-        full_text = f"{business_name_l} {domain_l} {page_title_l} {meta_desc_l} {heading_l}"
+        page_text_l = (page_text_summary or "").lower()
+        full_text = f"{business_name_l} {domain_l} {page_title_l} {meta_desc_l} {heading_l} {page_text_l}"
 
         from app.engine.deduplication import DeduplicationEngine
         if DeduplicationEngine.is_generic_platform(domain) or DeduplicationEngine.is_directory_or_aggregator(domain, business_name):
-            return False, f"Entity is an aggregator or directory platform: '{domain}'"
+            return IndustryFitResult(False, f"Entity is an aggregator or directory platform: '{domain}'")
 
         if DeduplicationEngine.is_directory_or_aggregator(f"https://{domain}", page_title):
-            return False, f"Page title or domain indicates a directory/aggregator platform: '{page_title}'"
+            return IndustryFitResult(False, f"Page title or domain indicates a directory/aggregator platform: '{page_title}'")
 
         if negative_keywords:
             for neg in negative_keywords:
                 neg_l = neg.lower().strip()
                 if len(neg_l) >= 4 and neg_l in full_text:
-                    return False, f"Matched dynamic negative filter: '{neg}'"
+                    return IndustryFitResult(False, f"Matched dynamic negative filter: '{neg}'")
 
-        # AI Semantic Verification before heuristic matching
-        if ollama_client and (page_title or meta_description or business_name):
+        # 360-Degree AI Semantic Verification with phone, email, headings & rich offerings
+        if ollama_client and (page_title or meta_description or business_name or heading or page_text_summary):
             try:
                 system_prompt = (
-                    "You are a strict, objective B2B industry classification expert. "
-                    "Analyze the given business name, domain, website title, and meta description. "
+                    "You are a strict, objective B2B industry classification and commercial intelligence expert. "
+                    "Analyze the given business name, domain, verified contacts, territory, website title, headings, and core service summary. "
                     "Determine whether this company is genuinely a direct operating business/firm in the target industry, "
                     "OR if it is a directory, review platform, marketplace, article listicle, job portal, or unrelated business. "
                     "CRITICAL: If it is a directory, aggregator, review site (like GoodFirms, Clutch, Yelp), or blog, return is_relevant: false. "
-                    "Respond ONLY with a JSON object: {\"is_relevant\": true/false, \"reason\": \"<under 10 words>\"}"
+                    "Also formulate a 1-sentence punchy, personalized outreach pitch highlighting their core offering or key business improvement opportunity. "
+                    "Respond ONLY with a JSON object: {\"is_relevant\": true/false, \"reason\": \"<under 10 words>\", \"core_offerings\": \"<under 15 words>\", \"killer_pitch\": \"<1 punchy sentence>\"}"
                 )
                 user_prompt = (
                     f"Target Industry: {target_industry}\n"
                     f"Business Name: {business_name}\n"
-                    f"Domain: {domain}\n"
+                    f"Domain: {domain or 'No website (Social / Map presence only)'}\n"
+                    f"Location / Territory: {location or 'Target Territory'}\n"
+                    f"Verified Phone: {phone or 'Not detected'}\n"
+                    f"Verified Email: {email or 'Not detected'}\n"
                     f"Website Title: {page_title[:150]}\n"
+                    f"Headings: {heading[:180]}\n"
                     f"Website Description: {meta_description[:250]}\n"
-                    f"Heading: {heading[:100]}\n"
+                    f"Core Offerings / Page Summary: {page_text_summary[:900]}\n\n"
                     f"Is this entity a direct commercial company in '{target_industry}' (NOT a directory, aggregator, or review portal)?"
                 )
                 res = await ollama_client.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
                 if isinstance(res, dict) and "is_relevant" in res:
                     is_rel = bool(res.get("is_relevant"))
                     reason = res.get("reason", "AI dynamic semantic verification")
-                    return is_rel, reason
+                    insights = {
+                        "core_offerings": res.get("core_offerings") or "",
+                        "killer_pitch": res.get("killer_pitch") or "",
+                    }
+                    return IndustryFitResult(is_rel, reason, insights)
             except Exception as e:
                 logger.debug(f"Dynamic AI semantic verification notice: {e}")
 
         if ind_phrase and len(ind_phrase) >= 4 and ind_phrase in full_text:
-            return True, f"Direct dynamic industry keyword matched: '{ind_phrase}'"
+            return IndustryFitResult(True, f"Direct dynamic industry keyword matched: '{ind_phrase}'")
         if ind_clean.replace(" ", "") in domain_l or ind_phrase.replace(" ", "") in domain_l:
-            return True, f"Official domain matches industry: '{domain_l}'"
+            return IndustryFitResult(True, f"Official domain matches industry: '{domain_l}'")
 
         if positive_keywords:
             for pos in positive_keywords:
                 pos_l = pos.lower().strip()
                 if len(pos_l) >= 4 and pos_l in full_text:
-                    return True, f"Dynamic AI industry keyword matched: '{pos}'"
+                    return IndustryFitResult(True, f"Dynamic AI industry keyword matched: '{pos}'")
 
 
         AMBIGUOUS_TOKENS = {
@@ -380,12 +403,12 @@ class DiscoveryOptimizer:
         for tok in target_tokens:
             stem = tok[:-1] if len(tok) > 4 and tok.endswith('s') else tok
             if tok in full_text or (len(stem) >= 4 and stem in full_text):
-                return True, f"Direct dynamic industry keyword matched: '{tok}'"
+                return IndustryFitResult(True, f"Direct dynamic industry keyword matched: '{tok}'")
 
         if domain and (page_title or meta_description):
-            return True, "General commercial relevance"
+            return IndustryFitResult(True, "General commercial relevance")
 
-        return False, f"Website content has no semantic connection to target industry '{target_industry}'"
+        return IndustryFitResult(False, f"Website content has no semantic connection to target industry '{target_industry}'")
 
     @classmethod
     def classify_entity(cls, name: str, domain: Optional[str] = None, business_type: str = "general") -> str:

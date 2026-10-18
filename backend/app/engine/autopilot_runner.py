@@ -272,23 +272,32 @@ class AutopilotRunner:
 
                     b_type = cand.get("business_type") or "commercial"
 
+                    ai_insights = {}
+                    cand_loc = cand.get("location") or cand.get("address") or plan.get("location") or target_city_clean or ""
+                    from app.services.ai_client import AIClient
+                    ai_client = AIClient(timeout=8.0)
+
                     if c_dom and audit_res:
                         page_title = audit_res.get("title") or ""
                         meta_desc = audit_res.get("meta_description") or ""
                         heading_txt = audit_res.get("heading") or ""
+                        page_summary = audit_res.get("page_text_summary") or ""
 
-                        from app.services.ai_client import AIClient
-                        ai_client = AIClient(timeout=8.0)
-
-                        is_ind_fit, ind_reason = await DiscoveryOptimizer.verify_industry_fit(
+                        fit_res = await DiscoveryOptimizer.verify_industry_fit(
                             target_industry=target_keyword,
                             business_name=c_name,
                             domain=c_dom,
                             page_title=page_title,
                             meta_description=meta_desc,
                             heading=heading_txt,
+                            page_text_summary=page_summary,
+                            phone=c_phone or cand.get("phone") or "",
+                            email=resolved_email or cand.get("email") or "",
+                            location=cand_loc,
                             ollama_client=ai_client,
                         )
+                        is_ind_fit, ind_reason = fit_res[0], fit_res[1]
+                        ai_insights = getattr(fit_res, "insights", {})
                         if not is_ind_fit:
                             logger.info(f"Autopilot: Discarding non-industry entity '{c_name}' ({c_dom}): {ind_reason}")
                             continue
@@ -315,8 +324,33 @@ class AutopilotRunner:
                             detected_weaknesses.append("Missing Google Analytics conversion tracking")
                         if audit_res.get("has_meta_pixel") is False:
                             detected_weaknesses.append("Missing Meta retargeting pixel")
+                    elif not c_dom:
+                        # Facebook-First / Map-First Business Audit
+                        fb_summary = deep_hunt.get("facebook_about_summary") or cand.get("snippet") or cand.get("display_name") or ""
+                        fit_res = await DiscoveryOptimizer.verify_industry_fit(
+                            target_industry=target_keyword,
+                            business_name=c_name,
+                            domain="",
+                            page_title=c_name,
+                            meta_description=fb_summary,
+                            heading="",
+                            page_text_summary=fb_summary,
+                            phone=c_phone or cand.get("phone") or "",
+                            email=resolved_email or cand.get("email") or "",
+                            location=cand_loc,
+                            ollama_client=ai_client,
+                        )
+                        is_ind_fit, ind_reason = fit_res[0], fit_res[1]
+                        ai_insights = getattr(fit_res, "insights", {})
+                        if not is_ind_fit:
+                            logger.info(f"Autopilot: Discarding non-industry entity '{c_name}': {ind_reason}")
+                            continue
+                        detected_weaknesses.append("Zero official website: operates exclusively via social media or map listing")
 
-                    if detected_weaknesses:
+                    killer_pitch = ai_insights.get("killer_pitch")
+                    if killer_pitch:
+                        primary_gap = f"{killer_pitch} (Gaps: {', '.join(detected_weaknesses[:2]) if detected_weaknesses else 'Conversion optimization'})"
+                    elif detected_weaknesses:
                         primary_gap = " • ".join(detected_weaknesses[:3])
                     elif not c_dom:
                         primary_gap = "Missing official corporate website — operates exclusively via map directory listing"
@@ -347,7 +381,9 @@ class AutopilotRunner:
                         "contact_consensus": contact_consensus,
                         "secondary_phone": contact_consensus.get("secondary_phone"),
                         "whatsapp_phone": contact_consensus.get("whatsapp_phone"),
-                        "detected_weaknesses": detected_weaknesses
+                        "detected_weaknesses": detected_weaknesses,
+                        "ai_killer_pitch": ai_insights.get("killer_pitch", ""),
+                        "ai_core_offerings": ai_insights.get("core_offerings", ""),
                     }
 
                     try:

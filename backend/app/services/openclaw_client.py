@@ -33,6 +33,30 @@ class LiveResearchEngine:
     }
 
     @classmethod
+    def resolve_country_code(cls, country_str: Optional[str]) -> Optional[str]:
+        if not country_str:
+            return None
+        c_clean = country_str.lower().strip()
+        if len(c_clean) == 2 and c_clean.isalpha():
+            return c_clean
+        GLOBAL_CC_MAP = {
+            "bangladesh": "bd", "bangla": "bd",
+            "united states": "us", "usa": "us", "america": "us",
+            "united kingdom": "gb", "uk": "gb", "great britain": "gb", "england": "gb",
+            "canada": "ca", "australia": "au",
+            "germany": "de", "deutschland": "de", "france": "fr", "italy": "it", "spain": "es",
+            "united arab emirates": "ae", "uae": "ae", "dubai": "ae", "abu dhabi": "ae",
+            "saudi arabia": "sa", "ksa": "sa", "qatar": "qa", "kuwait": "kw", "oman": "om", "bahrain": "bh",
+            "singapore": "sg", "malaysia": "my", "indonesia": "id", "india": "in", "pakistan": "pk",
+            "turkey": "tr", "turkiye": "tr", "japan": "jp", "south korea": "kr", "korea": "kr",
+            "thailand": "th", "vietnam": "vn", "philippines": "ph", "netherlands": "nl", "holland": "nl",
+            "switzerland": "ch", "sweden": "se", "norway": "no", "denmark": "dk", "finland": "fi",
+            "ireland": "ie", "belgium": "be", "austria": "at", "poland": "pl", "portugal": "pt",
+            "new zealand": "nz", "south africa": "za", "brazil": "br", "brasil": "br", "mexico": "mx",
+        }
+        return GLOBAL_CC_MAP.get(c_clean)
+
+    @classmethod
     async def discover_businesses(
         cls,
         industry: str,
@@ -511,19 +535,8 @@ class LiveResearchEngine:
         except Exception as e:
             logger.debug(f"Photon query error for '{query_str}': {e}")
 
-        cc_map = {
-            "bangladesh": "bd", "bd": "bd",
-            "pakistan": "pk", "pk": "pk",
-            "india": "in", "in": "in",
-            "united states": "us", "usa": "us", "us": "us",
-            "united kingdom": "gb", "uk": "gb", "gb": "gb",
-            "canada": "ca", "ca": "ca",
-            "australia": "au", "au": "au",
-            "united arab emirates": "ae", "uae": "ae",
-        }
-        cc_param = ""
-        if target_country and target_country.lower().strip() in cc_map:
-            cc_param = f"&countrycodes={cc_map[target_country.lower().strip()]}"
+        cc_code = cls.resolve_country_code(target_country)
+        cc_param = f"&countrycodes={cc_code}" if cc_code else ""
 
         url = f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(query_str)}&format=json&addressdetails=1&extratags=1&limit={limit}{cc_param}"
         headers = {
@@ -804,26 +817,29 @@ class LiveResearchEngine:
         dom_name = domain.split(".")[0].replace("-", " ").replace("_", " ").title()
 
         GENERIC_TAGLINES = [
-            "leading", "find your dream", "welcome to", "best real estate",
-            "top real estate", "real estate company", "real estate developer",
-            "properties in", "property in", "apartments for sale"
+            "leading", "welcome to", "official website", "home page",
+            "contact us", "about us", "who we are", "get in touch", "learn more",
+            "find your", "best in", "top rated"
         ]
         GENERIC_STOP_WORDS = {
-            "real", "estate", "pdf", "developer", "properties", "property", "company", "ltd", "limited",
-            "goodfirms", "clutch", "crunchbase", "yellowpages", "bproperty", "bikroy", "justdial", "directory", "listing"
+            "home", "official", "website", "company", "ltd", "limited", "inc", "corp", "llc",
+            "goodfirms", "clutch", "crunchbase", "yellowpages", "justdial", "directory", "listing", "pdf"
         }
 
         parts = re.split(r'\||-|—|@|:|,', raw_title)
         candidate_names = []
 
+        target_ind_l = (search_industry or "").lower().strip()
         for p in parts:
             clean = p.strip()
             clean_l = clean.lower()
             if len(clean) >= 3 and len(clean) <= 80 and not any(k in clean_l for k in [
                 "best", "top", "ranked", "reviews", "directory", "directories", "listing", "listings",
                 "near me", "list", "guide", "2026", "2025", "home", "official", ".pdf",
-                "goodfirms", "clutch", "crunchbase", "bproperty", "bikroy"
+                "goodfirms", "clutch", "crunchbase"
             ]):
+                if clean_l == target_ind_l or clean_l == f"{target_ind_l} company" or clean_l == f"{target_ind_l} services":
+                    continue
                 if not re.search(r'(https?://|www\.|\.[a-zA-Z]{2,})', clean_l):
                     if not any(tag in clean_l for tag in GENERIC_TAGLINES) and clean_l not in GENERIC_STOP_WORDS:
                         candidate_names.append(clean)
@@ -839,6 +855,10 @@ class LiveResearchEngine:
     def extract_contacts_from_text(cls, text: str) -> Tuple[Optional[str], Optional[str]]:
         if not text:
             return None, None
+
+        # Convert Bengali numerals (০-৯) to ASCII digits (0-9) so Bengali contacts are captured
+        bn_to_en = str.maketrans('০১২৩৪৫৬৭৮৯', '0123456789')
+        text = text.translate(bn_to_en)
 
         extracted_phone = None
         extracted_email = None
@@ -1304,7 +1324,6 @@ class LiveResearchEngine:
 
         extracted_page_title = bw_res.get("title") or ""
         extracted_meta_desc = ""
-        extracted_heading = ""
 
         if not extracted_page_title:
             title_m = re.search(r'<title[^>]*>(.*?)</title>', html, re.IGNORECASE | re.DOTALL)
@@ -1316,6 +1335,27 @@ class LiveResearchEngine:
             meta_m = re.search(r'<meta[^>]+content=["\']([^"\']*)["\'][^>]+name=["\'](?:description|og:description)["\']', html, re.IGNORECASE)
         if meta_m:
             extracted_meta_desc = meta_m.group(1).strip()
+
+        # Extract H1 and H2 tags for AI core heading analysis
+        h_tags = re.findall(r'<h[12][^>]*>(.*?)</h[12]>', html, re.IGNORECASE | re.DOTALL)
+        clean_headings = []
+        for h in h_tags:
+            ch = re.sub(r'<[^>]+>', '', h).strip()
+            ch = re.sub(r'\s+', ' ', ch)
+            if len(ch) >= 4 and not any(bad in ch.lower() for bad in ["menu", "navigation", "search", "cookie", "skip to"]):
+                clean_headings.append(ch)
+        extracted_heading = " | ".join(clean_headings[:3])
+
+        # Extract deep visible text / paragraphs from <p>, <li> for AI business offering context
+        p_matches = re.findall(r'<(?:p|li)[^>]*>(.*?)</(?:p|li)>', html, re.IGNORECASE | re.DOTALL)
+        clean_paragraphs = []
+        for p in p_matches:
+            clean_p = re.sub(r'<[^>]+>', ' ', p)
+            clean_p = re.sub(r'\s+', ' ', clean_p).strip()
+            clean_p_l = clean_p.lower()
+            if len(clean_p) >= 25 and not any(skip in clean_p_l for skip in ['cookie', 'all rights reserved', 'privacy policy', 'terms of service', 'javascript', 'powered by', 'designed by']):
+                clean_paragraphs.append(clean_p)
+        page_text_summary = " ".join(clean_paragraphs[:5])[:1200]
 
         copyright_year = None
         c_match = re.search(r'(?:©|&copy;|copyright|all rights reserved)[^0-9]{0,20}(?:20\d\d\s*[-–/]\s*)?(20[12]\d)', html_lower)
@@ -1389,6 +1429,7 @@ class LiveResearchEngine:
             "page_title": extracted_page_title,
             "meta_description": extracted_meta_desc,
             "heading": extracted_heading,
+            "page_text_summary": page_text_summary,
             "mobile_responsive": mobile_responsive,
             "mobile_overflow": mobile_overflow,
             "has_whatsapp": has_whatsapp,
@@ -1540,6 +1581,7 @@ class LiveResearchEngine:
             "canonical_name": clean_name,
             "domain": domain,
             "facebook_url": found_fb,
+            "facebook_about_summary": combined_text[:800],
             "proof_link": found_fb or f"https://www.google.com/search?q={urllib.parse.quote(clean_name + ' facebook')}",
             "has_facebook": bool(found_fb),
             "is_dormant": is_dormant,
