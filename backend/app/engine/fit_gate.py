@@ -307,6 +307,8 @@ class FitGateEngine:
         else:
             # MODE 2: Social Presence, Google Maps Activity & Software Demo Pitch (DEFAULT)
             # Focuses on actual local activity, rating sentiment, and social presence without website complaints
+            fb = audit_res.get("facebook_url") or metadata_json.get("facebook_url")
+            ig = audit_res.get("instagram_url") or metadata_json.get("instagram_url")
             raw_rating = metadata_json.get("rating") or metadata_json.get("rating_score") or audit_res.get("rating")
             rating_val = None
             if raw_rating is not None:
@@ -360,8 +362,6 @@ class FitGateEngine:
                 evidence_tags.append("NO_WHATSAPP")
                 evidence_signals.append("No direct WhatsApp messaging channel found")
 
-            fb = audit_res.get("facebook_url") or metadata_json.get("facebook_url")
-            ig = audit_res.get("instagram_url") or metadata_json.get("instagram_url")
             is_dormant = audit_res.get("social_is_dormant", False)
             recency_txt = audit_res.get("social_post_recency")
 
