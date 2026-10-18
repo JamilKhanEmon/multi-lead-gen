@@ -143,40 +143,61 @@ class AutopilotRunner:
                         target_sub = c_parts[0]
                         target_main = c_parts[-1]
 
-                discovered_candidates = []
-                try:
-                    discovery_res = await LiveResearchEngine.discover_businesses(
-                        industry=target_keyword,
-                        country=campaign.country,
-                        city=target_main,
-                        sub_city=target_sub,
-                        company_limit=max(15, (effective_batch - len(all_added_leads)) if effective_batch > 0 else 50)
-                    )
-                    discovered_candidates = discovery_res.get("discovered_companies", [])
-                except Exception as e:
-                    logger.warning(f"[AUTOPILOT DISCOVERY RESILIENCE] Discovery note for '{target_keyword}' in {target_city_clean}: {e}. Retrying next target...")
-                    await asyncio.sleep(2)
-                    continue
-
                 use_kb = getattr(campaign, "use_company_kb", True)
                 kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
 
-                for cand in discovered_candidates:
-                    if effective_batch > 0 and len(all_added_leads) >= effective_batch:
-                        break
+                val_plan = {
+                    "country": campaign.country or "",
+                    "city": target_main,
+                    "sub_city": target_sub,
+                    "location": target_city_clean,
+                    "target_industry": target_keyword,
+                }
 
-                    c_name = (cand.get("canonical_name") or "").strip()
-                    c_dom = (cand.get("domain") or "").strip().lower()
+                processed_sigs = set()
+                from app.services.ai_client import AIClient
+                ai_client = AIClient(timeout=8.0)
+                from app.engine.evidence_engine import EvidenceEngine
+
+                async def process_cand_live(cand: Dict[str, Any]):
+                    nonlocal total_skipped_duplicates, total_dispatched_count
+                    if effective_batch > 0 and len(all_added_leads) >= effective_batch:
+                        return
+
+                    c_name = (cand.get("canonical_name") or cand.get("name") or "").strip()
+                    c_dom = (cand.get("domain") or cand.get("website") or "").strip().lower()
                     c_phone = (cand.get("phone") or "").strip()
                     c_email = (cand.get("email") or "").strip()
+                    c_fb = cand.get("facebook_url")
 
                     if not c_name or len(c_name) < 2:
-                        continue
+                        return
 
-                    # Strict contactability gate: Reject ghost candidates with zero digital or contact presence
-                    if not c_dom and not c_phone and not c_email:
-                        continue
+                    # 1. Clean and sanitize raw_name against SEO keyword stuffing & runaway titles (same as manual research)
+                    if c_name.count(",") >= 2 or len(c_name) > 80:
+                        if c_dom and "facebook.com" not in c_dom:
+                            dom_clean = c_dom.replace("https://", "").replace("http://", "").split("/")[0].replace("www.", "")
+                            c_name = dom_clean.split(".")[0].replace("-", " ").title()
+                        else:
+                            c_name = c_name.split(",")[0].split("|")[0].split("-")[0].strip()[:80]
+                    c_name = c_name[:150].strip()
 
+                    # 2. Check if candidate is a social-only business (e.g. found via Facebook page)
+                    if c_dom and "facebook.com" in c_dom.lower():
+                        if not c_fb:
+                            c_fb = c_dom
+                        c_dom = ""
+                        cand["website"] = None
+                        cand["domain"] = None
+                        cand["facebook_url"] = c_fb
+                        cand["is_social_only"] = True
+
+                    sig = (c_dom or c_phone or c_name).lower().strip()
+                    if not sig or sig in processed_sigs:
+                        return
+                    processed_sigs.add(sig)
+
+                    # 3. Discard generic platforms and directories (same as manual research)
                     c_name_l = c_name.lower()
                     EXCLUDED_SITES = [
                         "facebook.com", "instagram.com", "youtube.com", "google.com", "linkedin.com",
@@ -184,10 +205,20 @@ class AutopilotRunner:
                         "bdtalika.com", "wixsite.com", "blogspot.com", "wordpress.com", "weebly.com"
                     ]
                     if any(bad in c_dom for bad in EXCLUDED_SITES) or any(bad in c_name_l for bad in EXCLUDED_SITES):
-                        continue
-                    if DeduplicationEngine.is_generic_platform(c_dom) or DeduplicationEngine.is_directory_or_aggregator(c_dom, c_name):
-                        logger.info(f"Autopilot: Discarding directory/aggregator candidate '{c_name}' ({c_dom})")
-                        continue
+                        return
+                    if c_dom and (DeduplicationEngine.is_generic_platform(c_dom) or DeduplicationEngine.is_directory_or_aggregator(c_dom, c_name)):
+                        logger.info(f"Autopilot [Stream]: Discarding directory/aggregator candidate '{c_name}' ({c_dom})")
+                        return
+
+                    # 4. Strict candidate validation using DiscoveryOptimizer (same as manual research!)
+                    is_valid, reason = DiscoveryOptimizer.validate_candidate(cand, val_plan)
+                    if not is_valid:
+                        logger.info(f"Autopilot [Stream]: Rejecting candidate '{c_name}': {reason}")
+                        return
+
+                    # 5. Strict contactability gate: Reject ghost candidates with zero digital or contact presence
+                    if not c_dom and not c_phone and not c_email and not c_fb:
+                        return
 
                     generic_names = ["companies", "company", "bangladesh", "dhaka", "index", "report", "firm", "firms", "service", "services"]
                     if (c_name_l in generic_names or len(c_name) < 4) and c_dom:
@@ -195,6 +226,7 @@ class AutopilotRunner:
                         clean_brand = re.sub(r'bd$', '', clean_brand, flags=re.IGNORECASE).strip()
                         c_name = f"{clean_brand.title()} {target_keyword.title()}"
 
+                    # 6. Deduplication check
                     is_dup = await cls.is_duplicate_business(
                         db=db,
                         canonical_name=c_name,
@@ -204,13 +236,13 @@ class AutopilotRunner:
                     )
                     if is_dup:
                         total_skipped_duplicates += 1
-                        continue
+                        return
 
                     resolved_email = c_email
-
                     audit_res = {}
                     detected_weaknesses = []
 
+                    # 7. Website deep audit
                     if c_dom and not DeduplicationEngine.is_generic_platform(c_dom):
                         logger.info(f"[AUTOPILOT DEEP AUDIT] Executing OpenClaw multi-page site audit for '{c_name}' ({c_dom})...")
                         try:
@@ -226,7 +258,7 @@ class AutopilotRunner:
                         except Exception as e:
                             logger.warning(f"[AUTOPILOT DEEP AUDIT FAIL] Audit error for {c_dom}: {e}")
 
-                    # Always execute multi-source deep hunt (Facebook, Maps, Web Directories, YellowPages)
+                    # 8. Multi-source deep contact hunt
                     deep_hunt = {}
                     try:
                         deep_hunt = await LiveResearchEngine.enrich_contact_from_web(c_name, f"{target_city_clean}, {campaign.country}")
@@ -241,8 +273,7 @@ class AutopilotRunner:
                     except Exception as e:
                         logger.debug(f"[AUTOPILOT DEEP HUNT FAIL] Contact hunt error for {c_name}: {e}")
 
-                    # Multi-Source Contact Cross-Verification & Majority Vote Consensus (EvidenceEngine)
-                    from app.engine.evidence_engine import EvidenceEngine
+                    # 9. Contact consensus
                     discovery_contact = {"phone": c_phone, "email": c_email, "address": cand.get("address")}
                     website_contact = {
                         "extracted_phone": audit_res.get("extracted_phone"),
@@ -271,12 +302,10 @@ class AutopilotRunner:
                         resolved_email = f"info@{c_dom}"
 
                     b_type = cand.get("business_type") or "commercial"
-
                     ai_insights = {}
                     cand_loc = cand.get("location") or cand.get("address") or target_city_clean or ""
-                    from app.services.ai_client import AIClient
-                    ai_client = AIClient(timeout=8.0)
 
+                    # 10. Industry fit & weaknesses
                     if c_dom and audit_res:
                         page_title = audit_res.get("title") or ""
                         meta_desc = audit_res.get("meta_description") or ""
@@ -300,7 +329,7 @@ class AutopilotRunner:
                         ai_insights = getattr(fit_res, "insights", {})
                         if not is_ind_fit:
                             logger.info(f"Autopilot: Discarding non-industry entity '{c_name}' ({c_dom}): {ind_reason}")
-                            continue
+                            return
 
                         if audit_res.get("mobile_overflow") or audit_res.get("mobile_responsive") is False:
                             detected_weaknesses.append("Mobile layout break & horizontal scrolling issue")
@@ -325,7 +354,6 @@ class AutopilotRunner:
                         if audit_res.get("has_meta_pixel") is False:
                             detected_weaknesses.append("Missing Meta retargeting pixel")
                     elif not c_dom:
-                        # Facebook-First / Map-First Business Audit
                         fb_summary = deep_hunt.get("facebook_about_summary") or cand.get("snippet") or cand.get("display_name") or ""
                         fit_res = await DiscoveryOptimizer.verify_industry_fit(
                             target_industry=target_keyword,
@@ -344,7 +372,7 @@ class AutopilotRunner:
                         ai_insights = getattr(fit_res, "insights", {})
                         if not is_ind_fit:
                             logger.info(f"Autopilot: Discarding non-industry entity '{c_name}': {ind_reason}")
-                            continue
+                            return
                         detected_weaknesses.append("Zero official website: operates exclusively via social media or map listing")
 
                     killer_pitch = ai_insights.get("killer_pitch")
@@ -386,6 +414,7 @@ class AutopilotRunner:
                         "ai_core_offerings": ai_insights.get("core_offerings", ""),
                     }
 
+                    # 11. FitGate Evaluation
                     try:
                         gate_eval = FitGateEngine.evaluate_candidate(
                             business_name=c_name,
@@ -415,22 +444,20 @@ class AutopilotRunner:
                         }
 
                     fit_tier = gate_eval["fit_tier"]
-                    is_dropped = (fit_tier == "DROPPED")
-                    if is_dropped:
+                    if fit_tier == "DROPPED":
                         logger.info(f"[AUTOPILOT STRICT FILTER] Dropping rejected candidate '{c_name}' (Fit: {fit_tier}). Not adding to CRM.")
-                        continue
+                        return
 
                     lead_tier = "Strong Potential" if (fit_tier == "HOT" and has_email) else "Review Needed"
                     final_lead_score = gate_eval["fit_score"]
                     is_qualified = True
-
                     why_they_need_us = gate_eval.get("why_they_need_us", "")
                     what_they_need = gate_eval.get("what_they_need", "")
                     matched_service = gate_eval.get("matched_service", "")
                     discovery_call_script = gate_eval.get("discovery_call_script", None)
-
                     lead_primary_gap = " • ".join(gate_eval["verified_gaps"][:2]) if gate_eval.get("verified_gaps") else primary_gap
 
+                    # 12. Save to DB
                     biz = Business(
                         canonical_name=c_name,
                         domain=c_dom if c_dom else None,
@@ -512,9 +539,9 @@ class AutopilotRunner:
                         final_score=lead.final_score
                     )
                     db.add(score)
-
                     all_added_leads.append(lead)
 
+                    # 13. Auto Outreach (if enabled)
                     if campaign.auto_mail_enabled and has_email and resolved_email:
                         is_office_hrs, hrs_note = OutreachEngine.is_within_target_business_hours(
                             lat=cand.get("latitude"),
@@ -522,7 +549,6 @@ class AutopilotRunner:
                             country=campaign.country,
                             city=target_city_clean
                         )
-                        
                         if is_office_hrs:
                             subject, body = await OutreachEngine.render_email(
                                 step=1,
@@ -573,6 +599,7 @@ class AutopilotRunner:
                         lead.outreach_status = "COLLECTED"
                         lead.verification_notes = "Data Collector Mode: Lead and audit preserved without automated outreach."
 
+                    # 14. Real-time Live Commit so UI increments on each lead
                     try:
                         camp_obj = await db.get(AutopilotCampaign, campaign.id)
                         if camp_obj:
@@ -580,16 +607,30 @@ class AutopilotRunner:
                             if lead.outreach_status == "SENT":
                                 camp_obj.total_emails_sent += 1
                         await db.commit()
+                        logger.info(f"[AUTOPILOT LIVE STREAM] Lead added & committed: '{c_name}' (Total found: {camp_obj.total_leads_found if camp_obj else len(all_added_leads)})")
                     except Exception as commit_err:
                         logger.warning(f"[AUTOPILOT COMMIT] Error updating campaign stats: {commit_err}")
                         await db.rollback()
-                        camp_exists = await db.get(AutopilotCampaign, campaign.id)
-                        if not camp_exists:
-                            logger.info(f"[AUTOPILOT] Campaign {campaign.id} was removed. Halting runner.")
-                            break
 
-                    if effective_batch > 0 and len(all_added_leads) >= effective_batch:
-                        break
+                # Execute discover_businesses with live streaming callback
+                try:
+                    discovery_res = await LiveResearchEngine.discover_businesses(
+                        industry=target_keyword,
+                        country=campaign.country,
+                        city=target_main,
+                        sub_city=target_sub,
+                        company_limit=max(15, (effective_batch - len(all_added_leads)) if effective_batch > 0 else 50),
+                        on_candidate_found=process_cand_live,
+                    )
+                    discovered_candidates = discovery_res.get("discovered_companies", [])
+                    for cand in discovered_candidates:
+                        if effective_batch > 0 and len(all_added_leads) >= effective_batch:
+                            break
+                        await process_cand_live(cand)
+                except Exception as e:
+                    logger.warning(f"[AUTOPILOT DISCOVERY RESILIENCE] Discovery note for '{target_keyword}' in {target_city_clean}: {e}. Retrying next target...")
+                    await asyncio.sleep(2)
+                    continue
 
                 if effective_batch > 0 and len(all_added_leads) >= effective_batch:
                     break
