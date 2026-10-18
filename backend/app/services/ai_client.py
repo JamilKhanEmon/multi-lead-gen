@@ -350,8 +350,17 @@ class AIClient:
                     data = resp.json()
                     content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
                     clean_c = re.sub(r"^```(?:json)?\s*", "", content.strip())
-                    clean_c = re.sub(r"\s*```$", "", clean_c)
-                    parsed = json.loads(clean_c)
+                    try:
+                        parsed = json.loads(clean_c)
+                    except Exception:
+                        m = re.search(r'\{.*\}', content, re.DOTALL)
+                        if m:
+                            try:
+                                parsed = json.loads(m.group(0))
+                            except Exception:
+                                parsed = {"content": content}
+                        else:
+                            parsed = {"content": content}
 
                     usage = data.get("usage", {})
                     total_toks = usage.get("total_tokens", "N/A")
