@@ -536,3 +536,5 @@ class FitGateEngine:
     ) -> Optional[str]:
         # Telephone discovery call scripts are completely disabled and skipped
         return None
+
+FitGate = FitGateEngine

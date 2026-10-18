@@ -151,7 +151,7 @@ class StrategyEngine:
         max_services: int = 0,
     ) -> List[Dict[str, Any]]:
         from app.models.company_kb import CompanyKB
-        from app.engine.fit_gate import FitGate
+        from app.engine.fit_gate import FitGateEngine
         from sqlalchemy import select
 
         kb_name = ""
@@ -169,7 +169,7 @@ class StrategyEngine:
                     kb_context_parts.append(f"Tagline/Experience: {kb.tagline_experience}")
                 if kb.master_kb_notes:
                     kb_notes = kb.master_kb_notes.strip()
-                    parsed_master_cards = FitGate.parse_master_kb_products(kb_notes)
+                    parsed_master_cards = FitGateEngine.parse_master_kb_products(kb_notes)
                     kb_context_parts.append(f"Master Overview: {kb_notes[:4000]}")
                 if kb.services_json and isinstance(kb.services_json, list):
                     raw_kb_services = kb.services_json
@@ -189,7 +189,7 @@ class StrategyEngine:
         # 1. First, match from candidate cards (either services_json or parsed master_kb_notes)
         candidate_cards = raw_kb_services if raw_kb_services else parsed_master_cards
         if candidate_cards:
-            ranked_cards = FitGate.match_service_cards(
+            ranked_cards = FitGateEngine.match_service_cards(
                 candidate_cards=candidate_cards,
                 business_type=industry,
                 business_name=location,
