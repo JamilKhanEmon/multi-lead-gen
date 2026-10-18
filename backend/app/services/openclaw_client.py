@@ -30,6 +30,10 @@ class LiveResearchEngine:
         "indeed.com", "bdjobs.com", "bdtradeinfo.com", "yellowpages.com", "dnb.com", "kompass.com",
         "indiamart.com", "justdial.com", "zoominfo.com", "crunchbase.com", "pitchbook.com", "expat.com",
 
+        "amazon.com", "amazon.co.uk", "amazon.in", "homedepot.com", "lowes.com", "walmart.com", "target.com",
+        "ebay.com", "aliexpress.com", "alibaba.com", "costco.com", "bestbuy.com", "wayfair.com", "overstock.com",
+        "ikea.com", "menards.com", "sears.com", "macys.com", "etsy.com", "temu.com", "shein.com",
+
         "wixsite.com", "blogspot.com", "wordpress.com", "weebly.com", "sites.google.com", "tumblr.com"
     }
 

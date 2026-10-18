@@ -261,14 +261,30 @@ class DiscoveryOptimizer:
         req_city = (plan.get("city") or "").lower().strip()
         cand_full_loc = f"{cand_address} {snippet} {candidate.get('location', '')}".lower()
 
-        # Strict International Geo-Fencing
+        # Strict International Geo-Fencing & ccTLD Guard
         if req_country:
+            # Reject explicit foreign country-code top-level domains (ccTLDs)
+            FOREIGN_CCTLDS = {
+                "bangladesh": [".us", ".uk", ".in", ".pk", ".au", ".ca", ".nz", ".de", ".fr", ".sg", ".my", ".ae", ".sa"],
+                "pakistan": [".us", ".uk", ".in", ".bd", ".au", ".ca", ".de", ".fr"],
+                "india": [".us", ".uk", ".pk", ".bd", ".au", ".ca", ".de", ".fr"],
+                "united states": [".uk", ".in", ".pk", ".bd", ".au", ".ca", ".de", ".fr", ".sg"],
+                "united kingdom": [".us", ".in", ".pk", ".bd", ".au", ".ca", ".de", ".fr"],
+            }
+            for bt in FOREIGN_CCTLDS.get(req_country, []):
+                if domain.endswith(bt) or f"{bt}." in domain or f"{bt}/" in domain:
+                    return False, f"Foreign domain ccTLD mismatch: '{domain}' has '{bt}', outside target '{req_country}'"
+
             conflicting_countries = {
-                "bangladesh": ["pakistan", "karachi", "lahore", "islamabad", "rawalpindi", "india", "mumbai", "delhi", "kolkata"],
-                "pakistan": ["bangladesh", "dhaka", "chittagong", "india", "delhi", "mumbai"],
-                "india": ["pakistan", "bangladesh", "karachi", "lahore", "dhaka"],
-                "united states": ["uk", "united kingdom", "london", "bangladesh", "pakistan", "india"],
-                "united kingdom": ["usa", "united states", "bangladesh", "pakistan", "india"],
+                "bangladesh": [
+                    "usa", "united states", "u.s.a", "u.s.", "america", "california", "texas", "florida",
+                    "new york", "chicago", "uk", "united kingdom", "london", "pakistan", "karachi", "lahore",
+                    "islamabad", "rawalpindi", "india", "mumbai", "delhi", "kolkata", "germany", "australia", "canada"
+                ],
+                "pakistan": ["bangladesh", "dhaka", "chittagong", "india", "delhi", "mumbai", "usa", "uk"],
+                "india": ["pakistan", "bangladesh", "karachi", "lahore", "dhaka", "usa", "uk"],
+                "united states": ["uk", "united kingdom", "london", "bangladesh", "pakistan", "india", "dhaka"],
+                "united kingdom": ["usa", "united states", "bangladesh", "pakistan", "india", "dhaka"],
             }
             conflicts = conflicting_countries.get(req_country, [])
             for bad_loc in conflicts:
@@ -279,6 +295,10 @@ class DiscoveryOptimizer:
             cand_phone = candidate.get("phone") or ""
             clean_digits = re.sub(r'\D', '', cand_phone)
             if req_country == "bangladesh":
+                if cand_phone.startswith("+1") or (clean_digits.startswith("1") and len(clean_digits) == 11):
+                    return False, "Candidate has a US/Canada phone number (+1), not Bangladesh"
+                if cand_phone.startswith("+44") or (clean_digits.startswith("44") and len(clean_digits) >= 11):
+                    return False, "Candidate has a UK phone number (+44), not Bangladesh"
                 if cand_phone.startswith("+92") or (clean_digits.startswith("92") and len(clean_digits) == 12):
                     return False, "Candidate has a Pakistani phone number (+92), not Bangladesh"
                 if cand_phone.startswith("+91") or (clean_digits.startswith("91") and len(clean_digits) == 12):
