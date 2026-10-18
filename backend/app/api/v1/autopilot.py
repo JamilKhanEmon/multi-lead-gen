@@ -1,3 +1,5 @@
+import json
+import logging
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Any
@@ -15,6 +17,8 @@ from app.models.audit import User
 from app.api.deps import get_current_user
 from app.engine.email_verifier import EmailVerifier
 from app.engine.outreach_engine import OutreachEngine
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/autopilot", tags=["Autopilot & Outreach"])
 
