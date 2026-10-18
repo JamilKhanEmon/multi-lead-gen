@@ -273,7 +273,7 @@ class AutopilotRunner:
                     b_type = cand.get("business_type") or "commercial"
 
                     ai_insights = {}
-                    cand_loc = cand.get("location") or cand.get("address") or plan.get("location") or target_city_clean or ""
+                    cand_loc = cand.get("location") or cand.get("address") or target_city_clean or ""
                     from app.services.ai_client import AIClient
                     ai_client = AIClient(timeout=8.0)
 

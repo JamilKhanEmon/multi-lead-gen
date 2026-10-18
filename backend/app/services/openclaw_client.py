@@ -67,6 +67,7 @@ class LiveResearchEngine:
         company_limit: int = 0,
         business_type_override: Optional[str] = None,
         sub_areas: Optional[List[str]] = None,
+        on_candidate_found: Optional[Any] = None,
     ) -> Dict[str, Any]:
         loc_parts = []
         for p in [sub_city, city, country]:
@@ -82,7 +83,20 @@ class LiveResearchEngine:
         discovered = []
         seen_names = set()
         seen_domains = set()
+        streamed_signatures = set()
         loop = asyncio.get_event_loop()
+
+        async def _stream_candidate(item: Dict[str, Any]):
+            sig = (item.get("domain") or item.get("canonical_name") or "").lower().strip()
+            if sig and sig in streamed_signatures:
+                return
+            if sig:
+                streamed_signatures.add(sig)
+            if on_candidate_found:
+                try:
+                    await on_candidate_found(item)
+                except Exception as stream_err:
+                    logger.debug(f"Candidate stream callback notice: {stream_err}")
 
         mode_str = "UNLIMITED Exhaustion" if is_unlimited else f"Explicit Cap: {company_limit}"
         logger.info(f"LiveResearchEngine: Starting live discovery for '{industry}' in '{full_location}' ({mode_str})")
@@ -109,11 +123,16 @@ class LiveResearchEngine:
                 seen_names=seen_names,
                 search_queries=plan.get("search_queries"),
                 plan=plan,
+                city=city,
+                country=country,
+                on_candidate_found=_stream_candidate,
             )
             for b in browser_discovered:
-                b["city"] = city
-                b["country"] = country
-                discovered.append(b)
+                if b not in discovered:
+                    b["city"] = city
+                    b["country"] = country
+                    discovered.append(b)
+                await _stream_candidate(b)
             logger.info(f"LiveResearchEngine: Found {len(browser_discovered)} commercial entities with verified websites via live web search.")
         except Exception as e:
             logger.warning(f"Live browser discovery fallback: {e}")
@@ -140,6 +159,7 @@ class LiveResearchEngine:
                             biz["city"] = city
                             biz["country"] = country
                             discovered.append(biz)
+                            await _stream_candidate(biz)
                     await asyncio.sleep(0.05)
                 except Exception as e:
                     logger.warning(f"Web search error for '{q}': {e}")
@@ -215,7 +235,7 @@ class LiveResearchEngine:
                         gsearch_url = f"https://www.google.com/search?q={search_q}"
                         b_type = (business_type_override or industry).lower().replace(" ", "_")
 
-                        discovered.append({
+                        cand_item = {
                             "canonical_name": p_name,
                             "industry": industry,
                             "location": full_location,
@@ -234,7 +254,9 @@ class LiveResearchEngine:
                             "phone": phone,
                             "email": email,
                             "confidence": 0.98 if website else 0.92,
-                        })
+                        }
+                        discovered.append(cand_item)
+                        await _stream_candidate(cand_item)
                 except Exception as e:
                     logger.warning(f"OSM directory search error for '{target_q}': {e}")
 
@@ -252,6 +274,9 @@ class LiveResearchEngine:
         seen_names: Optional[set] = None,
         search_queries: Optional[List[str]] = None,
         plan: Optional[Dict[str, Any]] = None,
+        city: str = "",
+        country: str = "",
+        on_candidate_found: Optional[Any] = None,
     ) -> List[Dict[str, Any]]:
         if seen_domains is None:
             seen_domains = set()
@@ -309,7 +334,14 @@ class LiveResearchEngine:
                                 url, title, snippet, industry, location, business_type_override, seen_domains, seen_names, plan=plan
                             )
                             if biz:
+                                biz["city"] = city
+                                biz["country"] = country
                                 results.append(biz)
+                                if on_candidate_found:
+                                    try:
+                                        await on_candidate_found(biz)
+                                    except Exception as stream_err:
+                                        logger.debug(f"Browser stream candidate callback notice: {stream_err}")
                     except Exception as e:
                         brave_consecutive_empty += 1
                         logger.debug(f"Search query '{q}' error: {e}")
@@ -338,7 +370,14 @@ class LiveResearchEngine:
                             url, title, snippet, industry, location, business_type_override, seen_domains, seen_names, plan=plan
                         )
                         if biz:
+                            biz["city"] = city
+                            biz["country"] = country
                             results.append(biz)
+                            if on_candidate_found:
+                                try:
+                                    await on_candidate_found(biz)
+                                except Exception as stream_err:
+                                    logger.debug(f"Fallback stream candidate callback notice: {stream_err}")
                 except Exception as e:
                     logger.debug(f"HTTP web search fallback query '{q}' notice: {e}")
 
@@ -1751,6 +1790,7 @@ class OpenClawClient:
                 company_limit=raw_limit,
                 business_type_override=b_type,
                 sub_areas=parameters.get("sub_areas"),
+                on_candidate_found=parameters.get("on_candidate_found"),
             )
 
         elif skill_name == "website-research":

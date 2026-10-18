@@ -36,6 +36,42 @@ async def publish_progress_event(event_type: str, data: Dict[str, Any]):
     except Exception as e:
         logger.warning(f"Could not publish event to Redis: {e}")
 
+async def _record_run_processed(
+    session: AsyncSession,
+    run_id: Optional[uuid.UUID],
+    is_qualified: bool,
+    is_failed: bool = False,
+):
+    if not run_id:
+        return
+    stmt = select(ResearchRun).where(ResearchRun.id == run_id)
+    r_res = await session.execute(stmt)
+    run = r_res.scalar_one_or_none()
+    if not run or run.status == "CANCELLED":
+        return
+
+    run.researched_count += 1
+    if is_failed:
+        run.failed_count += 1
+    elif is_qualified:
+        run.qualified_count += 1
+    else:
+        run.rejected_count += 1
+
+    disc_stmt = select(ResearchJob.status).where(
+        ResearchJob.run_id == run_id,
+        ResearchJob.task_type == "discover_businesses"
+    )
+    disc_res = await session.execute(disc_stmt)
+    disc_statuses = disc_res.scalars().all()
+    discovery_finished = any(s == "COMPLETED" for s in disc_statuses)
+
+    processed = run.qualified_count + run.rejected_count + run.failed_count
+    if discovery_finished and processed >= run.discovered_count and run.discovered_count > 0:
+        run.status = "COMPLETED"
+        run.completed_at = datetime.now(timezone.utc)
+
+
 async def handle_discover_businesses(
     task_payload: Dict[str, Any],
     openclaw_client: OpenClawClient,
@@ -64,38 +100,6 @@ async def handle_discover_businesses(
     city = payload.get("city", "").strip()
     sub_city = payload.get("sub_city", "").strip()
 
-    try:
-        discovery_result = await openclaw_client.run_skill(
-            skill_name="business-discovery",
-            parameters={
-                "industry": industry,
-                "country": country,
-                "city": city,
-                "sub_city": sub_city,
-                "location": location,
-                "company_limit": company_limit,
-                "business_type_override": payload.get("business_type_override"),
-                "sub_areas": payload.get("sub_areas"),
-            },
-        )
-    except Exception as e:
-        logger.warning(f"OpenClaw discovery error on initial query ({e}). Retrying with clean live search...")
-        try:
-            discovery_result = await openclaw_client.run_skill(
-                "business-discovery",
-                parameters={
-                    "industry": industry,
-                    "location": location,
-                    "company_limit": company_limit,
-                },
-            )
-        except Exception as retry_e:
-            logger.error(f"Live discovery failed after retry: {retry_e}")
-            discovery_result = {"discovered_companies": []}
-
-    companies = discovery_result.get("discovered_companies", [])
-    logger.info(f"Discovered {len(companies)} candidate companies")
-
     val_plan = await DiscoveryOptimizer.optimize_search_plan(
         industry=industry,
         location=location,
@@ -105,63 +109,65 @@ async def handle_discover_businesses(
         sub_areas=payload.get("sub_areas"),
     )
 
-    candidate_businesses = []
     seen_biz_ids = set()
-    async with AsyncSessionLocal() as session:
-        for comp in companies:
-            raw_name = comp.get("canonical_name", "").strip()
-            raw_domain = comp.get("domain") or comp.get("website")
-            raw_phone = comp.get("phone")
-            raw_fb = comp.get("facebook_url")
+    redis_client = aioredis.from_url(settings.REDIS_URL)
 
-            if not raw_name:
-                continue
+    async def process_and_enqueue_candidate(comp: Dict[str, Any]):
+        nonlocal seen_biz_ids
+        raw_name = comp.get("canonical_name", "").strip()
+        raw_domain = comp.get("domain") or comp.get("website")
+        raw_phone = comp.get("phone")
+        raw_fb = comp.get("facebook_url")
 
-            # Clean and sanitize raw_name against SEO keyword stuffing & runaway titles
-            if raw_name.count(",") >= 2 or len(raw_name) > 80:
-                if raw_domain and "facebook.com" not in raw_domain:
-                    dom_clean = raw_domain.replace("https://", "").replace("http://", "").split("/")[0].replace("www.", "")
-                    raw_name = dom_clean.split(".")[0].replace("-", " ").title()
-                else:
-                    raw_name = raw_name.split(",")[0].split("|")[0].split("-")[0].strip()[:80]
-            raw_name = raw_name[:150].strip()
+        if not raw_name:
+            return
 
-            # Check if this candidate is a social-only business (e.g. found via Facebook page)
-            if raw_domain and "facebook.com" in raw_domain.lower():
-                if not raw_fb:
-                    raw_fb = raw_domain
-                raw_domain = None
-                comp["website"] = None
-                comp["domain"] = None
-                comp["facebook_url"] = raw_fb
-                comp["is_social_only"] = True
+        # Clean and sanitize raw_name against SEO keyword stuffing & runaway titles
+        if raw_name.count(",") >= 2 or len(raw_name) > 80:
+            if raw_domain and "facebook.com" not in raw_domain:
+                dom_clean = raw_domain.replace("https://", "").replace("http://", "").split("/")[0].replace("www.", "")
+                raw_name = dom_clean.split(".")[0].replace("-", " ").title()
+            else:
+                raw_name = raw_name.split(",")[0].split("|")[0].split("-")[0].strip()[:80]
+        raw_name = raw_name[:150].strip()
 
-            raw_name_l = raw_name.lower().strip()
-            if any(bad in raw_name_l for bad in ["facebook.com", "instagram.com", "google.com", "youtube.com", "linkedin.com", "twitter.com"]) or raw_name_l in ["facebook", "instagram", "google", "meta"]:
-                logger.info(f"TaskDiscover: Discarding generic platform candidate '{raw_name}'")
-                continue
+        # Check if this candidate is a social-only business (e.g. found via Facebook page)
+        if raw_domain and "facebook.com" in raw_domain.lower():
+            if not raw_fb:
+                raw_fb = raw_domain
+            raw_domain = None
+            comp["website"] = None
+            comp["domain"] = None
+            comp["facebook_url"] = raw_fb
+            comp["is_social_only"] = True
 
-            if raw_domain and (DeduplicationEngine.is_generic_platform(raw_domain) or DeduplicationEngine.is_directory_or_aggregator(raw_domain, raw_name)):
-                logger.info(f"TaskDiscover: Discarding directory/aggregator platform candidate '{raw_name}' ({raw_domain})")
-                continue
+        raw_name_l = raw_name.lower().strip()
+        if any(bad in raw_name_l for bad in ["facebook.com", "instagram.com", "google.com", "youtube.com", "linkedin.com", "twitter.com"]) or raw_name_l in ["facebook", "instagram", "google", "meta"]:
+            logger.info(f"TaskDiscover [Stream]: Discarding generic platform candidate '{raw_name}'")
+            return
 
-            is_valid, reason = DiscoveryOptimizer.validate_candidate(comp, val_plan)
-            if not is_valid:
-                logger.info(f"TaskDiscover: Rejecting candidate '{raw_name}': {reason}")
-                continue
+        if raw_domain and (DeduplicationEngine.is_generic_platform(raw_domain) or DeduplicationEngine.is_directory_or_aggregator(raw_domain, raw_name)):
+            logger.info(f"TaskDiscover [Stream]: Discarding directory/aggregator platform candidate '{raw_name}' ({raw_domain})")
+            return
 
-            if not raw_domain and not raw_phone and not comp.get("email") and not raw_fb:
-                logger.info(f"TaskDiscover: Discarding ghost candidate '{raw_name}' due to zero contact channels.")
-                continue
+        is_valid, reason = DiscoveryOptimizer.validate_candidate(comp, val_plan)
+        if not is_valid:
+            logger.info(f"TaskDiscover [Stream]: Rejecting candidate '{raw_name}': {reason}")
+            return
 
-            norm_domain = DeduplicationEngine.normalize_domain(raw_domain)
-            norm_phone = DeduplicationEngine.normalize_phone(raw_phone)
-            clean_email = (comp.get("email") or "").strip()[:200] or None
-            clean_address = (comp.get("address") or "").strip() or None
-            clean_btype = (comp.get("business_type") or payload.get("business_type_override") or "other")[:90]
-            clean_city = (comp.get("city") or city or location or "")[:90] or None
-            clean_country = (comp.get("country") or country or "")[:90] or None
+        if not raw_domain and not raw_phone and not comp.get("email") and not raw_fb:
+            logger.info(f"TaskDiscover [Stream]: Discarding ghost candidate '{raw_name}' due to zero contact channels.")
+            return
 
+        norm_domain = DeduplicationEngine.normalize_domain(raw_domain)
+        norm_phone = DeduplicationEngine.normalize_phone(raw_phone)
+        clean_email = (comp.get("email") or "").strip()[:200] or None
+        clean_address = (comp.get("address") or "").strip() or None
+        clean_btype = (comp.get("business_type") or payload.get("business_type_override") or "other")[:90]
+        clean_city = (comp.get("city") or city or location or "")[:90] or None
+        clean_country = (comp.get("country") or country or "")[:90] or None
+
+        async with AsyncSessionLocal() as session:
             existing_biz = None
             if norm_domain:
                 stmt = select(Business).where(Business.domain == norm_domain)
@@ -218,38 +224,40 @@ async def handle_discover_businesses(
                             updated_meta[k] = v
                     target_biz.metadata_json = updated_meta
 
-            if target_biz.id not in seen_biz_ids:
-                seen_biz_ids.add(target_biz.id)
-                candidate_businesses.append(target_biz)
+            if target_biz.id in seen_biz_ids:
+                return
 
-        stmt = select(ResearchRun).where(ResearchRun.id == run_id)
-        run_res = await session.execute(stmt)
-        run = run_res.scalar_one_or_none()
-        if run:
-            run.discovered_count = len(candidate_businesses)
-            run.researched_count = len(candidate_businesses)
-            if len(candidate_businesses) == 0:
-                run.status = "COMPLETED"
-                run.completed_at = datetime.now(timezone.utc)
+            seen_biz_ids.add(target_biz.id)
+            target_biz_id = str(target_biz.id)
+            target_name = target_biz.canonical_name
+            target_domain = target_biz.domain
+            target_phone = target_biz.phone
+            target_btype = target_biz.business_type
 
-        await session.commit()
+            # Immediately update ResearchRun discovered_count so UI increments in real-time
+            stmt_run = select(ResearchRun).where(ResearchRun.id == run_id)
+            r_res = await session.execute(stmt_run)
+            run = r_res.scalar_one_or_none()
+            if run:
+                run.discovered_count = len(seen_biz_ids)
 
-    r = aioredis.from_url(settings.REDIS_URL)
-    for biz in candidate_businesses:
+            await session.commit()
+
+        # Enqueue research & qualify job immediately to Redis for live concurrent processing
         research_job = {
             "job_id": str(uuid.uuid4()),
             "run_id": str(run_id),
-            "business_id": str(biz.id),
+            "business_id": target_biz_id,
             "type": "research_and_qualify",
             "depth": task_payload.get("depth", "STANDARD"),
             "attempt": 1,
             "max_attempts": 5,
             "payload": {
-                "business_id": str(biz.id),
-                "business_name": biz.canonical_name,
-                "domain": biz.domain,
-                "phone": biz.phone,
-                "business_type": biz.business_type,
+                "business_id": target_biz_id,
+                "business_name": target_name,
+                "domain": target_domain,
+                "phone": target_phone,
+                "business_type": target_btype,
                 "industry": industry,
                 "location": location,
                 "auto_mail_enabled": payload.get("auto_mail_enabled", True),
@@ -260,17 +268,88 @@ async def handle_discover_businesses(
             },
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
-        await r.lpush("leadgen:tasks", json.dumps(research_job))
+        await redis_client.lpush("leadgen:tasks", json.dumps(research_job))
+        logger.info(f"TaskDiscover [Stream]: Streamed & enqueued '{target_name}' for live qualification.")
 
-    await r.aclose()
+    try:
+        discovery_result = await openclaw_client.run_skill(
+            skill_name="business-discovery",
+            parameters={
+                "industry": industry,
+                "country": country,
+                "city": city,
+                "sub_city": sub_city,
+                "location": location,
+                "company_limit": company_limit,
+                "business_type_override": payload.get("business_type_override"),
+                "sub_areas": payload.get("sub_areas"),
+                "on_candidate_found": process_and_enqueue_candidate,
+            },
+        )
+    except Exception as e:
+        logger.warning(f"OpenClaw discovery error on initial query ({e}). Retrying with clean live search...")
+        try:
+            discovery_result = await openclaw_client.run_skill(
+                "business-discovery",
+                parameters={
+                    "industry": industry,
+                    "location": location,
+                    "company_limit": company_limit,
+                    "on_candidate_found": process_and_enqueue_candidate,
+                },
+            )
+        except Exception as retry_e:
+            logger.error(f"Live discovery failed after retry: {retry_e}")
+            discovery_result = {"discovered_companies": []}
+
+    companies = discovery_result.get("discovered_companies", [])
+    logger.info(f"Discovered {len(companies)} candidate companies in total.")
+
+    # Process any remaining companies returned in discovery_result that weren't streamed
+    for comp in companies:
+        try:
+            await process_and_enqueue_candidate(comp)
+        except Exception as ex:
+            logger.debug(f"Post-discovery candidate process notice: {ex}")
+
+    await redis_client.aclose()
+
+    async with AsyncSessionLocal() as session:
+        # Mark the discover_businesses ResearchJob as COMPLETED
+        if task_payload.get("job_id"):
+            try:
+                j_id = uuid.UUID(task_payload["job_id"])
+                j_stmt = select(ResearchJob).where(ResearchJob.id == j_id)
+                j_res = await session.execute(j_stmt)
+                job_obj = j_res.scalar_one_or_none()
+                if job_obj:
+                    job_obj.status = "COMPLETED"
+            except Exception as j_err:
+                logger.debug(f"Job status update error: {j_err}")
+
+        stmt = select(ResearchRun).where(ResearchRun.id == run_id)
+        run_res = await session.execute(stmt)
+        run = run_res.scalar_one_or_none()
+        if run:
+            run.discovered_count = len(seen_biz_ids)
+            if len(seen_biz_ids) == 0:
+                run.status = "COMPLETED"
+                run.completed_at = datetime.now(timezone.utc)
+            else:
+                processed = run.qualified_count + run.rejected_count + run.failed_count
+                if processed >= len(seen_biz_ids):
+                    run.status = "COMPLETED"
+                    run.completed_at = datetime.now(timezone.utc)
+
+        await session.commit()
 
     await publish_progress_event("discovery_completed", {
         "run_id": str(run_id),
-        "discovered": len(companies),
-        "enqueued": len(candidate_businesses),
+        "discovered": len(seen_biz_ids),
+        "enqueued": len(seen_biz_ids),
     })
 
-    return {"discovered": len(companies), "enqueued": len(candidate_businesses)}
+    return {"discovered": len(seen_biz_ids), "enqueued": len(seen_biz_ids)}
 
 async def handle_research_and_qualify(
     task_payload: Dict[str, Any],
@@ -306,15 +385,8 @@ async def handle_research_and_qualify(
         )
         try:
             async with AsyncSessionLocal() as session:
-                stmt = select(ResearchRun).where(ResearchRun.id == run_id)
-                res = await session.execute(stmt)
-                run = res.scalar_one_or_none()
-                if run and run.status != "CANCELLED":
-                    run.failed_count += 1
-                    processed = run.qualified_count + run.rejected_count + run.failed_count
-                    if processed >= run.discovered_count and run.discovered_count > 0:
-                        run.status = "COMPLETED"
-                    await session.commit()
+                await _record_run_processed(session, run_id, is_qualified=False, is_failed=True)
+                await session.commit()
         except Exception:
             pass
         return {"status": "SKIPPED", "reason": str(unhandled_err)}
@@ -993,14 +1065,7 @@ async def _execute_research_and_qualify(
                 f"(Industry fit: {is_industry_fit}, Tier: {tier}, Reason: {fit_reason}). Not adding to leads."
             )
             if valid_run_id:
-                stmt_run = select(ResearchRun).where(ResearchRun.id == valid_run_id)
-                r_res = await session.execute(stmt_run)
-                run = r_res.scalar_one_or_none()
-                if run:
-                    run.rejected_count += 1
-                    processed = run.qualified_count + run.rejected_count + run.failed_count
-                    if processed >= run.discovered_count and run.discovered_count > 0:
-                        run.status = "COMPLETED"
+                await _record_run_processed(session, valid_run_id, is_qualified=False)
             await session.commit()
             return {"status": "REJECTED", "business_id": str(business_id), "reason": fit_reason}
 
@@ -1025,11 +1090,7 @@ async def _execute_research_and_qualify(
         if gate_res.get("fit_tier") == "DROPPED":
             logger.info(f"TaskResearch: Fit gate DROPPED '{business_name}'. Not adding to leads.")
             if valid_run_id:
-                stmt_run = select(ResearchRun).where(ResearchRun.id == valid_run_id)
-                r_res = await session.execute(stmt_run)
-                run = r_res.scalar_one_or_none()
-                if run:
-                    run.rejected_count += 1
+                await _record_run_processed(session, valid_run_id, is_qualified=False)
             await session.commit()
             return {"status": "REJECTED", "business_id": str(business_id), "reason": "DROPPED by fit gate"}
 
@@ -1132,18 +1193,7 @@ async def _execute_research_and_qualify(
             session.add(score_record)
 
         if valid_run_id:
-            stmt = select(ResearchRun).where(ResearchRun.id == valid_run_id)
-            r_res = await session.execute(stmt)
-            run = r_res.scalar_one_or_none()
-            if run:
-                if is_qualified:
-                    run.qualified_count += 1
-                else:
-                    run.rejected_count += 1
-
-                processed = run.qualified_count + run.rejected_count + run.failed_count
-                if processed >= run.discovered_count and run.discovered_count > 0:
-                    run.status = "COMPLETED"
+            await _record_run_processed(session, valid_run_id, is_qualified=is_qualified)
 
         await session.commit()
 
