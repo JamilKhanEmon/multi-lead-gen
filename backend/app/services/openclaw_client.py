@@ -1,4 +1,5 @@
 import asyncio
+import os
 import json
 import uuid
 import re
@@ -264,6 +265,33 @@ class LiveResearchEngine:
         return {"discovered_companies": discovered}
 
     @classmethod
+    async def _launch_browser(cls, p):
+        launch_kwargs = {
+            "headless": True,
+            "args": [
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ]
+        }
+        custom_chrome = os.getenv("PLAYWRIGHT_CHROME_PATH")
+        if custom_chrome and os.path.exists(custom_chrome):
+            launch_kwargs["executable_path"] = custom_chrome
+        else:
+            for cp in [
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/usr/bin/google-chrome",
+                "/usr/bin/chromium-browser",
+                "/usr/bin/chromium",
+            ]:
+                if os.path.exists(cp):
+                    launch_kwargs["executable_path"] = cp
+                    break
+        return await p.chromium.launch(**launch_kwargs)
+
+    @classmethod
     async def _search_commercial_companies_via_browser(
         cls,
         industry: str,
@@ -287,64 +315,107 @@ class LiveResearchEngine:
         try:
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
-                page = await browser.new_page(user_agent=cls.USER_AGENT)
+                browser = await cls._launch_browser(p)
+                context = await browser.new_context(user_agent=cls.USER_AGENT)
+                await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                page = await context.new_page()
                 queries = search_queries or [
                     f"{industry} company in {location}",
                     f"{industry} offices and services in {location} official website",
                     f"{industry} commercial firms {location}",
                 ]
-                brave_consecutive_empty = 0
                 for q in queries:
                     if len(results) >= limit:
                         break
-                    if brave_consecutive_empty >= 2:
-                        logger.info("Browser search: Brave rate-limit or empty snippets detected, fast-switching to multi-engine fallback.")
-                        break
                     encoded_q = urllib.parse.quote(q)
+                    items = []
                     try:
+                        # 1. Try Brave Search
                         await page.goto(
                             f"https://search.brave.com/search?q={encoded_q}",
                             timeout=8000,
                             wait_until="domcontentloaded",
                         )
+                        try:
+                            await page.wait_for_selector('div.snippet, div.result, a.heading-link', timeout=2500)
+                        except Exception:
+                            pass
                         items = await page.eval_on_selector_all(
                             'div.snippet[data-type="web"], div.snippet, .search-results .result, div.result',
                             '''els => els.map(el => {
                                 const a = el.querySelector('a.heading-link') || el.querySelector('a[href^="http"]');
                                 const desc = el.querySelector('.snippet-description') || el.querySelector('.snippet-content') || el.querySelector('p');
+                                let snip = desc ? (desc.innerText || desc.textContent || '') : '';
+                                if (!snip && el.innerText) {
+                                    snip = el.innerText.replace(/\\n+/g, ' ').slice(0, 300);
+                                }
                                 return {
                                     url: a ? a.href : '',
                                     title: a ? (a.innerText || a.textContent || '') : '',
-                                    snippet: desc ? (desc.innerText || desc.textContent || '') : ''
+                                    snippet: snip
                                 };
                             }).filter(x => x.url && !x.url.includes('brave.com'))'''
                         )
-                        if not items:
-                            brave_consecutive_empty += 1
-                        else:
-                            brave_consecutive_empty = 0
-                        for it in items:
-                            if len(results) >= limit:
-                                break
-                            url = it.get("url", "")
-                            title = it.get("title", "")
-                            snippet = it.get("snippet", "")
-                            biz = cls._process_candidate_url(
-                                url, title, snippet, industry, location, business_type_override, seen_domains, seen_names, plan=plan
-                            )
-                            if biz:
-                                biz["city"] = city
-                                biz["country"] = country
-                                results.append(biz)
-                                if on_candidate_found:
-                                    try:
-                                        await on_candidate_found(biz)
-                                    except Exception as stream_err:
-                                        logger.debug(f"Browser stream candidate callback notice: {stream_err}")
                     except Exception as e:
-                        brave_consecutive_empty += 1
-                        logger.debug(f"Search query '{q}' error: {e}")
+                        logger.debug(f"Brave search query '{q}' notice: {e}")
+
+                    # 2. If Brave is empty, immediately query Bing in the active browser with decoded URLs
+                    if not items:
+                        try:
+                            await page.goto(
+                                f"https://www.bing.com/search?q={encoded_q}",
+                                timeout=8000,
+                                wait_until="domcontentloaded",
+                            )
+                            try:
+                                await page.wait_for_selector('li.b_algo', timeout=2500)
+                            except Exception:
+                                pass
+                            items = await page.eval_on_selector_all(
+                                'li.b_algo',
+                                '''els => els.map(el => {
+                                    const a = el.querySelector('h2 a') || el.querySelector('a[href^="http"]');
+                                    const desc = el.querySelector('.b_caption p, p');
+                                    let href = a ? a.href : '';
+                                    if (href.includes('bing.com/ck/a')) {
+                                        const match = href.match(/[?&]u=a1([a-zA-Z0-9_\\-]+)/);
+                                        if (match && match[1]) {
+                                            try {
+                                                let b64 = match[1].replace(/-/g, '+').replace(/_/g, '/');
+                                                while (b64.length % 4) b64 += '=';
+                                                href = atob(b64);
+                                            } catch(e) {}
+                                        }
+                                    }
+                                    return {
+                                        url: href,
+                                        title: a ? (a.innerText || a.textContent || '') : '',
+                                        snippet: desc ? (desc.innerText || desc.textContent || '') : ''
+                                    };
+                                }).filter(x => x.url && !x.url.includes('bing.com'))'''
+                            )
+                        except Exception as bing_err:
+                            logger.debug(f"Bing browser fallback query '{q}' notice: {bing_err}")
+
+                    # Process and stream candidate results
+                    for it in (items or []):
+                        if len(results) >= limit:
+                            break
+                        url = it.get("url", "")
+                        title = it.get("title", "")
+                        snippet = it.get("snippet", "")
+                        biz = cls._process_candidate_url(
+                            url, title, snippet, industry, location, business_type_override, seen_domains, seen_names, plan=plan
+                        )
+                        if biz:
+                            biz["city"] = city
+                            biz["country"] = country
+                            results.append(biz)
+                            if on_candidate_found:
+                                try:
+                                    await on_candidate_found(biz)
+                                except Exception as stream_err:
+                                    logger.debug(f"Browser stream candidate callback notice: {stream_err}")
                 await browser.close()
         except Exception as e:
             logger.info(f"Browser search unavailable ({e}), using fast HTTP search engine fallback.")
@@ -388,7 +459,7 @@ class LiveResearchEngine:
         try:
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await cls._launch_browser(p)
                 page = await browser.new_page(user_agent=cls.USER_AGENT)
                 q = urllib.parse.quote(f"{business_name} {location} official website")
                 await page.goto(
@@ -979,7 +1050,7 @@ class LiveResearchEngine:
         try:
             from playwright.async_api import async_playwright
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await cls._launch_browser(p)
                 
                 page = await browser.new_page(
                     user_agent=cls.USER_AGENT,
