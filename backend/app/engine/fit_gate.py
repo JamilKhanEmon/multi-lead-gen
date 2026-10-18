@@ -328,25 +328,40 @@ class FitGateEngine:
                     evidence_tags.append("MAPS_RATING_GAP")
                     evidence_signals.append(f"Google Maps rating {rating_val}★ with customer feedback gaps (Proof: {gmaps_url})")
                 else:
-                    verified_gaps.append(f"Strong verified commercial profile on Google Maps ({rating_val}★, {rev_label}) in {city_clean}, but customer intake and booking remain manual without automated CRM.")
-                    inferred_opportunities.append(f"High local buyer demand in {city_clean} creates an immediate opportunity to automate client intake, follow-ups, and sales operations.")
+                    if is_appointment_biz:
+                        verified_gaps.append(f"Strong verified commercial profile on Google Maps ({rating_val}★, {rev_label}) in {city_clean}, but customer intake and appointment scheduling remain manual.")
+                        inferred_opportunities.append(f"High local client demand in {city_clean} creates an immediate opportunity to automate 24/7 calendar booking and eliminate staff phone tag.")
+                    else:
+                        verified_gaps.append(f"Strong verified commercial reputation on Google Maps ({rating_val}★, {rev_label}) in {city_clean}, but project quote requests and client inquiries require manual phone coordination.")
+                        inferred_opportunities.append(f"High local buyer demand in {city_clean} creates an immediate opportunity to automate quote estimation, follow-ups, and sales operations.")
                     evidence_tags.append("LOCAL_DEMAND_AUTOMATION_FIT")
                     evidence_signals.append(f"High-demand local profile ({rating_val}★) lacking automated sales workflow (Proof: {gmaps_url})")
             else:
                 # No Maps rating found, look strictly at real presence signals
                 if has_clean_domain:
-                    verified_gaps.append(f"Official web domain ({domain}) lacks direct appointment scheduling or interactive lead capture.")
-                    inferred_opportunities.append(f"Adding interactive booking on {domain} can directly convert visitors into clients.")
-                    evidence_tags.append("NO_ONLINE_BOOKING")
-                    evidence_signals.append(f"Website lacking instant booking channel (Domain: {domain})")
+                    if is_appointment_biz:
+                        verified_gaps.append(f"Official web domain ({domain}) lacks direct appointment scheduling or interactive client booking.")
+                        inferred_opportunities.append(f"Adding interactive booking on {domain} can directly convert visitors into booked appointments.")
+                        evidence_tags.append("NO_ONLINE_BOOKING")
+                    else:
+                        verified_gaps.append(f"Official web domain ({domain}) lacks instant quote estimation or automated inquiry routing.")
+                        inferred_opportunities.append(f"Adding interactive inquiry qualification on {domain} can directly capture high-intent buyers.")
+                        evidence_tags.append("NO_INTERACTIVE_CAPTURE")
+                    evidence_signals.append(f"Website lacking instant inquiry channel (Domain: {domain})")
                 elif fb or ig:
-                    verified_gaps.append(f"Operating via social media without an official website or automated inquiry booking funnel.")
+                    if is_appointment_biz:
+                        verified_gaps.append(f"Operating via social media without an official website or automated appointment booking funnel.")
+                    else:
+                        verified_gaps.append(f"Operating via social media without an official website or automated project quote funnel.")
                     inferred_opportunities.append("Reliance solely on social media messages creates manual bottlenecks during busy hours.")
                     evidence_tags.append("NO_WEBSITE")
                     evidence_signals.append("Operating without official website")
                 elif has_phone:
-                    verified_gaps.append(f"Customer acquisition relies exclusively on direct phone calls with no verified digital booking channel.")
-                    inferred_opportunities.append("Missing digital booking leaves inquiries unanswered after hours.")
+                    if is_appointment_biz:
+                        verified_gaps.append(f"Customer acquisition relies exclusively on direct phone calls with no verified digital booking channel.")
+                    else:
+                        verified_gaps.append(f"Customer acquisition relies exclusively on direct phone calls with no automated quote or inquiry funnel.")
+                    inferred_opportunities.append("Missing digital channels leave inquiries unanswered after hours.")
                     evidence_tags.append("MANUAL_PHONE_ONLY")
                     evidence_signals.append("Customer acquisition phone-only")
                 else:
@@ -373,7 +388,10 @@ class FitGateEngine:
                     evidence_tags.append("DORMANT_SOCIAL_PAGE")
                     evidence_signals.append(f"Dormant Facebook page with zero recent posts (Proof: {social_link})")
                 else:
-                    verified_gaps.append(f"Active social media business profile detected ({recency_txt or 'active posts'}), but lacks direct automated sales funnels, CRM sync, or instant inquiry booking.")
+                    if is_appointment_biz:
+                        verified_gaps.append(f"Active social media business profile detected ({recency_txt or 'active posts'}), but lacks direct automated booking or calendar sync.")
+                    else:
+                        verified_gaps.append(f"Active social media business profile detected ({recency_txt or 'active posts'}), but lacks automated inquiry routing, CRM sync, or instant quote funnels.")
                     inferred_opportunities.append("Operating social media without automated lead capture leads to delayed responses and lost prospects during off-hours.")
                     evidence_tags.append("SOCIAL_LEAD_FUNNEL_GAP")
                     evidence_signals.append(f"Active social presence lacking automated lead capture funnel (Proof: {social_link})")

@@ -181,6 +181,11 @@ class OutreachEngine:
         primary_gap = re.sub(r"\s*\[Proof Link:[^\]]*\]", "", str(raw_gap), flags=re.IGNORECASE)
         primary_gap = re.sub(r"\s*\(Proof:[^\)]*\)", "", primary_gap, flags=re.IGNORECASE)
         primary_gap = re.sub(r"\s+", " ", primary_gap).strip()
+
+        raw_why = lead_data.get("why_they_need_us") or lead_data.get("what_they_need") or ""
+        why_they_need_us = re.sub(r"\s*\[Proof Link:[^\]]*\]", "", str(raw_why), flags=re.IGNORECASE)
+        why_they_need_us = re.sub(r"\s*\(Proof:[^\)]*\)", "", why_they_need_us, flags=re.IGNORECASE)
+        why_they_need_us = re.sub(r"\s+", " ", why_they_need_us).strip()
         
         matched_service = lead_data.get("matched_service") or "software and workflow automation"
         website = lead_data.get("website") or ""
@@ -201,15 +206,20 @@ class OutreachEngine:
 
             sender_agency = (sender_company or "our software and digital solutions team").strip()
             system_prompt = (
-                f"You are an elite B2B Sales Director writing personalized, concise, high-converting cold emails on behalf of {sender_agency}.\n\n"
+                f"You are an elite B2B Sales Director writing tailored, concise, high-converting cold emails on behalf of {sender_agency}.\n\n"
                 "STRICT STRUCTURE (Follow this exact 4-part skeleton):\n"
                 f"Line 1 (Greeting): Hi {contact_person},\n"
-                "Line 2 (Hook & Gap): Exactly 1 respectful, natural sentence referencing their company in their city and the specific audited gap/opportunity (e.g. missing direct online booking, manual lead intake, lack of instant inquiry tracking).\n"
-                "Line 3 (Value & Solution): 1-2 concise sentences highlighting how our matched solution solves this friction and drives immediate ROI.\n"
-                "Line 4 (Low-Friction CTA): Exactly 1 friendly sentence asking for a 5-minute brief interactive walkthrough or chat sometime this week or early next week.\n\n"
-                "CRITICAL CONSTRAINTS:\n"
+                "Line 2 (Hook & Real Finding): Exactly 1 respectful, natural sentence referencing their company in their city and their ACTUAL verified gap or growth observation from the prompt. Speak directly to their industry.\n"
+                f"Line 3 (Value & Matched Solution): 1-2 concise sentences highlighting how our specific solution ({matched_service}) eliminates this exact bottleneck and drives tangible business ROI for them.\n"
+                "Line 4 (Low-Friction CTA): Exactly 1 friendly sentence asking for a 5-minute brief interactive walkthrough or discussion sometime this week or early next week.\n\n"
+                "CRITICAL CONSTRAINTS (ZERO REPETITION / ZERO CANNED PHRASES):\n"
+                "- ADAPT STRICTLY TO THE RECIPIENT'S INDUSTRY:\n"
+                "  * If Solar, Energy, Construction, Engineering, Manufacturing, or B2B: NEVER mention 'online booking' or 'booking calendars'. Focus on project quote requests, solar ROI calculators, RFP / project inquiry workflows, inventory & operational tracking, or commercial project pipeline.\n"
+                "  * If Healthcare, Dental, Clinic, Salon, or Spa: Focus on automated patient/client appointment scheduling and calendar sync.\n"
+                "  * If Wholesale, Distribution, or Retail: Focus on bulk quote requests, WhatsApp catalog inquiries, and automated order routing.\n"
+                "  * If Real Estate or Architecture: Focus on property inquiries, viewing requests, and lead follow-up.\n"
                 "- LENGTH: STRICT MAXIMUM 80 WORDS. Keep paragraphs separated by double newlines. Mobile-friendly.\n"
-                "- TONE: Human, conversational, executive-level. NO corporate fluff or clichés ('Hope you are well', 'Allow me to introduce', 'I am writing to').\n"
+                "- TONE: Human, conversational, executive-level. NO corporate fluff ('Hope you are well', 'Allow me to introduce', 'I am writing to').\n"
                 "- NO hardcoded days of the week (never mention Thursday, Monday, etc.).\n"
                 "- NEVER include proof links, URLs, raw data brackets, or citations (e.g. absolutely no '[Proof Link: ...]'). Write completely natural, professional business sentences.\n"
                 "- Do NOT include the sender signature or sign-off at the end (it is attached automatically).\n"
@@ -220,12 +230,13 @@ class OutreachEngine:
                 f"Email Step: {step_instruction}\n"
                 f"Target Company: {company_name}\n"
                 f"Recipient: {contact_person}\n"
-                f"Industry: {industry}\n"
-                f"Location: {city}\n"
-                f"Website: {website}\n"
-                f"Identified Gap: {primary_gap}\n"
-                f"Our Matched Solution: {matched_service}\n\n"
-                "Generate the subject line and short body following the exact 4-part structure."
+                f"Industry / Vertical: {industry}\n"
+                f"Location / Market: {city}\n"
+                f"Website: {website or 'None (Operating via Map / Social presence)'}\n"
+                f"Identified Real Gap: {primary_gap}\n"
+                f"Operational Context: {why_they_need_us}\n"
+                f"Our Matched Solution to Offer: {matched_service}\n\n"
+                "Generate the subject line and short body following the exact 4-part structure, strictly tailored to their industry and specific gap."
             )
 
             res = await ai_client.analyze(
