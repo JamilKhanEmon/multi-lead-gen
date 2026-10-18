@@ -4,6 +4,15 @@ from typing import Dict, Any, List, Tuple, Optional
 from app.core.logging import logger
 from app.services.ai_client import AIClient, AIClientError
 
+class IndustryFitResult(tuple):
+    def __new__(cls, is_fit: bool, reason: str, insights: Optional[Dict[str, Any]] = None):
+        return super().__new__(cls, (is_fit, reason))
+
+    def __init__(self, is_fit: bool, reason: str, insights: Optional[Dict[str, Any]] = None):
+        self.is_fit = is_fit
+        self.reason = reason
+        self.insights = insights or {}
+
 class DiscoveryOptimizer:
 
     UNIVERSAL_NEGATIVE_KEYWORDS = [
@@ -299,15 +308,6 @@ class DiscoveryOptimizer:
                 return False, f"Candidate snippet matched AI negative filter '{neg}': '{name}'"
 
         return True, "Valid commercial entity"
-
-class IndustryFitResult(tuple):
-    def __new__(cls, is_fit: bool, reason: str, insights: Optional[Dict[str, Any]] = None):
-        return super().__new__(cls, (is_fit, reason))
-
-    def __init__(self, is_fit: bool, reason: str, insights: Optional[Dict[str, Any]] = None):
-        self.is_fit = is_fit
-        self.reason = reason
-        self.insights = insights or {}
 
     @classmethod
     async def verify_industry_fit(
