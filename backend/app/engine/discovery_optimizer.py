@@ -87,13 +87,16 @@ class DiscoveryOptimizer:
                 "and decompose it into a comprehensive, high-yield web and social search plan for web crawlers (Brave, Google, DuckDuckGo, Facebook).\n\n"
                 "RULES FOR QUERY GENERATION:\n"
                 "1. Normalized Sub-Industries: Split composite industries into clean, individual industry keywords (e.g. ['Solar Energy', 'IPS Inverter', 'Generator Supplier']).\n"
-                "2. High-Yield Web Queries: Generate 15 to 25 natural search queries combining each normalized sub-industry with the target city and specified sub-areas.\n"
+                "2. Dynamic Geographic & Spelling Correction: If the user provided a misspelled country or city name (e.g. 'Bnagladesh' -> 'Bangladesh', 'Dhka' -> 'Dhaka', 'Karchi' -> 'Karachi'), automatically correct it into its official proper name in 'normalized_country' and 'normalized_city'. Ensure all search queries use this properly spelled official country and city.\n"
+                "3. High-Yield Web Queries: Generate 15 to 25 natural search queries combining each normalized sub-industry with the target city and specified sub-areas.\n"
                 "   CRITICAL: NEVER wrap multi-word combinations or whole queries in strict double quotes (\"...\"). Keep them natural so search engines return rich commercial results.\n"
-                "3. Social Media Discovery: Include queries targeting commercial Facebook business pages (e.g. 'site:facebook.com solar energy Dhaka', 'site:facebook.com IPS battery Dhaka').\n"
-                "4. Directory / OSM Targets: Generate 3 to 5 single-concept directory query strings (e.g. 'Solar Energy', 'Generator', 'Electrical Supplies').\n"
-                "5. Positive Keywords: Words indicating legitimate operating commercial businesses/services in these sectors.\n"
-                "6. Negative Keywords: Irrelevant noise, retail consumer goods, or unrelated shops to filter out (e.g. tyre, grocery, salon, dental, pharmacy, restaurant, clothes).\n\n"
+                "4. Social Media Discovery: Include queries targeting commercial Facebook business pages (e.g. 'site:facebook.com solar energy Dhaka', 'site:facebook.com IPS battery Dhaka').\n"
+                "5. Directory / OSM Targets: Generate 3 to 5 single-concept directory query strings (e.g. 'Solar Energy', 'Generator', 'Electrical Supplies').\n"
+                "6. Positive Keywords: Words indicating legitimate operating commercial businesses/services in these sectors.\n"
+                "7. Negative Keywords: Irrelevant noise, retail consumer goods, or unrelated shops to filter out (e.g. tyre, grocery, salon, dental, pharmacy, restaurant, clothes).\n\n"
                 "Return pure JSON with keys:\n"
+                "- 'normalized_country': string (official proper spelling of the country)\n"
+                "- 'normalized_city': string (official proper spelling of the city)\n"
                 "- 'normalized_sub_industries': list of strings\n"
                 "- 'search_queries': list of 15 to 25 strings\n"
                 "- 'osm_queries': list of 3 to 5 strings\n"
@@ -106,8 +109,7 @@ class DiscoveryOptimizer:
                 f"Target City: {city}\n"
                 f"Target Country: {country}\n"
                 f"Approved Sub-Areas / Neighborhoods: {areas_clean}\n\n"
-                f"CRITICAL GEOGRAPHIC ANCHOR: Every single search query MUST explicitly contain the target country name '{country}' and city '{city}' (e.g. 'Solar company Gulshan Dhaka Bangladesh'). "
-                f"NEVER generate queries like 'Solar Gulshan' without '{city}' and '{country}', because sub-areas like 'Gulshan' also exist in Pakistan (Karachi). "
+                f"CRITICAL GEOGRAPHIC ANCHOR: Automatically fix any spelling mistakes in the country/city name, and ensure every search query explicitly contains the properly spelled country and city (e.g. 'Solar company Gulshan Dhaka Bangladesh'). "
                 f"Ensure queries strictly target commercial businesses in {full_loc} only."
             )
 
@@ -122,6 +124,10 @@ class DiscoveryOptimizer:
                 and isinstance(result["search_queries"], list)
                 and len(result["search_queries"]) > 0
             ):
+                if result.get("normalized_country") and len(str(result["normalized_country"]).strip()) >= 2:
+                    country = str(result["normalized_country"]).strip()
+                if result.get("normalized_city") and len(str(result["normalized_city"]).strip()) >= 2:
+                    city = str(result["normalized_city"]).strip()
                 logger.info(f"DiscoveryOptimizer: Successfully generated dynamic LLM search plan for '{ind_clean}' in '{full_loc}'. (Queries: {len(result['search_queries'])})")
                 base_negs = [w for w in cls.UNIVERSAL_NEGATIVE_KEYWORDS if w not in ind_clean.lower()]
                 neg = list(dict.fromkeys(result.get("negative_keywords", []) + base_negs))

@@ -269,14 +269,18 @@ class LiveResearchEngine:
                     f"{industry} offices and services in {location} official website",
                     f"{industry} commercial firms {location}",
                 ]
+                brave_consecutive_empty = 0
                 for q in queries:
                     if len(results) >= limit:
+                        break
+                    if brave_consecutive_empty >= 2:
+                        logger.info("Browser search: Brave rate-limit or empty snippets detected, fast-switching to multi-engine fallback.")
                         break
                     encoded_q = urllib.parse.quote(q)
                     try:
                         await page.goto(
                             f"https://search.brave.com/search?q={encoded_q}",
-                            timeout=12000,
+                            timeout=8000,
                             wait_until="domcontentloaded",
                         )
                         items = await page.eval_on_selector_all(
@@ -291,6 +295,10 @@ class LiveResearchEngine:
                                 };
                             }).filter(x => x.url && !x.url.includes('brave.com'))'''
                         )
+                        if not items:
+                            brave_consecutive_empty += 1
+                        else:
+                            brave_consecutive_empty = 0
                         for it in items:
                             if len(results) >= limit:
                                 break
@@ -303,6 +311,7 @@ class LiveResearchEngine:
                             if biz:
                                 results.append(biz)
                     except Exception as e:
+                        brave_consecutive_empty += 1
                         logger.debug(f"Search query '{q}' error: {e}")
                 await browser.close()
         except Exception as e:
