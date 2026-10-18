@@ -96,10 +96,7 @@ async def list_leads(
             (Business.canonical_name == "facebook") |
             (Business.canonical_name == "Google") |
             (Business.canonical_name == "google") |
-            (Lead.tier == "Rejected") |
-            (Lead.outreach_status == "NO_EMAIL") |
-            (Business.email.is_(None)) |
-            (Business.email == "")
+            (Lead.tier == "Rejected")
         )
         c_res = await db.execute(cleanup_stmt)
         bad_leads = c_res.scalars().all()
@@ -117,7 +114,7 @@ async def list_leads(
     lead_items = []
     for l in leads:
         biz = l.business
-        if not biz or not biz.email or not biz.email.strip() or l.tier == "Rejected" or l.outreach_status == "NO_EMAIL":
+        if not biz or l.tier == "Rejected":
             continue
         biz_name_l = (biz.canonical_name or "").lower().strip()
         biz_dom_l = (biz.domain or "").lower().strip()
@@ -131,11 +128,11 @@ async def list_leads(
 
         meta = (biz.metadata_json or {}) if biz else {}
         has_scraped_email = bool(meta.get("extracted_email") or (biz.email and not biz.email.startswith("contact@")))
-        resolved_email = biz.email.strip()
-        email_status = "VERIFIED" if has_scraped_email else "SUGGESTED"
+        resolved_email = biz.email.strip() if biz.email else None
+        email_status = l.email_status or ("VERIFIED" if has_scraped_email else ("SUGGESTED" if resolved_email else "NOT_FOUND"))
 
         has_contact = bool(biz.phone or resolved_email)
-        if not resolved_email:
+        if not has_contact:
             continue
 
         loc = biz.locations[0] if (biz and biz.locations) else None
