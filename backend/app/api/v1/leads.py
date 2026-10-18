@@ -853,12 +853,13 @@ async def get_lead_detail(
     if not lead:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
 
+    jobs_filter = (ResearchJob.business_id == lead.business_id)
+    if lead.run_id is not None:
+        jobs_filter = jobs_filter | ((ResearchJob.run_id == lead.run_id) & (ResearchJob.task_type == "discover_businesses"))
+
     stmt_jobs = (
         select(ResearchJob)
-        .where(
-            (ResearchJob.business_id == lead.business_id) |
-            ((ResearchJob.run_id == lead.run_id) & (ResearchJob.task_type == "discover_businesses"))
-        )
+        .where(jobs_filter)
         .order_by(ResearchJob.created_at.asc())
     )
     res_jobs = await db.execute(stmt_jobs)
@@ -1013,10 +1014,19 @@ async def get_lead_detail(
     if not why_us or not call_script:
         loc_city = (loc.city if loc else None) or meta.get("city") or (loc.country if loc else None) or meta.get("country") or ""
         use_kb = True
-        if lead.run and hasattr(lead.run, "use_company_kb"):
-            use_kb = bool(lead.run.use_company_kb)
-
-        analyze_web = bool(getattr(lead.run, "analyze_website", False)) if lead.run else bool(meta.get("analyze_website", False))
+        analyze_web = bool(meta.get("analyze_website", False))
+        if lead.run_id:
+            try:
+                from app.models.research import ResearchRun
+                run_res = await db.execute(select(ResearchRun).where(ResearchRun.id == lead.run_id))
+                run_obj = run_res.scalar_one_or_none()
+                if run_obj:
+                    if hasattr(run_obj, "use_company_kb"):
+                        use_kb = bool(run_obj.use_company_kb)
+                    if hasattr(run_obj, "analyze_website"):
+                        analyze_web = bool(run_obj.analyze_website)
+            except Exception:
+                pass
         kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
 
         gate_res = FitGateEngine.evaluate_candidate(
@@ -1444,10 +1454,19 @@ async def evaluate_lead_fit_gate(
         clean_dom = None
 
     use_kb = True
-    if lead.run and hasattr(lead.run, "use_company_kb"):
-        use_kb = bool(lead.run.use_company_kb)
-
-    analyze_web = bool(getattr(lead.run, "analyze_website", False)) if lead.run else bool(meta.get("analyze_website", False))
+    analyze_web = bool(meta.get("analyze_website", False))
+    if lead.run_id:
+        try:
+            from app.models.research import ResearchRun
+            run_res = await db.execute(select(ResearchRun).where(ResearchRun.id == lead.run_id))
+            run_obj = run_res.scalar_one_or_none()
+            if run_obj:
+                if hasattr(run_obj, "use_company_kb"):
+                    use_kb = bool(run_obj.use_company_kb)
+                if hasattr(run_obj, "analyze_website"):
+                    analyze_web = bool(run_obj.analyze_website)
+        except Exception:
+            pass
     kb_dict = await FitGateEngine.fetch_active_kb_dict(db) if use_kb else None
 
     gate_res = FitGateEngine.evaluate_candidate(
