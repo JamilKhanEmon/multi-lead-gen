@@ -67,7 +67,13 @@ class DiscoveryOptimizer:
         city: str = "",
         sub_city: str = "",
     ) -> Dict[str, Any]:
-        loc_parts = [p for p in [sub_city, city, country] if p]
+        loc_parts = []
+        for p in [sub_city, city, country]:
+            p_clean = str(p or "").strip()
+            if p_clean and p_clean.lower() not in [x.lower() for x in loc_parts]:
+                if any(p_clean.lower() in existing.lower() for existing in loc_parts):
+                    continue
+                loc_parts.append(p_clean)
         full_loc = ", ".join(loc_parts) if loc_parts else location.strip()
         ind_clean = industry.strip()
 
@@ -88,7 +94,11 @@ class DiscoveryOptimizer:
                 f"Ensure queries target all active commercial businesses, firms, clinics, or agencies in this area, NOT residential areas or random shops."
             )
 
-            result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt)
+            result = await ai.analyze(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=650,
+            )
             if (
                 isinstance(result, dict)
                 and "search_queries" in result

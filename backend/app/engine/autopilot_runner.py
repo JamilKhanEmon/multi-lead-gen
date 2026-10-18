@@ -135,13 +135,21 @@ class AutopilotRunner:
 
                 logger.info(f"[AUTOPILOT] Querying real businesses for '{target_keyword}' in city: '{target_city_clean}' ({campaign.country})")
 
+                target_sub = ""
+                target_main = target_city_clean
+                if "," in target_city_clean:
+                    c_parts = [cp.strip() for cp in target_city_clean.split(",") if cp.strip()]
+                    if len(c_parts) > 1:
+                        target_sub = c_parts[0]
+                        target_main = c_parts[-1]
+
                 discovered_candidates = []
                 try:
                     discovery_res = await LiveResearchEngine.discover_businesses(
                         industry=target_keyword,
                         country=campaign.country,
-                        city=target_city_clean,
-                        sub_city=target_city_clean,
+                        city=target_main,
+                        sub_city=target_sub,
                         company_limit=max(15, (effective_batch - len(all_added_leads)) if effective_batch > 0 else 50)
                     )
                     discovered_candidates = discovery_res.get("discovered_companies", [])

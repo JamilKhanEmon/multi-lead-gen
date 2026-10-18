@@ -44,7 +44,13 @@ class LiveResearchEngine:
         business_type_override: Optional[str] = None,
         sub_areas: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        loc_parts = [p for p in [sub_city, city, country] if p]
+        loc_parts = []
+        for p in [sub_city, city, country]:
+            p_clean = str(p or "").strip()
+            if p_clean and p_clean.lower() not in [x.lower() for x in loc_parts]:
+                if any(p_clean.lower() in existing.lower() for existing in loc_parts):
+                    continue
+                loc_parts.append(p_clean)
         full_location = ", ".join(loc_parts) if loc_parts else location.strip()
         is_unlimited = (company_limit <= 0)
         effective_limit = 999999 if is_unlimited else company_limit
