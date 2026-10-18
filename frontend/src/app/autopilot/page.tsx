@@ -658,7 +658,7 @@ export default function AutopilotPage() {
                         : "bg-slate-800 text-slate-400 border-slate-700"
                     }`}
                   >
-                    {camp.status === "RUNNING" ? "Running Cycle" : camp.is_active ? "Active Autopilot" : "Paused"}
+                    {camp.status === "RUNNING" ? "Running Cycle" : camp.is_active ? "Ready to Launch" : "Paused"}
                   </span>
                 </div>
 
