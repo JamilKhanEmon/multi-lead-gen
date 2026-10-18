@@ -106,7 +106,9 @@ class DiscoveryOptimizer:
                 f"Target City: {city}\n"
                 f"Target Country: {country}\n"
                 f"Approved Sub-Areas / Neighborhoods: {areas_clean}\n\n"
-                f"Generate a complete, high-coverage search plan that finds real commercial companies, suppliers, contractors, and agencies across all specified sub-areas."
+                f"CRITICAL GEOGRAPHIC ANCHOR: Every single search query MUST explicitly contain the target country name '{country}' and city '{city}' (e.g. 'Solar company Gulshan Dhaka Bangladesh'). "
+                f"NEVER generate queries like 'Solar Gulshan' without '{city}' and '{country}', because sub-areas like 'Gulshan' also exist in Pakistan (Karachi). "
+                f"Ensure queries strictly target commercial businesses in {full_loc} only."
             )
 
             result = await ai.analyze(
@@ -197,8 +199,8 @@ class DiscoveryOptimizer:
             queries.append(f"site:facebook.com {s_ind} {city_target}")
 
             for a in areas:
-                queries.append(f"{s_ind} company in {a} {city}".strip())
-                queries.append(f"site:facebook.com {s_ind} {a}")
+                queries.append(f"{s_ind} company in {a}, {city_target}".strip())
+                queries.append(f"site:facebook.com {s_ind} {a} {city_target}".strip())
 
         queries = list(dict.fromkeys(queries))
         osm = list(dict.fromkeys(osm))[:5]
@@ -240,10 +242,33 @@ class DiscoveryOptimizer:
 
         req_country = (plan.get("country") or "").lower().strip()
         req_location = (plan.get("location") or "").lower().strip()
-
         req_sub_city = (plan.get("sub_city") or "").lower().strip()
         req_city = (plan.get("city") or "").lower().strip()
         cand_full_loc = f"{cand_address} {snippet} {candidate.get('location', '')}".lower()
+
+        # Strict International Geo-Fencing
+        if req_country:
+            conflicting_countries = {
+                "bangladesh": ["pakistan", "karachi", "lahore", "islamabad", "rawalpindi", "india", "mumbai", "delhi", "kolkata"],
+                "pakistan": ["bangladesh", "dhaka", "chittagong", "india", "delhi", "mumbai"],
+                "india": ["pakistan", "bangladesh", "karachi", "lahore", "dhaka"],
+                "united states": ["uk", "united kingdom", "london", "bangladesh", "pakistan", "india"],
+                "united kingdom": ["usa", "united states", "bangladesh", "pakistan", "india"],
+            }
+            conflicts = conflicting_countries.get(req_country, [])
+            for bad_loc in conflicts:
+                if re.search(r'\b' + re.escape(bad_loc) + r'\b', cand_full_loc):
+                    return False, f"Geographic mismatch: Candidate mentions '{bad_loc}', outside target '{req_country}'"
+
+            # Check phone country codes
+            cand_phone = candidate.get("phone") or ""
+            clean_digits = re.sub(r'\D', '', cand_phone)
+            if req_country == "bangladesh":
+                if cand_phone.startswith("+92") or (clean_digits.startswith("92") and len(clean_digits) == 12):
+                    return False, "Candidate has a Pakistani phone number (+92), not Bangladesh"
+                if cand_phone.startswith("+91") or (clean_digits.startswith("91") and len(clean_digits) == 12):
+                    return False, "Candidate has an Indian phone number (+91), not Bangladesh"
+
         if cand_address and req_sub_city and len(req_sub_city) >= 3:
             if req_sub_city not in cand_full_loc and (req_city and req_city not in cand_full_loc):
                 return False, f"Candidate address '{cand_address}' does not match requested area '{req_sub_city}' or city '{req_city}'"

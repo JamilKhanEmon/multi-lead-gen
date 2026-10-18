@@ -511,7 +511,21 @@ class LiveResearchEngine:
         except Exception as e:
             logger.debug(f"Photon query error for '{query_str}': {e}")
 
-        url = f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(query_str)}&format=json&addressdetails=1&extratags=1&limit={limit}"
+        cc_map = {
+            "bangladesh": "bd", "bd": "bd",
+            "pakistan": "pk", "pk": "pk",
+            "india": "in", "in": "in",
+            "united states": "us", "usa": "us", "us": "us",
+            "united kingdom": "gb", "uk": "gb", "gb": "gb",
+            "canada": "ca", "ca": "ca",
+            "australia": "au", "au": "au",
+            "united arab emirates": "ae", "uae": "ae",
+        }
+        cc_param = ""
+        if target_country and target_country.lower().strip() in cc_map:
+            cc_param = f"&countrycodes={cc_map[target_country.lower().strip()]}"
+
+        url = f"https://nominatim.openstreetmap.org/search?q={urllib.parse.quote(query_str)}&format=json&addressdetails=1&extratags=1&limit={limit}{cc_param}"
         headers = {
             "User-Agent": cls.USER_AGENT,
             "Accept": "application/json, text/plain, */*",
@@ -531,6 +545,10 @@ class LiveResearchEngine:
                         continue
                     ext = item.get("extratags") or {}
                     addr_dict = item.get("address") or {}
+
+                    nom_country = (addr_dict.get("country") or "").lower().strip()
+                    if target_country and nom_country and target_country.lower() not in nom_country:
+                        continue
                     
                     road = addr_dict.get("road") or ""
                     suburb = addr_dict.get("suburb") or addr_dict.get("quarter") or ""
