@@ -102,6 +102,7 @@ async def handle_discover_businesses(
         country=country,
         city=city,
         sub_city=sub_city,
+        sub_areas=payload.get("sub_areas"),
     )
 
     candidate_businesses = []
@@ -149,8 +150,8 @@ async def handle_discover_businesses(
                 logger.info(f"TaskDiscover: Rejecting candidate '{raw_name}': {reason}")
                 continue
 
-            if not raw_domain and not raw_phone and not comp.get("email") and not comp.get("address"):
-                logger.info(f"TaskDiscover: Discarding ghost candidate '{raw_name}' due to zero contact channels and no address.")
+            if not raw_domain and not raw_phone and not comp.get("email") and not raw_fb:
+                logger.info(f"TaskDiscover: Discarding ghost candidate '{raw_name}' due to zero contact channels.")
                 continue
 
             norm_domain = DeduplicationEngine.normalize_domain(raw_domain)

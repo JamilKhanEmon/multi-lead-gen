@@ -66,6 +66,7 @@ class DiscoveryOptimizer:
         country: str = "",
         city: str = "",
         sub_city: str = "",
+        sub_areas: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         loc_parts = []
         for p in [sub_city, city, country]:
@@ -76,28 +77,42 @@ class DiscoveryOptimizer:
                 loc_parts.append(p_clean)
         full_loc = ", ".join(loc_parts) if loc_parts else location.strip()
         ind_clean = industry.strip()
+        areas_clean = [str(a).strip() for a in (sub_areas or []) if str(a).strip()][:15]
 
         try:
-            ai = AIClient(timeout=8.0)
+            ai = AIClient(timeout=12.0)
             system_prompt = (
-                "You are an expert B2B Lead Generation Discovery Query Optimizer.\n"
-                "Given any target industry and any location worldwide, generate broad, high-coverage search queries, "
-                "OSM directory queries, positive keywords indicating real operating commercial businesses, and negative keywords "
-                "(unrelated industries, non-commercial entities, retail shops, or common search noise for this specific industry) to filter out.\n"
-                "IMPORTANT: In 'negative_keywords', dynamically include distinct, unrelated industries that frequently appear as false positive noise when searching for this target industry.\n"
-                "Return pure JSON with keys: 'search_queries' (list of 4 strings), 'osm_queries' (list of 3 strings), "
-                "'positive_keywords' (list of 6 strings), 'negative_keywords' (list of 10 strings)."
+                "You are an expert B2B Lead Generation Discovery Query Engineer.\n"
+                "Your role is to analyze any raw or composite user industry input (e.g. 'Solar, IPS & Generator', 'Dental Clinic & Care', 'HVAC / AC repair') "
+                "and decompose it into a comprehensive, high-yield web and social search plan for web crawlers (Brave, Google, DuckDuckGo, Facebook).\n\n"
+                "RULES FOR QUERY GENERATION:\n"
+                "1. Normalized Sub-Industries: Split composite industries into clean, individual industry keywords (e.g. ['Solar Energy', 'IPS Inverter', 'Generator Supplier']).\n"
+                "2. High-Yield Web Queries: Generate 15 to 25 natural search queries combining each normalized sub-industry with the target city and specified sub-areas.\n"
+                "   CRITICAL: NEVER wrap multi-word combinations or whole queries in strict double quotes (\"...\"). Keep them natural so search engines return rich commercial results.\n"
+                "3. Social Media Discovery: Include queries targeting commercial Facebook business pages (e.g. 'site:facebook.com solar energy Dhaka', 'site:facebook.com IPS battery Dhaka').\n"
+                "4. Directory / OSM Targets: Generate 3 to 5 single-concept directory query strings (e.g. 'Solar Energy', 'Generator', 'Electrical Supplies').\n"
+                "5. Positive Keywords: Words indicating legitimate operating commercial businesses/services in these sectors.\n"
+                "6. Negative Keywords: Irrelevant noise, retail consumer goods, or unrelated shops to filter out (e.g. tyre, grocery, salon, dental, pharmacy, restaurant, clothes).\n\n"
+                "Return pure JSON with keys:\n"
+                "- 'normalized_sub_industries': list of strings\n"
+                "- 'search_queries': list of 15 to 25 strings\n"
+                "- 'osm_queries': list of 3 to 5 strings\n"
+                "- 'positive_keywords': list of 6 to 10 strings\n"
+                "- 'negative_keywords': list of 10 to 15 strings"
             )
             user_prompt = (
-                f"Target Industry: {ind_clean}\n"
+                f"User Industry Input: {ind_clean}\n"
                 f"Target Location: {full_loc}\n"
-                f"Ensure queries target all active commercial businesses, firms, clinics, or agencies in this area, NOT residential areas or random shops."
+                f"Target City: {city}\n"
+                f"Target Country: {country}\n"
+                f"Approved Sub-Areas / Neighborhoods: {areas_clean}\n\n"
+                f"Generate a complete, high-coverage search plan that finds real commercial companies, suppliers, contractors, and agencies across all specified sub-areas."
             )
 
             result = await ai.analyze(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                max_tokens=650,
+                max_tokens=850,
             )
             if (
                 isinstance(result, dict)
@@ -105,7 +120,7 @@ class DiscoveryOptimizer:
                 and isinstance(result["search_queries"], list)
                 and len(result["search_queries"]) > 0
             ):
-                logger.info(f"DiscoveryOptimizer: Successfully generated dynamic LLM search plan for '{ind_clean}' in '{full_loc}'.")
+                logger.info(f"DiscoveryOptimizer: Successfully generated dynamic LLM search plan for '{ind_clean}' in '{full_loc}'. (Queries: {len(result['search_queries'])})")
                 base_negs = [w for w in cls.UNIVERSAL_NEGATIVE_KEYWORDS if w not in ind_clean.lower()]
                 neg = list(dict.fromkeys(result.get("negative_keywords", []) + base_negs))
                 result["negative_keywords"] = neg
@@ -114,11 +129,23 @@ class DiscoveryOptimizer:
                 result["city"] = city.strip()
                 result["country"] = country.strip()
                 result["sub_city"] = sub_city.strip()
+                result["sub_areas"] = areas_clean
+                if "normalized_sub_industries" not in result or not result["normalized_sub_industries"]:
+                    result["normalized_sub_industries"] = [
+                        t.strip() for t in re.split(r'[,/|&]|(?:\band\b)', ind_clean, flags=re.IGNORECASE) if len(t.strip()) >= 2
+                    ] or [ind_clean]
                 return result
         except Exception as e:
             logger.debug(f"DiscoveryOptimizer: LLM optimization fallback: {e}")
 
-        return cls.build_fallback_plan(industry=ind_clean, location=full_loc, country=country, city=city, sub_city=sub_city)
+        return cls.build_fallback_plan(
+            industry=ind_clean,
+            location=full_loc,
+            country=country,
+            city=city,
+            sub_city=sub_city,
+            sub_areas=areas_clean,
+        )
 
     @classmethod
     def build_fallback_plan(
@@ -128,11 +155,13 @@ class DiscoveryOptimizer:
         country: str = "",
         city: str = "",
         sub_city: str = "",
+        sub_areas: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        ind_lower = industry.lower().strip()
+        ind_clean = industry.strip()
+        ind_lower = ind_clean.lower()
         loc_parts = []
         for p in [sub_city, city, country]:
-            p_clean = p.strip()
+            p_clean = str(p or "").strip()
             if p_clean and not any(p_clean.lower() == existing.lower() for existing in loc_parts):
                 loc_parts.append(p_clean)
         loc_str = ", ".join(loc_parts) if loc_parts else (location.strip() or f"{city} {country}".strip() or "local")
@@ -140,28 +169,50 @@ class DiscoveryOptimizer:
         city_target = f"{city} {country}".strip() if city.lower() != country.lower() else city.strip()
         if not city_target:
             city_target = loc_str
-        sub_target = f"{sub_city} {city}".strip() if (sub_city and sub_city.lower() != city.lower()) else (sub_city or city_target)
 
-        queries = [
-            f"{industry} {sub_target} official website",
-            f"{industry} companies in {city_target} official website",
-            f"top {industry} firms and services in {city_target}",
-            f"{industry} commercial business offices {sub_target}",
+        # Split composite industries (e.g., 'Solar, IPS & Generator' -> ['Solar', 'IPS', 'Generator'])
+        sub_industries = [
+            term.strip() for term in re.split(r'[,/|&]|(?:\band\b)', ind_clean, flags=re.IGNORECASE)
+            if len(term.strip()) >= 2
         ]
-        osm = [
-            f"{industry} {sub_target}",
-            f"{industry} {city_target}",
-            f"{industry} Company {loc_str}",
-        ]
-        pos = [ind_lower, f"{ind_lower} services", f"{ind_lower} company"]
+        if not sub_industries:
+            sub_industries = [ind_clean]
+
+        queries = []
+        osm = []
+        pos = []
+
+        areas = [str(a).strip() for a in (sub_areas or []) if str(a).strip()][:10]
+
+        for s_ind in sub_industries:
+            pos.append(s_ind.lower())
+            pos.append(f"{s_ind.lower()} company")
+            pos.append(f"{s_ind.lower()} services")
+
+            osm.append(f"{s_ind} {city_target}".strip())
+            osm.append(f"{s_ind} Company {loc_str}".strip())
+
+            queries.append(f"{s_ind} company in {city_target} official website")
+            queries.append(f"top {s_ind} firms and suppliers in {city_target}")
+            queries.append(f"site:facebook.com {s_ind} {city_target}")
+
+            for a in areas:
+                queries.append(f"{s_ind} company in {a} {city}".strip())
+                queries.append(f"site:facebook.com {s_ind} {a}")
+
+        queries = list(dict.fromkeys(queries))
+        osm = list(dict.fromkeys(osm))[:5]
+        pos = list(dict.fromkeys(pos))
         neg = [w for w in cls.UNIVERSAL_NEGATIVE_KEYWORDS if w not in ind_lower]
 
         return {
-            "industry": industry,
+            "industry": ind_clean,
+            "normalized_sub_industries": sub_industries,
             "location": loc_str,
             "country": country.strip(),
             "city": city.strip(),
             "sub_city": sub_city.strip(),
+            "sub_areas": areas,
             "search_queries": queries,
             "osm_queries": osm,
             "positive_keywords": pos,
@@ -194,8 +245,8 @@ class DiscoveryOptimizer:
         req_city = (plan.get("city") or "").lower().strip()
         cand_full_loc = f"{cand_address} {snippet} {candidate.get('location', '')}".lower()
         if cand_address and req_sub_city and len(req_sub_city) >= 3:
-            if req_sub_city not in cand_full_loc:
-                return False, f"Candidate address '{cand_address}' does not match requested area '{req_sub_city}'"
+            if req_sub_city not in cand_full_loc and (req_city and req_city not in cand_full_loc):
+                return False, f"Candidate address '{cand_address}' does not match requested area '{req_sub_city}' or city '{req_city}'"
         elif cand_address and req_city and len(req_city) >= 3:
             if req_city not in cand_full_loc and req_sub_city not in cand_full_loc:
                 return False, f"Candidate location does not match target city '{req_city}'"
@@ -209,11 +260,11 @@ class DiscoveryOptimizer:
             neg_l = neg.lower().strip()
             if not neg_l:
                 continue
-            if neg_l in name_lower:
+            if re.search(r'\b' + re.escape(neg_l) + r'\b', name_lower):
                 return False, f"Candidate matched AI negative filter '{neg}': '{name}'"
             if neg_l.replace(" ", "") in domain:
                 return False, f"Domain matched AI negative filter '{neg}': '{domain}'"
-            if len(neg_l) >= 4 and neg_l in snippet:
+            if len(neg_l) >= 4 and re.search(r'\b' + re.escape(neg_l) + r'\b', snippet):
                 return False, f"Candidate snippet matched AI negative filter '{neg}': '{name}'"
 
         return True, "Valid commercial entity"

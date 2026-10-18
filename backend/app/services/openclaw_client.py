@@ -69,26 +69,10 @@ class LiveResearchEngine:
             country=country,
             city=city,
             sub_city=sub_city,
+            sub_areas=sub_areas,
         )
 
-        if sub_areas:
-            area_queries = []
-            loc_anchor = f"{city}, {country}".strip(", ") if (city or country) else full_location
-            for area in sub_areas[:15]:
-                clean_a = str(area).strip()
-                if clean_a:
-                    if loc_anchor and loc_anchor.lower() not in clean_a.lower():
-                        area_queries.append(f"{industry} in {clean_a}, {loc_anchor}")
-                        area_queries.append(f"site:facebook.com \"{industry}\" \"{clean_a}\" \"{loc_anchor}\"")
-                        area_queries.append(f"{industry} company {clean_a} {loc_anchor}")
-                    else:
-                        area_queries.append(f"{industry} in {clean_a}")
-                        area_queries.append(f"site:facebook.com \"{industry}\" \"{clean_a}\"")
-                        area_queries.append(f"{industry} company {clean_a}")
-            plan["search_queries"] = area_queries + plan.get("search_queries", [])
-            logger.info(f"DiscoveryOptimizer: Injected {len(area_queries)} approved sub-area queries.")
-
-        logger.info(f"DiscoveryOptimizer: Using {len(plan['search_queries'])} targeted search queries and {len(plan['osm_queries'])} OSM targets.")
+        logger.info(f"DiscoveryOptimizer: Using {len(plan.get('search_queries', []))} targeted search queries and {len(plan.get('osm_queries', []))} OSM targets.")
 
         # 1. Primary: High-coverage Web Search for genuine companies with official domains
         try:
@@ -190,7 +174,7 @@ class LiveResearchEngine:
                                 website = enriched["website"]
                                 domain = enriched.get("domain")
 
-                        if not website and not domain and not phone and not email and not p.get("address") and lat is None:
+                        if not website and not domain and not phone and not email:
                             continue
 
                         if domain:
@@ -272,16 +256,16 @@ class LiveResearchEngine:
                             wait_until="domcontentloaded",
                         )
                         items = await page.eval_on_selector_all(
-                            'div.snippet[data-type="web"]',
+                            'div.snippet[data-type="web"], div.snippet, .search-results .result, div.result',
                             '''els => els.map(el => {
-                                const a = el.querySelector('a.heading-link, a');
-                                const desc = el.querySelector('.snippet-description, p');
+                                const a = el.querySelector('a.heading-link') || el.querySelector('a[href^="http"]');
+                                const desc = el.querySelector('.snippet-description') || el.querySelector('.snippet-content') || el.querySelector('p');
                                 return {
                                     url: a ? a.href : '',
-                                    title: a ? a.innerText : '',
-                                    snippet: desc ? desc.innerText : ''
+                                    title: a ? (a.innerText || a.textContent || '') : '',
+                                    snippet: desc ? (desc.innerText || desc.textContent || '') : ''
                                 };
-                            })'''
+                            }).filter(x => x.url && !x.url.includes('brave.com'))'''
                         )
                         for it in items:
                             if len(results) >= limit:
@@ -618,7 +602,7 @@ class LiveResearchEngine:
             else:
                 req = urllib.request.Request(f"{url}?q={urllib.parse.quote(query_str)}", headers=headers)
 
-            with urllib.request.urlopen(req, timeout=3) as resp:
+            with urllib.request.urlopen(req, timeout=8) as resp:
                 html = resp.read().decode("utf-8", errors="ignore")
                 inputs = dict(re.findall(r'<input[^>]+name=\"([^\"]+)\"[^>]+value=\"([^\"]*)\"', html))
                 if "result__a" in html or "result__snippet" in html:
@@ -635,7 +619,7 @@ class LiveResearchEngine:
                 "Referer": "https://lite.duckduckgo.com/",
             }
             req = urllib.request.Request(lite_url, data=post_data, headers=lite_headers)
-            with urllib.request.urlopen(req, timeout=3) as resp:
+            with urllib.request.urlopen(req, timeout=8) as resp:
                 html = resp.read().decode("utf-8", errors="ignore")
                 return html, {}
         except Exception:

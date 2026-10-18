@@ -173,6 +173,10 @@ class AutopilotRunner:
                     if not c_name or len(c_name) < 2:
                         continue
 
+                    # Strict contactability gate: Reject ghost candidates with zero digital or contact presence
+                    if not c_dom and not c_phone and not c_email:
+                        continue
+
                     c_name_l = c_name.lower()
                     EXCLUDED_SITES = [
                         "facebook.com", "instagram.com", "youtube.com", "google.com", "linkedin.com",
@@ -533,10 +537,20 @@ class AutopilotRunner:
                         lead.outreach_status = "COLLECTED"
                         lead.verification_notes = "Data Collector Mode: Lead and audit preserved without automated outreach."
 
-                    campaign.total_leads_found += 1
-                    if lead.outreach_status == "SENT":
-                        campaign.total_emails_sent += 1
-                    await db.commit()
+                    try:
+                        camp_obj = await db.get(AutopilotCampaign, campaign.id)
+                        if camp_obj:
+                            camp_obj.total_leads_found += 1
+                            if lead.outreach_status == "SENT":
+                                camp_obj.total_emails_sent += 1
+                        await db.commit()
+                    except Exception as commit_err:
+                        logger.warning(f"[AUTOPILOT COMMIT] Error updating campaign stats: {commit_err}")
+                        await db.rollback()
+                        camp_exists = await db.get(AutopilotCampaign, campaign.id)
+                        if not camp_exists:
+                            logger.info(f"[AUTOPILOT] Campaign {campaign.id} was removed. Halting runner.")
+                            break
 
                     if effective_batch > 0 and len(all_added_leads) >= effective_batch:
                         break
@@ -546,9 +560,22 @@ class AutopilotRunner:
 
         except Exception as batch_err:
             logger.error(f"[AUTOPILOT RUN FAIL] Error in campaign run: {batch_err}")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
         finally:
-            campaign.status = "IDLE"
-            await db.commit()
+            try:
+                camp_check = await db.get(AutopilotCampaign, campaign.id)
+                if camp_check:
+                    camp_check.status = "IDLE"
+                    await db.commit()
+            except Exception as e:
+                logger.debug(f"[AUTOPILOT FINALLY] Status cleanup notice: {e}")
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
 
         logger.info(
             f"[AUTOPILOT 1-CLICK COMPLETE] Campaign '{campaign.name}' | "
