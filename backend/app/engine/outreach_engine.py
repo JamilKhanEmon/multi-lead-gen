@@ -796,11 +796,57 @@ class OutreachEngine:
         def _send():
             try:
                 from email.header import Header
+                from email.utils import formataddr, formatdate, make_msgid
+                import html
+
+                # Determine effective sender address and alignment
+                is_gmail = "gmail" in str(smtp_host).lower()
+                sender_addr = smtp_user if ("@" in str(smtp_user) and is_gmail) else (from_email or smtp_user)
+
+                # For Gmail SMTP: From header MUST match authenticated sender domain or address to avoid silent DMARC/SPF dropping
+                # If from_email is different, keep From as sender_addr and set Reply-To as from_email
+                if is_gmail and "@" in str(smtp_user) and from_email != smtp_user:
+                    from_header_email = smtp_user
+                    reply_to_email = from_email
+                else:
+                    from_header_email = from_email or sender_addr
+                    reply_to_email = from_email or sender_addr
+
+                # Derive clean domain for Message-ID
+                msg_domain = "localhost"
+                if "@" in str(from_header_email):
+                    msg_domain = from_header_email.split("@")[-1].strip()
+                elif smtp_host:
+                    msg_domain = str(smtp_host).replace("smtp.", "").strip()
+
                 msg = MIMEMultipart("alternative")
                 msg["Subject"] = Header(subject, "utf-8")
-                msg["From"] = f"{from_name} <{from_email}>" if from_name else from_email
+                
+                # RFC-compliant From header with proper encoding
+                if from_name:
+                    msg["From"] = formataddr((str(Header(from_name, "utf-8")), from_header_email))
+                else:
+                    msg["From"] = from_header_email
+                
                 msg["To"] = recipient_email
+                msg["Reply-To"] = reply_to_email
+                msg["Date"] = formatdate(localtime=True)
+                msg["Message-ID"] = make_msgid(domain=msg_domain)
+
+                # Plain-text version
                 msg.attach(MIMEText(body, "plain", "utf-8"))
+
+                # Modern HTML version (converts newlines to paragraph breaks, clean typography)
+                escaped_body = html.escape(body)
+                html_paragraphs = "".join(f"<p>{p.replace(chr(10), '<br/>')}</p>" for p in escaped_body.split("\n\n") if p.strip())
+                html_content = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; color: #222222; margin: 0; padding: 12px 0;">
+{html_paragraphs}
+</body>
+</html>"""
+                msg.attach(MIMEText(html_content, "html", "utf-8"))
 
                 port_int = int(smtp_port) if str(smtp_port).isdigit() else 587
 
@@ -813,11 +859,9 @@ class OutreachEngine:
                 if smtp_user and smtp_pass:
                     server.login(smtp_user, smtp_pass)
 
-                # Envelope sender fallback for strict providers like Gmail
-                sender_addr = smtp_user if ("@" in str(smtp_user) and "gmail" in str(smtp_host).lower()) else from_email
                 server.sendmail(sender_addr, [recipient_email], msg.as_string())
                 server.quit()
-                return True, f"Sent via SMTP Inbox #{inbox_id} ({from_email}) successfully"
+                return True, f"Sent via SMTP Inbox #{inbox_id} ({sender_addr}) successfully"
             except Exception as e:
                 err_detail = f"SMTP Error ({type(e).__name__}): {str(e)}"
                 logger.error(f"SMTP Dispatch Error (Inbox #{inbox_id}) to {recipient_email}: {err_detail}")
