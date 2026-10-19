@@ -422,9 +422,8 @@ class LiveResearchEngine:
                             if not lines:
                                 continue
                             raw_name = lines[0]
-                            # Clean name
+                            # Clean name dynamically
                             clean_name = re.sub(r'[\(\[\{].*?[\)\]\}]', '', raw_name).strip()
-                            clean_name = re.sub(r'\b(রিয়েল এস্টেট|রিয়েল এস্টেট|এজেন্সি|ডেভেলপার)\b', '', clean_name, flags=re.I).strip()
                             clean_name = re.sub(r'[\s\-|,]+$', '', clean_name).strip()
                             if not clean_name or len(clean_name) < 3:
                                 clean_name = raw_name.strip()
@@ -457,10 +456,12 @@ class LiveResearchEngine:
                             if phone and len(re.sub(r'\D', '', phone)) < 7:
                                 phone = None
 
-                            # Extract address snippet
+                            # Extract address snippet dynamically based on user location & generic international address tokens
+                            loc_tokens = [t.strip().lower() for t in location.split(",") if len(t.strip()) > 2]
+                            generic_addr_kw = ["house", "road", "street", "st", "sector", "block", "floor", "plot", "avenue", "ave", "lane", "suite", "bldg", "building", "সড়ক", "রোড", "সেক্টর", "প্লট"] + loc_tokens
                             addr_lines = [
                                 l for l in lines[1:]
-                                if any(kw in l.lower() for kw in ["house", "road", "sector", "block", "floor", "plot", "avenue", "সড়ক", "সেক্টর", "প্লট", "রোড", "উত্তরা", "ঢাকা"])
+                                if any(kw in l.lower() for kw in generic_addr_kw)
                                 and not re.search(r'^\d+\.\d+', l)
                             ]
                             resolved_address = addr_lines[0] if addr_lines else location
@@ -1955,10 +1956,11 @@ class LiveResearchEngine:
                     extracted_address = clean_addr
 
         if not extracted_address:
-            bd_addr_pat = r'(?:House\s*#?\s*\d+[^<>\n,]{0,30},?\s*)?(?:Road\s*#?\s*[\d\w]+[^<>\n,]{0,30},?\s*)?(?:Sector\s*#?\s*\d+[^<>\n,]{0,30},?\s*)?(?:Block\s*#?\s*[\w\d]+[^<>\n,]{0,30},?\s*)?(?:Uttara|Gulshan|Banani|Dhanmondi|Mirpur|Mohakhali|Motijheel|Baridhara|Badda|Tejgaon|Chittagong|Sylhet),?\s*Dhaka'
-            m = re.search(bd_addr_pat, html, re.I)
+            generic_addr_pat = r'(?:House|Suite|Building|Floor|Block|Road|Street|Avenue|Plot|Sector)\s*#?\s*[\d\w]+[^<>\n]{0,50},?\s*(?:[A-Za-z\s]{3,30}),?\s*[A-Za-z\s]{3,20}'
+            m = re.search(generic_addr_pat, html, re.I)
             if m:
-                clean_addr = re.sub(r'\s+', ' ', m.group(0)).strip()
+                clean_addr = re.sub(r'<[^>]+>', ' ', m.group(0))
+                clean_addr = re.sub(r'\s+', ' ', clean_addr).strip()
                 if len(clean_addr) >= 15:
                     extracted_address = clean_addr
 

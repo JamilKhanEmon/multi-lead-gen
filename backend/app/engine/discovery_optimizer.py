@@ -106,18 +106,6 @@ class DiscoveryOptimizer:
         except Exception as e:
             logger.warning(f"DiscoveryOptimizer: Urban zone expansion note for '{base_city}': {e}")
 
-        # Deterministic fallback for common major cities
-        if "dhaka" in base_city.lower():
-            fallback_dhaka = [
-                f"{a}, Dhaka" for a in [
-                    "Gulshan", "Banani", "Uttara", "Dhanmondi", "Mirpur", "Motijheel",
-                    "Mohakhali", "Tejgaon", "Badda", "Bashundhara", "Baridhara",
-                    "Kawran Bazar", "Panthapath", "Shantinagar", "Khilgaon", "Lalmatia", "Wari"
-                ]
-            ]
-            cls._zone_cache[cache_key] = fallback_dhaka[:limit]
-            return fallback_dhaka[:limit]
-
         return [clean_city]
 
     @classmethod
