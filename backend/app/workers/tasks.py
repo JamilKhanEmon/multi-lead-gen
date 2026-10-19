@@ -983,8 +983,18 @@ async def _execute_research_and_qualify(
             elif not biz_obj.email and payload.get("email"):
                 biz_obj.email = payload.get("email")
 
-            if contact_consensus.get("verified_address") and not biz_obj.address:
+            if website_data.get("extracted_address"):
+                biz_obj.address = website_data["extracted_address"]
+                loc_stmt = select(BusinessLocation).where(BusinessLocation.business_id == biz_obj.id)
+                loc_res = await session.execute(loc_stmt)
+                loc_obj = loc_res.scalar_one_or_none()
+                if loc_obj:
+                    loc_obj.address = website_data["extracted_address"]
+            elif contact_consensus.get("verified_address") and not biz_obj.address:
                 biz_obj.address = contact_consensus["verified_address"]
+
+            if website_data.get("brand_name") and len(website_data["brand_name"]) >= 3:
+                biz_obj.canonical_name = website_data["brand_name"]
 
             if website_data.get("contact_person"):
                 biz_obj.contact_person = website_data.get("contact_person")

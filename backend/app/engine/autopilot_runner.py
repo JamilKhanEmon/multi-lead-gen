@@ -241,22 +241,26 @@ class AutopilotRunner:
                     resolved_email = c_email
                     audit_res = {}
                     detected_weaknesses = []
+                    analyze_web = bool(getattr(campaign, "analyze_website", False))
 
-                    # 7. Website deep audit
+                    # 7. Website audit (Deep technical audit if analyze_website switch is ON; Fast lightweight if OFF)
                     if c_dom and not DeduplicationEngine.is_generic_platform(c_dom):
-                        logger.info(f"[AUTOPILOT DEEP AUDIT] Executing OpenClaw multi-page site audit for '{c_name}' ({c_dom})...")
+                        logger.info(f"[AUTOPILOT AUDIT] Executing OpenClaw site audit (deep={analyze_web}) for '{c_name}' ({c_dom})...")
                         try:
                             audit_res = await LiveResearchEngine.audit_website(
                                 url=f"https://{c_dom}",
                                 canonical_name=c_name,
-                                location=target_city_clean
+                                location=target_city_clean,
+                                lightweight=(not analyze_web),
                             )
                             if audit_res.get("extracted_email") and not resolved_email:
                                 resolved_email = audit_res["extracted_email"]
                             if audit_res.get("extracted_phone") and not c_phone:
                                 c_phone = audit_res["extracted_phone"]
+                            if audit_res.get("brand_name") and len(audit_res["brand_name"]) >= 3:
+                                c_name = audit_res["brand_name"]
                         except Exception as e:
-                            logger.warning(f"[AUTOPILOT DEEP AUDIT FAIL] Audit error for {c_dom}: {e}")
+                            logger.warning(f"[AUTOPILOT AUDIT FAIL] Audit error for {c_dom}: {e}")
 
                     # 8. Multi-source deep contact hunt
                     deep_hunt = {}
@@ -268,8 +272,11 @@ class AutopilotRunner:
                                 audit_res = await LiveResearchEngine.audit_website(
                                     url=f"https://{c_dom}",
                                     canonical_name=c_name,
-                                    location=target_city_clean
+                                    location=target_city_clean,
+                                    lightweight=(not analyze_web),
                                 )
+                                if audit_res.get("brand_name") and len(audit_res["brand_name"]) >= 3:
+                                    c_name = audit_res["brand_name"]
                     except Exception as e:
                         logger.debug(f"[AUTOPILOT DEEP HUNT FAIL] Contact hunt error for {c_name}: {e}")
 
@@ -457,14 +464,27 @@ class AutopilotRunner:
                     discovery_call_script = gate_eval.get("discovery_call_script", None)
                     lead_primary_gap = " • ".join(gate_eval["verified_gaps"][:2]) if gate_eval.get("verified_gaps") else primary_gap
 
-                    # 12. Save to DB
+                    # 12. Save to DB with resolved physical address and contact person
+                    resolved_address = (
+                        contact_consensus.get("primary_address")
+                        or audit_res.get("extracted_address")
+                        or deep_hunt.get("address")
+                        or cand.get("address")
+                        or f"{target_city_clean}, {campaign.country}"
+                    )
+                    resolved_contact_person = (
+                        audit_res.get("contact_person")
+                        or cand.get("contact_person")
+                        or "Executive / Director"
+                    )
+
                     biz = Business(
                         canonical_name=c_name,
                         domain=c_dom if c_dom else None,
                         phone=c_phone if c_phone else None,
                         email=resolved_email if has_email else None,
-                        contact_person=cand.get("contact_person") or "Executive / Director",
-                        address=cand.get("address") or f"{target_city_clean}, {campaign.country}",
+                        contact_person=resolved_contact_person,
+                        address=resolved_address,
                         business_type=b_type,
                         metadata_json=metadata_payload,
                     )
@@ -475,7 +495,7 @@ class AutopilotRunner:
                         business_id=biz.id,
                         city=target_city_clean,
                         country=campaign.country,
-                        address=cand.get("address") or f"{target_city_clean}, {campaign.country}",
+                        address=resolved_address,
                         latitude=cand.get("latitude"),
                         longitude=cand.get("longitude")
                     )

@@ -98,6 +98,7 @@ class DiscoveryOptimizer:
                 "1. Normalized Sub-Industries: Split composite industries into clean, individual industry keywords (e.g. ['Solar Energy', 'IPS Inverter', 'Generator Supplier']).\n"
                 "2. Dynamic Geographic & Spelling Correction: If the user provided a misspelled country or city name (e.g. 'Bnagladesh' -> 'Bangladesh', 'Dhka' -> 'Dhaka', 'Karchi' -> 'Karachi'), automatically correct it into its official proper name in 'normalized_country' and 'normalized_city'. Ensure all search queries use this properly spelled official country and city.\n"
                 "3. High-Yield Web Queries: Generate 15 to 25 natural search queries combining each normalized sub-industry with the target city and specified sub-areas.\n"
+                "   CRITICAL: Focus primarily on commercial district and city-level queries (e.g. 'Car Showroom in Uttara Dhaka', 'Car Dealer Uttara Dhaka') rather than hyper-narrow sector/gali alleys (e.g. 'Sector 3 Road 4 Uttara') which return 0 search results. Search engines index businesses by commercial hub and city.\n"
                 "   CRITICAL: NEVER wrap multi-word combinations or whole queries in strict double quotes (\"...\"). Keep them natural so search engines return rich commercial results.\n"
                 "4. Social Media Discovery: Include queries targeting commercial Facebook business pages (e.g. 'site:facebook.com solar energy Dhaka', 'site:facebook.com IPS battery Dhaka').\n"
                 "5. Directory / OSM Targets: Generate 3 to 5 single-concept directory query strings (e.g. 'Solar Energy', 'Generator', 'Electrical Supplies').\n"
@@ -378,8 +379,9 @@ class DiscoveryOptimizer:
                     "Determine whether this company is genuinely a direct operating business/firm in the target industry, "
                     "OR if it is a directory, review platform, marketplace, article listicle, job portal, or unrelated business. "
                     "CRITICAL: If it is a directory, aggregator, review site (like GoodFirms, Clutch, Yelp), or blog, return is_relevant: false. "
+                    "Also extract the actual clean trading company name in 'clean_brand_name' (e.g., 'Car Gallery BD' instead of generic SEO titles like 'Best Reconditioned Japanese Cars in Dhaka'). "
                     "Also formulate a 1-sentence punchy, personalized outreach pitch highlighting their core offering or key business improvement opportunity. "
-                    "Respond ONLY with a JSON object: {\"is_relevant\": true/false, \"reason\": \"<under 10 words>\", \"core_offerings\": \"<under 15 words>\", \"killer_pitch\": \"<1 punchy sentence>\"}"
+                    "Respond ONLY with a JSON object: {\"is_relevant\": true/false, \"clean_brand_name\": \"<Trading Name>\", \"reason\": \"<under 10 words>\", \"core_offerings\": \"<under 15 words>\", \"killer_pitch\": \"<1 punchy sentence>\"}"
                 )
                 user_prompt = (
                     f"Target Industry: {target_industry}\n"
@@ -399,6 +401,7 @@ class DiscoveryOptimizer:
                     is_rel = bool(res.get("is_relevant"))
                     reason = res.get("reason", "AI dynamic semantic verification")
                     insights = {
+                        "clean_brand_name": res.get("clean_brand_name") or "",
                         "core_offerings": res.get("core_offerings") or "",
                         "killer_pitch": res.get("killer_pitch") or "",
                     }

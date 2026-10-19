@@ -321,12 +321,19 @@ export async function dispatchStaggeredOutreach(data: {
 }
 
 export async function submitLeadFeedback(leadId: string, action: string, notes?: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const res = await fetch(`${API_BASE}/leads/${leadId}/feedback`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ action, notes }),
   });
-  if (!res.ok) throw new Error("Failed to submit reviewer feedback");
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to submit reviewer feedback");
+  }
   return res.json();
 }
 

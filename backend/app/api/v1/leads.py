@@ -12,7 +12,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import desc, text
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, get_current_user_optional
 from app.models.lead import Lead, LeadScore, LeadFeedback
 from app.models.service import ServiceMatch, Service
 from app.models.business import Business
@@ -1174,7 +1174,7 @@ async def submit_lead_feedback(
     lead_id: uuid.UUID,
     data: LeadFeedbackCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     stmt = select(Lead).where(Lead.id == lead_id)
     res = await db.execute(stmt)
@@ -1184,7 +1184,7 @@ async def submit_lead_feedback(
 
     feedback = LeadFeedback(
         lead_id=lead.id,
-        user_id=current_user.id,
+        user_id=current_user.id if current_user else None,
         action=data.action.upper(),
         notes=data.notes,
     )

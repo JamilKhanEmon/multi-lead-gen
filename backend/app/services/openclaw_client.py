@@ -14,6 +14,30 @@ from app.engine.discovery_optimizer import DiscoveryOptimizer
 class OpenClawGatewayError(Exception):
     pass
 
+def get_skills_root_dir() -> Optional[str]:
+    candidates = [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "openclaw", "skills"),
+        "/app/openclaw/skills",
+        os.path.abspath("openclaw/skills"),
+    ]
+    for c in candidates:
+        if os.path.isdir(c):
+            return c
+    return None
+
+def load_skill_spec(skill_name: str) -> Optional[str]:
+    root = get_skills_root_dir()
+    if not root:
+        return None
+    skill_file = os.path.join(root, skill_name, "SKILL.md")
+    if os.path.isfile(skill_file):
+        try:
+            with open(skill_file, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception:
+            return None
+    return None
+
 class LiveResearchEngine:
 
     USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -979,31 +1003,53 @@ class LiveResearchEngine:
         if not text:
             return None, None
 
+        # 1. Strip script, style, svg, noscript, and HTML comments to prevent CSS dimensions or JS timestamps from matching
+        cleaned = re.sub(r'<(?:script|style|svg|noscript)[^>]*>.*?</(?:script|style|svg|noscript)>', ' ', text, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r'<!--.*?-->', ' ', cleaned, flags=re.DOTALL)
+        # Strip remaining HTML tags for clean text scanning
+        cleaned_no_tags = re.sub(r'<[^>]+>', ' ', cleaned)
+
         # Convert Bengali numerals (০-৯) to ASCII digits (0-9) so Bengali contacts are captured
         bn_to_en = str.maketrans('০১২৩৪৫৬৭৮৯', '0123456789')
-        text = text.translate(bn_to_en)
+        cleaned_no_tags = cleaned_no_tags.translate(bn_to_en)
+        cleaned = cleaned.translate(bn_to_en)
 
         extracted_phone = None
         extracted_email = None
 
-        tel_matches = re.findall(r'tel:([+\d\s\-\(\)\.]{8,25})', text, re.IGNORECASE)
+        # 2. Prioritize explicit tel: links from the raw cleaned HTML
+        tel_matches = re.findall(r'tel:([+\d\s\-\(\)\.]{8,25})', cleaned, re.IGNORECASE)
         for cand in tel_matches:
             clean_digits = re.sub(r'\D', '', cand)
             if 8 <= len(clean_digits) <= 15 and not clean_digits.startswith(('000', '123456')):
                 extracted_phone = cand.strip()
                 break
 
+        # 3. Next, look for Bangladeshi phone format specifically:
+        # e.g., 017xxxxxxxx, +88017xxxxxxxx, 88017xxxxxxxx, 018-xxx-xxxxx
+        if not extracted_phone:
+            bd_phone_m = re.search(r'(?:\+?880\s?|0)(1[3-9]\d{2}[-.\s]?\d{3}[-.\s]?\d{3})\b', cleaned_no_tags)
+            if bd_phone_m:
+                cand_bd = bd_phone_m.group(0).strip()
+                digits = re.sub(r'\D', '', cand_bd)
+                if len(digits) == 11:
+                    extracted_phone = f"+88{digits}"
+                elif len(digits) == 13 and digits.startswith("880"):
+                    extracted_phone = f"+{digits}"
+
+        # 4. Fallback to general international phone numbers (avoiding CSS decimals and timestamps)
         if not extracted_phone:
             raw_phone_patterns = [
                 r'(?:\+|00)[1-9]\d{0,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{0,4}',
-                r'\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
-                r'(?:01[3-9]\d{8})',
-                r'(?:0[1-9]\d{8,10})',
+                r'\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}',
             ]
             for pattern in raw_phone_patterns:
-                matches = re.findall(pattern, text)
+                matches = re.findall(pattern, cleaned_no_tags)
                 for p in matches:
                     clean_str = p.strip()
+                    # Skip if it contains a dot that looks like a decimal (e.g. 417.179)
+                    if "." in clean_str and not re.search(r'^\+?\d{1,3}\.\d{3}\.\d{3}\.\d{4}$', clean_str):
+                        continue
                     digits = re.sub(r'\D', '', clean_str)
                     if 9 <= len(digits) <= 15:
                         if not any(clean_str.startswith(yr) for yr in ["2020", "2021", "2022", "2023", "2024", "2025", "2026"]):
@@ -1013,25 +1059,26 @@ class LiveResearchEngine:
                 if extracted_phone:
                     break
 
-        mailto_matches = re.findall(r'mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', text, re.IGNORECASE)
+        # 5. Extract email
+        mailto_matches = re.findall(r'mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', cleaned, re.IGNORECASE)
         for em in mailto_matches:
             em_clean = em.strip().lower()
-            if not any(em_clean.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.css', '.js']):
+            if not any(em_clean.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.css', '.js', '.woff', '.ttf']):
                 if not any(dummy in em_clean for dummy in ['example.com', 'domain.com', 'yourdomain', 'sentry.io', 'wixpress.com']):
                     extracted_email = em_clean
                     break
 
         if not extracted_email:
-            email_matches = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+            email_matches = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', cleaned_no_tags)
             for em in email_matches:
                 em_clean = em.strip().lower()
-                if not any(em_clean.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.css', '.js']):
-                    if not any(dummy in em_clean for dummy in ['example.com', 'domain.com', 'yourdomain', 'sentry.io', 'wixpress.com', 'bootstrap', 'wordpress', 'cloudflare']):
+                if not any(em_clean.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.webp', '.svg', '.gif', '.css', '.js', '.woff', '.ttf']):
+                    if not any(dummy in em_clean for dummy in ['example.com', 'domain.com', 'yourdomain', 'sentry.io', 'wixpress.com', 'bootstrap', 'wordpress', 'cloudflare', 'schema.org']):
                         extracted_email = em_clean
                         break
 
         if not extracted_email:
-            obf_matches = re.findall(r'([a-zA-Z0-9._%+-]+)\s*(?:\[at\]|\(at\)|@)\s*([a-zA-Z0-9.-]+)\s*(?:\[dot\]|\(dot\)|\.)\s*([a-zA-Z]{2,})', text, re.IGNORECASE)
+            obf_matches = re.findall(r'([a-zA-Z0-9._%+-]+)\s*(?:\[at\]|\(at\)|@)\s*([a-zA-Z0-9.-]+)\s*(?:\[dot\]|\(dot\)|\.)\s*([a-zA-Z]{2,})', cleaned_no_tags, re.IGNORECASE)
             for user, dom, tld in obf_matches:
                 reconstructed = f"{user}@{dom}.{tld}".lower()
                 if not any(dummy in reconstructed for dummy in ['example.com', 'domain.com']):
@@ -1238,13 +1285,22 @@ class LiveResearchEngine:
         return {"phone": found_phone, "email": found_email}
 
     @classmethod
-    async def audit_website(cls, url: str, canonical_name: str = "Business", location: str = "") -> Dict[str, Any]:
+    async def audit_website(
+        cls,
+        url: str,
+        canonical_name: str = "Business",
+        location: str = "",
+        lightweight: bool = False,
+    ) -> Dict[str, Any]:
         if not url or not url.startswith("http"):
             return {
                 "url": url,
+                "proof_link": url,
                 "status": 400,
                 "is_accessible": False,
+                "checked_live": True,
                 "title": canonical_name,
+                "brand_name": canonical_name,
                 "mobile_responsive": None,
                 "mobile_overflow": False,
                 "has_whatsapp": False,
@@ -1253,6 +1309,7 @@ class LiveResearchEngine:
                 "broken_links_count": 0,
                 "extracted_phone": None,
                 "extracted_email": None,
+                "extracted_address": None,
                 "facebook_url": None,
                 "instagram_url": None,
                 "linkedin_url": None,
@@ -1263,6 +1320,8 @@ class LiveResearchEngine:
                 "contact_person": None,
                 "contact_title": None,
                 "rendered_by": "none",
+                "evidence_text": f"Target website '{url}' is invalid or inaccessible.",
+                "is_healthy_website": False,
             }
 
         loop = asyncio.get_event_loop()
@@ -1274,17 +1333,6 @@ class LiveResearchEngine:
             "Referer": base_url,
         }
 
-        logger.info(f"OpenClaw Audit: Executing deep human-like browser audit of {base_url}...")
-        bw_res = await cls.fetch_page_with_browser(base_url, human_scroll=True)
-        homepage_html = bw_res.get("html", "")
-        mobile_overflow = bw_res.get("mobile_overflow", False)
-        browser_accessible = bw_res.get("is_accessible", True)
-
-        visited_pages = 1 if homepage_html else 0
-        broken_links_count = 0
-        rendered_by = "playwright-chromium"
-        status_code = 200 if browser_accessible else 500
-
         import ssl
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.check_hostname = False
@@ -1292,49 +1340,81 @@ class LiveResearchEngine:
 
         def _fetch_page(u):
             req = urllib.request.Request(u, headers=headers)
-            with urllib.request.urlopen(req, timeout=6, context=ssl_ctx) as resp:
+            with urllib.request.urlopen(req, timeout=7, context=ssl_ctx) as resp:
                 return resp.getcode(), resp.read().decode("utf-8", errors="ignore")
 
-        discovered_paths = set()
-        if homepage_html:
-            raw_hrefs = re.findall(r'<a[^>]+href=["\']([^"\']+)["\']', homepage_html, re.I)
-            for href in raw_hrefs:
-                clean_href = href.strip()
-                if any(k in clean_href.lower() for k in ["contact", "reach", "touch", "about", "services", "pricing", "team", "booking", "appointment"]):
-                    if clean_href.startswith("/"):
-                        discovered_paths.add(clean_href.split("?")[0].split("#")[0])
-                    elif clean_href.startswith(base_url):
-                        rel = clean_href[len(base_url):].split("?")[0].split("#")[0]
-                        if rel:
-                            discovered_paths.add(rel)
-
-        default_contact_paths = ["/contact", "/contact-us", "/about", "/about-us", "/services", "/pages/contact-us"]
-        all_paths_to_visit = list(discovered_paths) + [p for p in default_contact_paths if p not in discovered_paths]
-        target_paths = all_paths_to_visit[:6]
-
-        aggregated_html = homepage_html
-        for path in target_paths:
-            target_page_url = base_url + (path if path.startswith("/") else f"/{path}")
+        if lightweight:
+            logger.info(f"OpenClaw Audit: Executing fast lightweight HTTP audit of {base_url}...")
             try:
-                await asyncio.sleep(0.5)
-                code, page_html = await loop.run_in_executor(None, _fetch_page, target_page_url)
-                if code == 200:
-                    aggregated_html += f"\n--- PAGE: {path} ---\n" + page_html
-                    visited_pages += 1
-                else:
-                    broken_links_count += 1
-            except Exception:
-                if path in ("", "/contact", "/contact-us"):
-                    broken_links_count += 1
-                continue
+                code, homepage_html = await loop.run_in_executor(None, _fetch_page, base_url)
+                status_code = code
+                browser_accessible = (code == 200)
+            except Exception as e:
+                logger.debug(f"Fast HTTP fetch notice for {base_url}: {e}")
+                homepage_html = ""
+                status_code = 504
+                browser_accessible = False
+            mobile_overflow = False
+            rendered_by = "fast-http"
+            aggregated_html = homepage_html
+            visited_pages = 1 if homepage_html else 0
+            broken_links_count = 0
+            bw_res = {}
+        else:
+            logger.info(f"OpenClaw Audit: Executing deep human-like browser audit of {base_url}...")
+            bw_res = await cls.fetch_page_with_browser(base_url, human_scroll=True)
+            homepage_html = bw_res.get("html", "")
+            mobile_overflow = bw_res.get("mobile_overflow", False)
+            browser_accessible = bw_res.get("is_accessible", True)
+
+            visited_pages = 1 if homepage_html else 0
+            broken_links_count = 0
+            rendered_by = "playwright-chromium"
+            status_code = 200 if browser_accessible else 500
+
+            discovered_paths = set()
+            if homepage_html:
+                raw_hrefs = re.findall(r'<a[^>]+href=["\']([^"\']+)["\']', homepage_html, re.I)
+                for href in raw_hrefs:
+                    clean_href = href.strip()
+                    if any(k in clean_href.lower() for k in ["contact", "reach", "touch", "about", "services", "pricing", "team", "booking", "appointment"]):
+                        if clean_href.startswith("/"):
+                            discovered_paths.add(clean_href.split("?")[0].split("#")[0])
+                        elif clean_href.startswith(base_url):
+                            rel = clean_href[len(base_url):].split("?")[0].split("#")[0]
+                            if rel:
+                                discovered_paths.add(rel)
+
+            default_contact_paths = ["/contact", "/contact-us", "/about", "/about-us", "/services", "/pages/contact-us"]
+            all_paths_to_visit = list(discovered_paths) + [p for p in default_contact_paths if p not in discovered_paths]
+            target_paths = all_paths_to_visit[:6]
+
+            aggregated_html = homepage_html
+            for path in target_paths:
+                target_page_url = base_url + (path if path.startswith("/") else f"/{path}")
+                try:
+                    await asyncio.sleep(0.5)
+                    code, page_html = await loop.run_in_executor(None, _fetch_page, target_page_url)
+                    if code == 200:
+                        aggregated_html += f"\n--- PAGE: {path} ---\n" + page_html
+                        visited_pages += 1
+                    else:
+                        broken_links_count += 1
+                except Exception:
+                    if path in ("", "/contact", "/contact-us"):
+                        broken_links_count += 1
+                    continue
 
         if not aggregated_html:
             logger.info(f"LiveResearchEngine: Could not reach {url}")
             return {
                 "url": url,
+                "proof_link": url,
                 "status": 504,
                 "is_accessible": False,
+                "checked_live": True,
                 "title": canonical_name,
+                "brand_name": canonical_name,
                 "mobile_responsive": None,
                 "mobile_overflow": False,
                 "has_whatsapp": False,
@@ -1343,6 +1423,7 @@ class LiveResearchEngine:
                 "broken_links_count": broken_links_count,
                 "extracted_phone": None,
                 "extracted_email": None,
+                "extracted_address": None,
                 "facebook_url": None,
                 "instagram_url": None,
                 "linkedin_url": None,
@@ -1353,6 +1434,8 @@ class LiveResearchEngine:
                 "contact_person": None,
                 "contact_title": None,
                 "rendered_by": "none",
+                "evidence_text": f"Public website at '{url}' timed out or refused connection.",
+                "is_healthy_website": False,
             }
 
         html = aggregated_html
@@ -1430,17 +1513,26 @@ class LiveResearchEngine:
             "n8n", "zapier.com", "hooks.zapier", "make.com", "integromat", "leadconnector", "gohighlevel", "ghl", "activecampaign"
         ])
 
+        # Contact Person & Title extraction
         contact_person = None
         contact_title = None
-        leadership_titles = ["Managing Director", "Founder", "Co-Founder", "CEO", "Chairman", "Chief Executive Officer", "Proprietor", "Principal", "Owner", "Dr."]
+        leadership_titles = ["Managing Director", "Founder", "Co-Founder", "CEO", "Chairman", "Chief Executive Officer", "Proprietor", "Principal", "Owner"]
         
+        excluded_person_words = [
+            "about", "contact", "read", "more", "our", "the", "view", "company", "team", "meet",
+            "hybrid", "octane", "diesel", "electric", "solar", "battery", "sedan", "suv", "petrol",
+            "engine", "motor", "auto", "cars", "car", "service", "parts", "gallery", "showroom",
+            "center", "ltd", "limited", "company", "corporation", "toyota", "nissan", "honda", "mitsubishi"
+        ]
+
         for lt in leadership_titles:
             m = re.search(rf'([A-Z][a-z]+(?:\s+[A-Z][a-z]+){{1,3}})\s*[,–-]?\s*(?:is the\s+)?{lt}', html)
             if not m:
                 m = re.search(rf'{lt}\s*[:–-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){{1,3}})', html)
             if m:
                 cand = m.group(1).strip()
-                if len(cand) >= 4 and not any(w in cand.lower() for w in ["about", "contact", "read", "more", "our", "the", "view", "company", "team", "meet"]):
+                cand_words = [w.lower() for w in cand.split()]
+                if len(cand) >= 4 and not any(w in cand_words for w in excluded_person_words):
                     contact_person = cand
                     contact_title = lt
                     break
@@ -1458,6 +1550,47 @@ class LiveResearchEngine:
             meta_m = re.search(r'<meta[^>]+content=["\']([^"\']*)["\'][^>]+name=["\'](?:description|og:description)["\']', html, re.IGNORECASE)
         if meta_m:
             extracted_meta_desc = meta_m.group(1).strip()
+
+        # Brand name extraction
+        brand_name = None
+        og_m = re.search(r'<meta[^>]+property=["\']og:site_name["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
+        if not og_m:
+            og_m = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:site_name["\']', html, re.I)
+        if og_m:
+            cand_b = og_m.group(1).strip()
+            if 2 <= len(cand_b) <= 60:
+                brand_name = cand_b
+
+        if not brand_name and extracted_page_title:
+            parts = re.split(r'\s+[|\-–•]\s+', extracted_page_title)
+            if parts and len(parts[0].strip()) >= 3 and len(parts[0].strip()) <= 60:
+                brand_name = parts[0].strip()
+
+        # Physical address extraction
+        extracted_address = None
+        addr_m = re.search(r'<address[^>]*>(.*?)</address>', html, re.I | re.DOTALL)
+        if addr_m:
+            clean_addr = re.sub(r'<[^>]+>', ' ', addr_m.group(1))
+            clean_addr = re.sub(r'\s+', ' ', clean_addr).strip()
+            if len(clean_addr) >= 10:
+                extracted_address = clean_addr
+
+        if not extracted_address:
+            pat = r'(?:Address|Office|Showroom|Location|Find Us|Head Office)[^<:\n]{0,25}[:\-–]\s*([^<>\n\r]{12,120})'
+            m = re.search(pat, html, re.I)
+            if m:
+                clean_addr = re.sub(r'<[^>]+>', ' ', m.group(1))
+                clean_addr = re.sub(r'\s+', ' ', clean_addr).strip()
+                if len(clean_addr) >= 12 and not any(bad in clean_addr.lower() for bad in ["javascript", "undefined", "cookie", "copyright", "terms"]):
+                    extracted_address = clean_addr
+
+        if not extracted_address:
+            bd_addr_pat = r'(?:House\s*#?\s*\d+[^<>\n,]{0,30},?\s*)?(?:Road\s*#?\s*[\d\w]+[^<>\n,]{0,30},?\s*)?(?:Sector\s*#?\s*\d+[^<>\n,]{0,30},?\s*)?(?:Block\s*#?\s*[\w\d]+[^<>\n,]{0,30},?\s*)?(?:Uttara|Gulshan|Banani|Dhanmondi|Mirpur|Mohakhali|Motijheel|Baridhara|Badda|Tejgaon|Chittagong|Sylhet),?\s*Dhaka'
+            m = re.search(bd_addr_pat, html, re.I)
+            if m:
+                clean_addr = re.sub(r'\s+', ' ', m.group(0)).strip()
+                if len(clean_addr) >= 15:
+                    extracted_address = clean_addr
 
         # Extract H1 and H2 tags for AI core heading analysis
         h_tags = re.findall(r'<h[12][^>]*>(.*?)</h[12]>', html, re.IGNORECASE | re.DOTALL)
@@ -1537,18 +1670,37 @@ class LiveResearchEngine:
         else:
             weakness_pitch = "scaling your online visibility and inbound client acquisition pipeline"
 
+        # Healthy Website Gate Rule (from openclaw/skills/website-research/SKILL.md)
+        is_healthy_website = (
+            mobile_responsive is True
+            and has_contact_form is True
+            and has_whatsapp is True
+            and (has_meta_pixel is True or has_google_analytics is True)
+            and broken_links_count == 0
+        )
+
+        if detected_weaknesses:
+            evidence_text = f"Public website audit detected {len(detected_weaknesses)} operational/technical gaps: " + "; ".join(detected_weaknesses[:3]) + f". Proof: {url}"
+        elif is_healthy_website:
+            evidence_text = f"Public website is modern, mobile-responsive with active conversion tracking and lead capture. Healthy Website Gate: exclude from website redesign pitches. Proof: {url}"
+        else:
+            evidence_text = f"Public website verified live. Proof: {url}"
+
         logger.info(
-            f"LiveResearchEngine: Audited {url} ({visited_pages} pages) -> "
-            f"Title: '{extracted_page_title[:40]}', Phone: {extracted_phone}, Email: {extracted_email}, "
-            f"WhatsApp: {has_whatsapp}, LiveChat: {has_live_chat}, AIChatbot: {has_ai_chatbot}, Automation: {has_automation_workflow}, CMS: {cms_platform}, Meta Pixel: {has_meta_pixel}, Lead: {contact_person} ({contact_title}), Weaknesses: {len(detected_weaknesses)}"
+            f"LiveResearchEngine: Audited {url} ({visited_pages} pages, lightweight={lightweight}) -> "
+            f"Brand: '{brand_name}', Title: '{extracted_page_title[:40]}', Phone: {extracted_phone}, Email: {extracted_email}, "
+            f"Address: '{extracted_address}', WhatsApp: {has_whatsapp}, CMS: {cms_platform}, Lead: {contact_person} ({contact_title}), Weaknesses: {len(detected_weaknesses)}"
         )
 
         return {
             "url": url,
+            "proof_link": url,
             "status": status_code,
             "is_accessible": True,
+            "checked_live": True,
             "visited_pages_count": visited_pages,
             "title": extracted_page_title or f"Audited Website - {canonical_name}",
+            "brand_name": brand_name,
             "page_title": extracted_page_title,
             "meta_description": extracted_meta_desc,
             "heading": extracted_heading,
@@ -1568,6 +1720,7 @@ class LiveResearchEngine:
             "broken_links_count": broken_links_count,
             "extracted_phone": extracted_phone,
             "extracted_email": extracted_email,
+            "extracted_address": extracted_address,
             "facebook_url": facebook_url,
             "instagram_url": instagram_url,
             "linkedin_url": linkedin_url,
@@ -1580,6 +1733,8 @@ class LiveResearchEngine:
             "rendered_by": rendered_by,
             "detected_weaknesses": detected_weaknesses,
             "weakness_pitch": weakness_pitch,
+            "is_healthy_website": is_healthy_website,
+            "evidence_text": evidence_text,
         }
 
     @classmethod
@@ -1872,7 +2027,13 @@ class OpenClawClient:
             url = parameters.get("url", "")
             canonical_name = parameters.get("canonical_name", "Business")
             location = parameters.get("location", "")
-            return await LiveResearchEngine.audit_website(url=url, canonical_name=canonical_name, location=location)
+            lightweight = bool(parameters.get("lightweight", False))
+            return await LiveResearchEngine.audit_website(
+                url=url,
+                canonical_name=canonical_name,
+                location=location,
+                lightweight=lightweight,
+            )
 
         elif skill_name == "ads-research":
             canonical_name = parameters.get("company_name") or parameters.get("canonical_name", "Business")
@@ -1932,3 +2093,8 @@ class OpenClawClient:
             return {"status": "SUCCESS", "skill": "evidence-collection", "evidence_items": parameters.get("evidence_items", [])}
 
         return {"status": "SUCCESS", "skill": skill_name}
+
+    @classmethod
+    def get_skill_spec(cls, skill_name: str) -> Optional[str]:
+        return load_skill_spec(skill_name)
+
