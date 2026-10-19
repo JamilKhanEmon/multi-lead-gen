@@ -100,34 +100,28 @@ const PROVIDER_MODEL_PRESETS: Record<
 > = {
   groq: [
     {
-      id: "qwen/qwen3.8-27b",
-      name: "Qwen 27B (qwen/qwen3.8-27b)",
-      tag: "Verified Fast • 320ms",
-      desc: "Official active Groq model with perfect JSON adherence and zero geo hallucination",
-    },
-    {
       id: "openai/gpt-oss-120b",
       name: "GPT-OSS 120B (openai/gpt-oss-120b)",
-      tag: "Flagship 120B",
-      desc: "Official high-capacity 120B reasoning model hosted on Groq LPU hardware",
+      tag: "Flagship 120B • High Intelligence",
+      desc: "Official Groq 120B reasoning model with deep analysis and strategic copy capabilities",
     },
     {
       id: "openai/gpt-oss-20b",
       name: "GPT-OSS 20B (openai/gpt-oss-20b)",
-      tag: "Ultra-Fast 20B",
-      desc: "Official lightweight reasoning model for instant sub-second tasks",
+      tag: "Ultra-Fast 20B • Sub-second",
+      desc: "Official Groq lightweight reasoning model optimized for sub-second lead qualification",
     },
     {
-      id: "llama-3.3-70b-versatile",
-      name: "Llama 3.3 70B Versatile",
-      tag: "Meta 70B",
-      desc: "Official Groq Meta Llama 3.3 model for deep sales copy and campaign reasoning",
+      id: "qwen/qwen3.8-27b",
+      name: "Qwen 27B (qwen/qwen3.8-27b)",
+      tag: "Qwen 27B • Fast",
+      desc: "Official active Groq model with structured output adherence",
     },
     {
-      id: "llama-3.1-8b-instant",
-      name: "Llama 3.1 8B Instant",
-      tag: "Fastest • 800 tps",
-      desc: "Official Groq Meta Llama 3.1 model for high-frequency low latency",
+      id: "allam-2-7b",
+      name: "Allam 7B (allam-2-7b)",
+      tag: "Lightweight 7B",
+      desc: "Official Groq 7B parameter fast inference model",
     },
   ],
   openrouter: [

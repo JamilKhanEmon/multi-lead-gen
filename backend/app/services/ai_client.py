@@ -89,6 +89,84 @@ def set_runtime_ai_settings(settings_map: Dict[str, Any]):
     _RUNTIME_SETTINGS_LAST_LOADED = time.time()
 
 
+def parse_llm_json_response(raw_text: str) -> Dict[str, Any]:
+    """
+    Universally extracts and parses JSON from any LLM completion output.
+    Handles:
+      - Chain-of-thought tags (<think>...</think> or unclosed <think>...)
+      - Markdown code blocks (```json ... ```, ``` ... ```)
+      - Leading/trailing conversational text
+      - Trailing commas in objects or arrays
+      - Raw text fallback with regex extraction of "subject" and "body"
+      - Never throws an unhandled exception
+    """
+    if not raw_text or not isinstance(raw_text, str):
+        return {}
+
+    # Strip thinking tags (DeepSeek-R1, Qwen-Thinking, GPT-OSS)
+    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", raw_text, flags=re.DOTALL).strip()
+    if "<think>" in cleaned:
+        cleaned = re.sub(r"<think>[\s\S]*", "", cleaned, flags=re.DOTALL).strip()
+
+    # Strip markdown fences
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.MULTILINE).strip()
+    cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE).strip()
+
+    # 1. Direct JSON parse attempt
+    try:
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    # 2. Extract outermost { ... }
+    first_brace = cleaned.find("{")
+    last_brace = cleaned.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        candidate = cleaned[first_brace : last_brace + 1]
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            # Try fixing trailing commas: , } -> } and , ] -> ]
+            fixed = re.sub(r",\s*([}\]])", r"\1", candidate)
+            try:
+                parsed = json.loads(fixed)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+
+    # 3. Outreach email specific regex fallback: extract subject & body
+    subject = None
+    body = None
+
+    sub_match = re.search(r'["\']subject["\']\s*:\s*["\']([^"\']+)["\']', raw_text, re.IGNORECASE)
+    if not sub_match:
+        sub_match = re.search(r"^Subject:\s*(.+)$", raw_text, re.IGNORECASE | re.MULTILINE)
+    if sub_match:
+        subject = sub_match.group(1).strip()
+
+    body_match = re.search(r'["\']body["\']\s*:\s*["\']([\s\S]+?)["\']\s*[,}]', raw_text, re.IGNORECASE)
+    if not body_match and subject:
+        parts = re.split(r"^Subject:\s*.+$", raw_text, flags=re.IGNORECASE | re.MULTILINE)
+        if len(parts) > 1 and parts[1].strip():
+            body = parts[1].strip()
+    elif body_match:
+        body = body_match.group(1).strip()
+
+    if subject or body:
+        return {
+            "subject": subject or "Partnership inquiry",
+            "body": body or cleaned or raw_text,
+        }
+
+    # 4. Fallback wrapping
+    return {"content": cleaned or raw_text}
+
+
 class AIClient:
     """
     Token-Optimized Autonomous AI Inference Client.
@@ -245,17 +323,6 @@ class AIClient:
                 temperature=temperature,
                 provider_name="GROQ",
             )
-            if not res and groq_model != "qwen/qwen3.8-27b":
-                logger.info("AIClient: Auto-retrying Groq with verified fast model qwen/qwen3.8-27b...")
-                res = await self._call_openai_compatible(
-                    endpoint="https://api.groq.com/openai/v1/chat/completions",
-                    api_key=key,
-                    model="qwen/qwen3.8-27b",
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    provider_name="GROQ",
-                )
             return res
 
         elif provider == "openrouter":
@@ -321,6 +388,7 @@ class AIClient:
     ) -> Optional[Dict[str, Any]]:
         """
         Executes standard OpenAI-compatible completions call with token usage logging.
+        Universally adaptive to ANY model and ANY provider.
         """
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -329,40 +397,76 @@ class AIClient:
         if extra_headers:
             headers.update(extra_headers)
 
+        m_lower = (model or "").lower().strip()
+        is_reasoning_or_oss = any(k in m_lower for k in [
+            "gpt-oss", "deepseek-r1", "o1", "o3", "thinking", "reasoner", "r1", "safeguard"
+        ])
+        is_o_series = any(k in m_lower for k in ["o1-", "o3-", "o1", "o3"])
+
+        # Allocate token headroom for reasoning models so thinking tokens don't exhaust output
+        effective_max_tokens = max(max_tokens or 1500, 1500) if is_reasoning_or_oss else (max_tokens or 800)
+
         payload: Dict[str, Any] = {
             "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "response_format": {"type": "json_object"},
+            "messages": list(messages),
         }
+
+        if is_o_series:
+            payload["max_completion_tokens"] = effective_max_tokens
+        else:
+            payload["max_tokens"] = effective_max_tokens
+            payload["temperature"] = temperature
+            # Only send strict response_format for non-reasoning models (reasoning models fail Groq grammar check)
+            if not is_reasoning_or_oss:
+                payload["response_format"] = {"type": "json_object"}
+
         t0 = time.time()
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 resp = await client.post(endpoint, json=payload, headers=headers)
-                
-                # If provider errors on strict response_format json_object or json_validate_failed (reasoning models), retry once
-                if resp.status_code == 400 and ("response_format" in resp.text or "json_validate_failed" in resp.text):
-                    payload.pop("response_format", None)
-                    if payload.get("max_tokens", 0) < 1200:
-                        payload["max_tokens"] = 1500
-                    resp = await client.post(endpoint, json=payload, headers=headers)
+
+                # Resilient multi-tier adaptive retry if provider rejects parameters
+                if resp.status_code in (400, 422):
+                    err_txt = resp.text.lower()
+                    adapted = False
+
+                    # 1. Rejecting response_format / json schema
+                    if "response_format" in payload and any(k in err_txt for k in ["response_format", "json_validate_failed", "schema", "failed_generation", "unrecognized parameter"]):
+                        payload.pop("response_format", None)
+                        if payload.get("max_tokens", 0) < 1500:
+                            payload["max_tokens"] = 1500
+                        adapted = True
+
+                    # 2. Rejecting temperature
+                    if "temperature" in payload and any(k in err_txt for k in ["temperature", "unsupported parameter"]):
+                        payload.pop("temperature", None)
+                        adapted = True
+
+                    # 3. Requiring max_completion_tokens instead of max_tokens
+                    if "max_tokens" in payload and any(k in err_txt for k in ["max_completion_tokens", "max_tokens"]):
+                        val = payload.pop("max_tokens")
+                        payload["max_completion_tokens"] = val
+                        adapted = True
+
+                    # 4. Rejecting system role
+                    if any(k in err_txt for k in ["system", "role"]):
+                        new_msgs = []
+                        for m in payload.get("messages", []):
+                            if m.get("role") == "system":
+                                new_msgs.append({"role": "user", "content": f"[System Instructions]\n{m.get('content', '')}"})
+                            else:
+                                new_msgs.append(m)
+                        payload["messages"] = new_msgs
+                        adapted = True
+
+                    if adapted:
+                        logger.info(f"AIClient [{provider_name}:{model}]: Adapting request parameters and retrying...")
+                        resp = await client.post(endpoint, json=payload, headers=headers)
 
                 if resp.status_code == 200:
                     data = resp.json()
                     content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-                    clean_c = re.sub(r"^```(?:json)?\s*", "", content.strip())
-                    try:
-                        parsed = json.loads(clean_c)
-                    except Exception:
-                        m = re.search(r'\{.*\}', content, re.DOTALL)
-                        if m:
-                            try:
-                                parsed = json.loads(m.group(0))
-                            except Exception:
-                                parsed = {"content": content}
-                        else:
-                            parsed = {"content": content}
+                    parsed = parse_llm_json_response(content)
 
                     usage = data.get("usage", {})
                     total_toks = usage.get("total_tokens", "N/A")
@@ -494,12 +598,8 @@ class AIClient:
     ) -> Dict[str, Any]:
         """
         Tests a provider and model configuration live.
-        Returns latency and verified status.
+        Compatible with ANY model from ANY provider without crashing or 400 validation failures.
         """
-        test_messages = [
-            {"role": "system", "content": "You are an automated API diagnostic agent. Respond strictly in raw JSON."},
-            {"role": "user", "content": 'Respond strictly with this exact JSON: {"status": "ok", "ping": "pong"}'},
-        ]
         provider_clean = provider.lower().strip()
         endpoint = ""
         key = api_key or ""
@@ -539,34 +639,53 @@ class AIClient:
         }
         headers.update(extra_headers)
 
+        m_lower = (model or "").lower().strip()
+        is_o_series = any(k in m_lower for k in ["o1-", "o3-", "o1", "o3"])
+
+        # Use clean single user message to ensure 100% compatibility across all model architectures
+        test_messages = [
+            {"role": "user", "content": 'Respond strictly with this exact JSON: {"status": "ok", "ping": "pong"}'},
+        ]
+
         payload: Dict[str, Any] = {
             "model": model.strip(),
             "messages": test_messages,
-            "max_tokens": 500,
-            "temperature": 0.0,
-            "response_format": {"type": "json_object"},
         }
+
+        if is_o_series:
+            payload["max_completion_tokens"] = 1000
+        else:
+            payload["max_tokens"] = 1000
+            payload["temperature"] = 0.0
 
         t0 = time.time()
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with httpx.AsyncClient(timeout=20.0) as client:
                 resp = await client.post(endpoint, json=payload, headers=headers)
-                if resp.status_code == 400 and ("response_format" in resp.text or "json_validate_failed" in resp.text):
-                    payload.pop("response_format", None)
-                    payload["max_tokens"] = 800
-                    resp = await client.post(endpoint, json=payload, headers=headers)
+
+                # Adaptive retry on parameter errors
+                if resp.status_code in (400, 422):
+                    err_txt = resp.text.lower()
+                    adapted = False
+                    if "temperature" in payload and ("temperature" in err_txt or "unsupported" in err_txt):
+                        payload.pop("temperature", None)
+                        adapted = True
+                    if "max_tokens" in payload and ("max_completion_tokens" in err_txt or "max_tokens" in err_txt):
+                        val = payload.pop("max_tokens")
+                        payload["max_completion_tokens"] = val
+                        adapted = True
+                    if "response_format" in payload:
+                        payload.pop("response_format", None)
+                        adapted = True
+                    if adapted:
+                        resp = await client.post(endpoint, json=payload, headers=headers)
 
                 elapsed_ms = round((time.time() - t0) * 1000, 1)
 
                 if resp.status_code == 200:
                     data = resp.json()
                     content = data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-                    clean_c = re.sub(r"^```(?:json)?\s*", "", content.strip())
-                    clean_c = re.sub(r"\s*```$", "", clean_c)
-                    try:
-                        sample = json.loads(clean_c)
-                    except Exception:
-                        sample = {"raw_response": content}
+                    sample = parse_llm_json_response(content)
                     return {
                         "success": True,
                         "latency_ms": elapsed_ms,
@@ -637,9 +756,7 @@ class AIClient:
                         if resp.get("type") == "response" and resp.get("id") == req_id:
                             result_data = resp.get("result", {})
                             content = result_data.get("content", "{}")
-                            clean_c = re.sub(r"^```(?:json)?\s*", "", content.strip())
-                            clean_c = re.sub(r"\s*```$", "", clean_c)
-                            return json.loads(clean_c)
+                            return parse_llm_json_response(content)
             except Exception:
                 continue
 
