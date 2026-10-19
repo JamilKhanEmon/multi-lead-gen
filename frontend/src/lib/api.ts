@@ -1255,6 +1255,13 @@ export function renderEmailTemplate(
     renderedBody = renderedBody.split(tag).join(val);
   }
 
+  renderedSubject = renderedSubject.replace(/\s*\(\s*\)/g, "").replace(/\s{2,}/g, " ").trim();
+  renderedBody = renderedBody.replace(/\s*\(\s*\)/g, "").replace(/\s*\b(?:located\s+in|in)\s+and\b/gi, " and");
+
+  if (sig && !renderedBody.includes(sig.trim())) {
+    renderedBody = `${renderedBody.trim()}\n\n${sig.trim()}`;
+  }
+
   const fullEmail = `Subject: ${renderedSubject}\n\n${renderedBody}`;
   return { subject: renderedSubject, body: renderedBody, fullEmail };
 }

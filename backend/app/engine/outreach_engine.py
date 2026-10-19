@@ -176,14 +176,24 @@ class OutreachEngine:
                         parts.append(custom_tpl["sender_website"])
                     sig_block = "\n".join(parts).strip()
 
-        # If still no signature from admin pool or template, fall back strictly to active inbox from_name
-        if not sig_block:
-            inbox_cfg = lead_data.get("inbox") or lead_data.get("selected_inbox") or {}
-            sender_name = inbox_cfg.get("from_name") or lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or ""
-            if sender_name and sender_name.strip().lower() not in ["test", ""]:
-                sig_block = f"Best regards,\n\n{sender_name.strip()}"
+        # Extract inbox information for fallback and sender details
+        inbox_cfg = lead_data.get("inbox") or lead_data.get("selected_inbox") or {}
+        inbox_name = inbox_cfg.get("from_name") or lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or ""
+        inbox_email = inbox_cfg.get("from_email") or os.getenv("SMTP_FROM_EMAIL") or ""
+
+        # If sig_block is missing or is just a bare sign-off without a name, attach inbox sender
+        is_bare = not sig_block or sig_block.strip().lower() in ["best regards", "sincerely,", "sincerely", "regards", "thanks", "test"]
+        if is_bare:
+            if inbox_name and inbox_name.strip().lower() not in ["test", ""]:
+                sender_name = inbox_name.strip()
+                disp_lines = [sender_name]
+                if inbox_email:
+                    disp_lines.append(inbox_email.strip())
+                sig_block = f"Best regards,\n\n" + "\n".join(disp_lines)
+            elif inbox_email:
+                sig_block = f"Best regards,\n\n{inbox_email.strip()}"
             else:
-                sig_block = "Best regards"
+                sig_block = "Best regards,\n\nOutreach Team"
         elif not any(sig_block.strip().lower().startswith(greeting) for greeting in ["best regards", "regards", "sincerely", "thanks", "warm regards", "cheers"]):
             sig_block = f"Best regards,\n\n{sig_block}"
 
@@ -349,24 +359,26 @@ class OutreachEngine:
         if custom_tpl and step == 1:
             subj = custom_tpl.get("subject") if isinstance(custom_tpl, dict) else getattr(custom_tpl, "subject", "")
             bdy = custom_tpl.get("body") if isinstance(custom_tpl, dict) else getattr(custom_tpl, "body", "")
-            
-            if not sig_block and hasattr(custom_tpl, "render_signature"):
-                sig_block = custom_tpl.render_signature()
 
-            if not sig_block or sig_block.strip().lower() == "test":
-                sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
-                sig_block = "\n".join(sig_lines) if sig_lines else ""
+            # If template has an explicit signature and sig_block was default, let template augment it
+            if (not sig_block or "Outreach Team" in sig_block) and hasattr(custom_tpl, "render_signature"):
+                tpl_sig = custom_tpl.render_signature()
+                if tpl_sig and len(tpl_sig.strip()) > 3:
+                    sig_block = tpl_sig.strip()
 
             # Clean location in subject/body if no real city is detected
-            if not has_real_city:
-                subj = subj.replace(" in {{location}}", f" - {company_name}").replace(" in {city}", f" - {company_name}")
-                subj = subj.replace("{{location}}", company_name).replace("{city}", company_name)
-                bdy = bdy.replace(" located in {{location}}", "").replace(" in {{location}}", "")
-                bdy = bdy.replace(" located in {city}", "").replace(" in {city}", "")
-                bdy = bdy.replace("{{location}}", company_name).replace("{city}", company_name)
+            if not has_real_city or not city:
+                subj = re.sub(r"\s*\(\s*(?:\{city\}|\{\{location\}\}|\{\{city\}\}|)\s*\)", "", subj)
+                subj = subj.replace(" in {{location}}", "").replace(" in {city}", "").replace(" in {{city}}", "")
+                subj = subj.replace("{{location}}", "").replace("{city}", "").replace("{{city}}", "")
+
+                bdy = re.sub(r"\s*\(\s*(?:\{city\}|\{\{location\}\}|\{\{city\}\}|)\s*\)", "", bdy)
+                bdy = re.sub(r"\s*\b(?:located\s+in|in)\s*(?:\{city\}|\{\{location\}\}|\{\{city\}\}|)\s*and\b", " and", bdy, flags=re.IGNORECASE)
+                bdy = re.sub(r"\s*\b(?:located\s+in|in)\s*(?:\{city\}|\{\{location\}\}|\{\{city\}\})\b", "", bdy, flags=re.IGNORECASE)
+                bdy = bdy.replace("{{location}}", "").replace("{city}", "").replace("{{city}}", "")
             else:
-                subj = subj.replace("{{location}}", city).replace("{city}", city)
-                bdy = bdy.replace("{{location}}", city).replace("{city}", city)
+                subj = subj.replace("{{location}}", city).replace("{city}", city).replace("{{city}}", city)
+                bdy = bdy.replace("{{location}}", city).replace("{city}", city).replace("{{city}}", city)
 
             # Prevent robotic "Dear there" greeting leaks
             bdy = bdy.replace("Dear there,", f"Hi {contact_person},").replace("Dear there", f"Hi {contact_person}")
@@ -385,6 +397,7 @@ class OutreachEngine:
                 "{{what_they_need}}": lead_data.get("what_they_need") or "",
                 "{{matched_service}}": lead_data.get("matched_service") or "",
                 "{{signature}}": sig_block,
+                "{signature}": sig_block,
                 "{{sender_name}}": sender_name,
                 "{{sender_title}}": sender_title,
                 "{{sender_company}}": sender_company,
@@ -398,11 +411,19 @@ class OutreachEngine:
             for tag, val in replacements.items():
                 subj = subj.replace(tag, str(val))
                 bdy = bdy.replace(tag, str(val))
-            
-            # Post-cleanup: Remove accidental double placeholders or punctuation
-            subj = subj.replace("in your city", company_name).replace("your city", company_name).strip()
-            if sig_block and sig_block not in bdy:
-                bdy = f"{bdy.rstrip()}\n\n{sig_block}"
+
+            # Post-cleanup: Remove accidental double spaces, empty parentheses, or broken prepositions
+            subj = re.sub(r"\s*\(\s*\)", "", subj).strip()
+            subj = re.sub(r"\s{2,}", " ", subj).strip()
+
+            bdy = re.sub(r"\s*\(\s*\)", "", bdy)
+            bdy = re.sub(r"\s*\b(?:located\s+in|in)\s+and\b", " and", bdy, flags=re.IGNORECASE)
+            bdy = re.sub(r"\s*\b(?:located\s+in|in)\s*([.,;])", r"\1", bdy, flags=re.IGNORECASE)
+            bdy = re.sub(r"[ \t]{2,}", " ", bdy)
+
+            # Guarantee signature is always cleanly appended if not already in body
+            if sig_block and sig_block.strip() not in bdy:
+                bdy = f"{bdy.rstrip()}\n\n{sig_block.strip()}"
             return subj, bdy
 
         matched_svc = lead_data.get("matched_service") or f"{industry.title() if industry else 'Commercial'} Digital Workflow & Growth Solution"
@@ -446,9 +467,12 @@ class OutreachEngine:
                 f"{sig_block}"
             )
 
-        # Guarantee signature is always cleanly attached
-        if sig_block and not body.endswith(sig_block):
-            body = f"{body.rstrip()}\n\n{sig_block}"
+        # Cleanup and guarantee signature is always cleanly attached
+        subject = re.sub(r"\s*\(\s*\)", "", subject).strip()
+        body = re.sub(r"\s*\(\s*\)", "", body)
+        body = re.sub(r"\s*\b(?:located\s+in|in)\s+and\b", " and", body, flags=re.IGNORECASE)
+        if sig_block and sig_block.strip() not in body:
+            body = f"{body.rstrip()}\n\n{sig_block.strip()}"
 
         return subject, body
 
@@ -625,6 +649,40 @@ class OutreachEngine:
         return len(inboxes) > 0
 
     @classmethod
+    async def get_active_personas(cls, db: Optional[Any] = None) -> List[Dict[str, Any]]:
+        """
+        Dynamically fetches active Persona signatures configured in the Admin database.
+        """
+        from app.models.email_template import PersonaSignature
+        from sqlalchemy import select
+
+        try:
+            if db is not None:
+                stmt = select(PersonaSignature).where(PersonaSignature.is_active == True).order_by(PersonaSignature.created_at.desc())
+                res = await db.execute(stmt)
+                personas = res.scalars().all()
+            else:
+                from app.db.session import AsyncSessionLocal
+                async with AsyncSessionLocal() as session:
+                    stmt = select(PersonaSignature).where(PersonaSignature.is_active == True).order_by(PersonaSignature.created_at.desc())
+                    res = await session.execute(stmt)
+                    personas = res.scalars().all()
+
+            return [
+                {
+                    "id": str(p.id),
+                    "name": p.name or "",
+                    "title": p.title or "",
+                    "company": p.company or "",
+                    "raw_content": p.render_signature()
+                }
+                for p in personas
+            ]
+        except Exception as e:
+            logger.error(f"Error fetching active personas from DB: {e}")
+            return []
+
+    @classmethod
     def get_active_smtp_inboxes(cls) -> List[Dict[str, Any]]:
         inboxes = []
         try:
@@ -717,6 +775,17 @@ class OutreachEngine:
 
         inbox_id = str(selected_inbox["id"])
         cls.INBOX_STATS[inbox_id] = cls.INBOX_STATS.get(inbox_id, 0) + 1
+
+        # Clean subject and body failsafes before sending
+        subject = re.sub(r"\s*\(\s*\)", "", subject).strip()
+        body = re.sub(r"\s*\(\s*\)", "", body)
+        body = re.sub(r"\s*\b(?:located\s+in|in)\s+and\b", " and", body, flags=re.IGNORECASE)
+
+        # Failsafe: Ensure signature is NEVER missing
+        has_signoff = any(w in body.lower() for w in ["regards", "sincerely", "cheers", "thanks", "best,"])
+        if not has_signoff:
+            sender_disp = from_name.strip() if from_name else (from_email.strip() if from_email else "Outreach Team")
+            body = f"{body.rstrip()}\n\nBest regards,\n\n{sender_disp}"
 
         loop = asyncio.get_running_loop()
 

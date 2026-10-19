@@ -310,6 +310,7 @@ async def preview_email_template(
         "{{phone}}": preview_req.phone or "+1 555-0199",
         "{{primary_gap}}": gap_text,
         "{{signature}}": sig,
+        "{signature}": sig,
         "{{sender_name}}": sender_name,
         "{{sender_title}}": sender_title,
         "{{sender_company}}": sender_company,
@@ -322,6 +323,9 @@ async def preview_email_template(
     for tag, val in replacements.items():
         rendered_subject = rendered_subject.replace(tag, val)
         rendered_body = rendered_body.replace(tag, val)
+
+    if sig and sig.strip() not in rendered_body:
+        rendered_body = f"{rendered_body.rstrip()}\n\n{sig.strip()}"
 
     return {
         "rendered_subject": rendered_subject,

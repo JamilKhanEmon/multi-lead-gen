@@ -1120,6 +1120,11 @@ async def _execute_research_and_qualify(
         if is_qualified and has_email and isinstance(explanation, dict):
             try:
                 from app.engine.outreach_engine import OutreachEngine
+                active_personas = await OutreachEngine.get_active_personas(db=session)
+                active_inboxes = await OutreachEngine.get_active_inboxes(db=session)
+                sel_p = active_personas[0] if active_personas else None
+                sel_ib = active_inboxes[0] if active_inboxes else None
+
                 draft_subj, draft_body = await OutreachEngine.render_email(
                     step=1,
                     lead_data={
@@ -1132,6 +1137,9 @@ async def _execute_research_and_qualify(
                         "why_they_need_us": gate_res.get("why_they_need_us") or lead_primary_gap,
                         "what_they_need": gate_res.get("what_they_need") or "",
                         "matched_service": gate_res.get("matched_service") or "",
+                        "selected_persona": sel_p,
+                        "personas": active_personas,
+                        "selected_inbox": sel_ib,
                     },
                     ai_client=ollama_client,
                 )

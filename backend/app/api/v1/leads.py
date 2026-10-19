@@ -1556,13 +1556,10 @@ async def dispatch_staggered_outreach(
             "message": "No valid uncontacted leads found to dispatch."
         }
 
-    from app.models.email_template import PersonaSignature, EmailTemplate
-    p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
-    p_res = await db.execute(p_stmt)
-    active_personas = [
-        {"name": p.name, "title": p.title, "company": p.company, "raw_content": p.render_signature()}
-        for p in p_res.scalars().all()
-    ]
+    from app.models.email_template import EmailTemplate
+
+    active_personas = await OutreachEngine.get_active_personas(db=db)
+    active_inboxes = await OutreachEngine.get_active_inboxes(db=db)
 
     t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
     t_res = await db.execute(t_stmt)
@@ -1587,40 +1584,52 @@ async def dispatch_staggered_outreach(
             continue
 
         recipient = biz.email.strip()
-        cached_draft = (lead.explanation_json or {}).get("outreach_draft")
-        if cached_draft and cached_draft.get("subject") and cached_draft.get("body"):
-            subject = cached_draft["subject"]
-            body = cached_draft["body"]
-        else:
-            subject, body = await OutreachEngine.render_email(
-                step=1,
-                lead_data={
-                    "company_name": biz.canonical_name,
-                    "contact_person": biz.contact_person or "Executive",
-                    "city": biz.address or "",
-                    "website": getattr(biz, "domain", ""),
-                    "industry": getattr(biz, "business_type", ""),
-                    "primary_gap": lead.primary_gap_summary,
-                    "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
-                    "what_they_need": getattr(lead, "what_they_need", None) or "",
-                    "matched_service": getattr(lead, "matched_service", None) or "",
-                    "personas": active_personas,
-                    "custom_template": active_tpl
-                }
-            )
+        selected_inbox = active_inboxes[idx % len(active_inboxes)] if active_inboxes else None
+        selected_persona = active_personas[idx % len(active_personas)] if active_personas else None
+
+        # Always dynamically generate hyper-personalized email with rotated admin persona & inbox
+        subject, body = await OutreachEngine.render_email(
+            step=1,
+            lead_data={
+                "company_name": biz.canonical_name,
+                "contact_person": biz.contact_person or "Executive",
+                "city": biz.address or "",
+                "website": getattr(biz, "domain", ""),
+                "industry": getattr(biz, "business_type", ""),
+                "primary_gap": lead.primary_gap_summary,
+                "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
+                "what_they_need": getattr(lead, "what_they_need", None) or "",
+                "matched_service": getattr(lead, "matched_service", None) or "",
+                "selected_persona": selected_persona,
+                "personas": active_personas,
+                "selected_inbox": selected_inbox,
+                "custom_template": active_tpl
+            }
+        )
 
         success, note = await OutreachEngine.dispatch_smtp_email(
             recipient_email=recipient,
             subject=subject,
             body=body,
             dry_run=not is_live,
-            db=db
+            db=db,
+            account_id=selected_inbox.get("id") if selected_inbox else None
         )
 
         if success:
             lead.outreach_status = "SENT"
             lead.followup_step = 1
             lead.last_contacted_at = datetime.now(timezone.utc)
+
+            exp = dict(lead.explanation_json or {})
+            exp["outreach_draft"] = {
+                "subject": subject,
+                "body": body,
+                "full_email": f"Subject: {subject}\n\n{body}",
+                "is_llm_generated": True,
+                "sent_via_inbox": selected_inbox.get("from_email") if selected_inbox else None
+            }
+            lead.explanation_json = exp
 
             log = EmailOutreachLog(
                 lead_id=lead.id,

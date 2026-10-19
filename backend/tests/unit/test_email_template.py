@@ -51,3 +51,52 @@ def test_persona_signature_raw_content_rendering():
     assert "Account Executive, Acme Corp" in sig
     assert "https://example.com" in sig
 
+def test_outreach_template_empty_city_no_parentheses():
+    from app.engine.outreach_engine import OutreachEngine
+    tpl = {
+        "subject": "Quick question regarding {company_name} ({city})",
+        "body": "Hi {contact_person},\n\nI was researching top businesses in {city} and came across {company_name}.\n\nWould you be open to a call?",
+        "signature_text": ""
+    }
+    lead_data = {
+        "company_name": "New Nation Solar Limited",
+        "city": "",
+        "contact_person": "Executive",
+        "custom_template": tpl,
+        "selected_persona": {
+            "name": "Sarah Connor",
+            "title": "Head of Partnerships",
+            "company": "Growth HQ",
+            "raw_content": "Best regards,\n\nSarah Connor\nHead of Partnerships"
+        }
+    }
+    subj, body = OutreachEngine.render_email_template(1, lead_data)
+    assert "()" not in subj
+    assert "in  and" not in body
+    assert "in and" not in body
+    assert "Sarah Connor" in body
+    assert "Head of Partnerships" in body
+
+def test_outreach_template_guarantees_signature_from_inbox_if_persona_missing():
+    from app.engine.outreach_engine import OutreachEngine
+    tpl = {
+        "subject": "Quick question regarding {company_name}",
+        "body": "Hi {contact_person},\n\nWe would love to connect.",
+        "signature_text": "",
+        "sender_name": "",
+        "sign_off": ""
+    }
+    lead_data = {
+        "company_name": "Apex Innovations",
+        "city": "Austin",
+        "contact_person": "Alex",
+        "custom_template": tpl,
+        "selected_inbox": {
+            "from_name": "David Smith",
+            "from_email": "david@growthhq.io"
+        }
+    }
+    subj, body = OutreachEngine.render_email_template(1, lead_data)
+    assert "David Smith" in body
+    assert "Best regards" in body
+

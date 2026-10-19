@@ -42,14 +42,10 @@ async def dispatch_pending_outreach(force_live: bool = False):
 
         print(f"[+] Found {len(ready_leads)} leads ready for outreach.")
 
-        from app.models.email_template import PersonaSignature, EmailTemplate
-        p_stmt = select(PersonaSignature).where(PersonaSignature.is_active == True)
-        p_res = await session.execute(p_stmt)
-        active_personas = [
-            {"name": p.name, "title": p.title, "company": p.company, "raw_content": p.render_signature()}
-            for p in p_res.scalars().all()
-        ]
+        active_personas = await OutreachEngine.get_active_personas(db=session)
+        active_inboxes = await OutreachEngine.get_active_inboxes(db=session)
 
+        from app.models.email_template import EmailTemplate
         t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
         t_res = await session.execute(t_stmt)
         active_tpl = t_res.scalar_one_or_none()
@@ -62,6 +58,8 @@ async def dispatch_pending_outreach(force_live: bool = False):
             if not biz or not biz.email:
                 continue
             recipient_email = biz.email.strip()
+            selected_inbox = active_inboxes[idx % len(active_inboxes)] if active_inboxes else None
+            selected_persona = active_personas[idx % len(active_personas)] if active_personas else None
 
             subject, body = await OutreachEngine.render_email(
                 step=1,
@@ -75,7 +73,9 @@ async def dispatch_pending_outreach(force_live: bool = False):
                     "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
                     "what_they_need": getattr(lead, "what_they_need", None) or "Modern Lead Funnel & CRM",
                     "matched_service": getattr(lead, "matched_service", None) or "Custom Digital Solution",
+                    "selected_persona": selected_persona,
                     "personas": active_personas,
+                    "selected_inbox": selected_inbox,
                     "custom_template": active_tpl
                 }
             )
@@ -88,7 +88,8 @@ async def dispatch_pending_outreach(force_live: bool = False):
                 subject=subject,
                 body=body,
                 dry_run=dry_run,
-                db=session
+                db=session,
+                account_id=selected_inbox.get("id") if selected_inbox else None
             )
 
             if success:
