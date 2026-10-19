@@ -1285,6 +1285,14 @@ async def update_lead_details(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if current_user.role != "super_admin":
+        perms = current_user.permissions_json or {}
+        if perms.get("all") is not True and perms.get("can_edit_leads") is False:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission Denied: You do not have permission to edit leads.",
+            )
+
     stmt = select(Lead).options(selectinload(Lead.business)).where(Lead.id == lead_id)
     res = await db.execute(stmt)
     lead = res.scalar_one_or_none()

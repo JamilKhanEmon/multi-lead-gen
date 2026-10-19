@@ -214,11 +214,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (currentUser.role === "super_admin") return { allowed: true };
     if (currentUser.permissions_json?.all) return { allowed: true };
 
-    if (pathname.startsWith("/autopilot") || pathname.startsWith("/replies") || pathname.startsWith("/inbox")) {
+    if (pathname.startsWith("/inbox")) {
+      const allowed = hasPermission(currentUser, "can_view_inbox", true) || hasPermission(currentUser, "can_access_autopilot", false);
+      if (!allowed) {
+        return {
+          allowed: false,
+          reason: "Permission Denied: Your account does not have permission to access the Mail Inbox. Please contact Admin."
+        };
+      }
+    }
+    if (pathname.startsWith("/replies")) {
+      const allowed = hasPermission(currentUser, "can_view_replies", true) || hasPermission(currentUser, "can_access_autopilot", false);
+      if (!allowed) {
+        return {
+          allowed: false,
+          reason: "Permission Denied: Your account does not have permission to view Client Replies. Please contact Admin."
+        };
+      }
+    }
+    if (pathname.startsWith("/autopilot")) {
       if (!hasPermission(currentUser, "can_access_autopilot", false)) {
         return {
           allowed: false,
-          reason: "Permission Denied: Autonomous Cold Email & Autopilot Outreach is strictly restricted to Super Admin. Please contact Super Admin to request access."
+          reason: "Permission Denied: Autonomous Cold Email & Autopilot Outreach is strictly restricted. Please contact Admin to request access."
         };
       }
     }

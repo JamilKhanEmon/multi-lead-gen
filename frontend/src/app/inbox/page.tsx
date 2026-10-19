@@ -9,6 +9,9 @@ import {
   fetchEmailThread,
   InboxMessage,
   ThreadMessage,
+  getStoredUser,
+  hasPermission,
+  AuthUser,
 } from "@/lib/api";
 
 function timeAgo(iso: string | null): string {
@@ -156,7 +159,12 @@ export default function InboxPage() {
   const [searchQ, setSearchQ] = useState("");
   const [filterAccount, setFilterAccount] = useState("ALL");
   const [filterType, setFilterType] = useState<"all" | "replies" | "unread">("all");
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const threadEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setCurrentUser(getStoredUser());
+  }, []);
 
   const loadMessages = useCallback(async () => {
     setLoading(true);
@@ -618,13 +626,22 @@ export default function InboxPage() {
                       ↩ Replied
                     </span>
                   )}
-                  <button
-                    id="open-reply-composer"
-                    onClick={() => setShowReply((v) => !v)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition shadow-lg shadow-indigo-500/20"
-                  >
-                    ✍️ {showReply ? "Close" : "Reply"}
-                  </button>
+                  {hasPermission(currentUser, "can_send_emails", false) ? (
+                    <button
+                      id="open-reply-composer"
+                      onClick={() => setShowReply((v) => !v)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition shadow-lg shadow-indigo-500/20"
+                    >
+                      ✍️ {showReply ? "Close" : "Reply"}
+                    </button>
+                  ) : (
+                    <span
+                      title="Direct outbound sending is restricted for your account"
+                      className="text-[11px] px-2.5 py-1 rounded-xl bg-slate-800 text-slate-500 border border-slate-700/60 font-medium cursor-not-allowed"
+                    >
+                      Reply (Restricted)
+                    </span>
+                  )}
                   <button
                     onClick={() => handleDeleteConversation(activeConv)}
                     disabled={deletingId === activeConv.id}

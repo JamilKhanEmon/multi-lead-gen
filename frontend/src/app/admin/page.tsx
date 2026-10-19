@@ -192,6 +192,401 @@ const PROVIDER_MODEL_PRESETS: Record<
   ],
 };
 
+function PermissionSelector({
+  perms,
+  onChange,
+  isSuperAdmin,
+}: {
+  perms: DashboardPermissions;
+  onChange: (updated: DashboardPermissions) => void;
+  isSuperAdmin: boolean;
+}) {
+  const applyPreset = (preset: "all" | "member" | "sales" | "reviewer") => {
+    if (preset === "all") {
+      onChange({
+        can_view_dashboard: true,
+        can_view_leads: true,
+        can_edit_leads: true,
+        can_delete_leads: true,
+        can_export_leads: true,
+        can_run_research: true,
+        can_view_inbox: true,
+        can_send_emails: true,
+        can_view_replies: true,
+        can_access_autopilot: true,
+        can_create_autopilot_campaigns: true,
+        can_run_autopilot_cycle: true,
+        can_verify_autopilot_leads: true,
+        can_edit_campaigns: true,
+        can_access_voice: true,
+        can_manage_templates: true,
+        can_manage_kb: true,
+        can_manage_smtp: isSuperAdmin,
+        can_manage_ai_settings: isSuperAdmin,
+        can_manage_users: true,
+      });
+    } else if (preset === "member") {
+      onChange({
+        can_view_dashboard: true,
+        can_view_leads: true,
+        can_edit_leads: true,
+        can_delete_leads: false,
+        can_export_leads: true,
+        can_run_research: false,
+        can_view_inbox: true,
+        can_send_emails: false,
+        can_view_replies: true,
+        can_access_autopilot: false,
+        can_create_autopilot_campaigns: false,
+        can_run_autopilot_cycle: false,
+        can_verify_autopilot_leads: false,
+        can_edit_campaigns: false,
+        can_access_voice: false,
+        can_manage_templates: false,
+        can_manage_kb: false,
+        can_manage_smtp: false,
+        can_manage_ai_settings: false,
+        can_manage_users: false,
+      });
+    } else if (preset === "sales") {
+      onChange({
+        can_view_dashboard: true,
+        can_view_leads: true,
+        can_edit_leads: true,
+        can_delete_leads: false,
+        can_export_leads: true,
+        can_run_research: true,
+        can_view_inbox: true,
+        can_send_emails: true,
+        can_view_replies: true,
+        can_access_autopilot: false,
+        can_create_autopilot_campaigns: false,
+        can_run_autopilot_cycle: false,
+        can_verify_autopilot_leads: false,
+        can_edit_campaigns: false,
+        can_access_voice: true,
+        can_manage_templates: true,
+        can_manage_kb: false,
+        can_manage_smtp: false,
+        can_manage_ai_settings: false,
+        can_manage_users: false,
+      });
+    } else if (preset === "reviewer") {
+      onChange({
+        can_view_dashboard: true,
+        can_view_leads: true,
+        can_edit_leads: true,
+        can_delete_leads: false,
+        can_export_leads: true,
+        can_run_research: false,
+        can_view_inbox: true,
+        can_send_emails: false,
+        can_view_replies: false,
+        can_access_autopilot: true,
+        can_create_autopilot_campaigns: false,
+        can_run_autopilot_cycle: false,
+        can_verify_autopilot_leads: true,
+        can_edit_campaigns: false,
+        can_access_voice: false,
+        can_manage_templates: false,
+        can_manage_kb: false,
+        can_manage_smtp: false,
+        can_manage_ai_settings: false,
+        can_manage_users: false,
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-3.5">
+      {/* Quick Presets */}
+      <div>
+        <span className="text-[11px] font-semibold text-slate-400 block mb-1.5 uppercase tracking-wider">
+          Quick Permission Presets:
+        </span>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={() => applyPreset("member")}
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 transition cursor-pointer"
+          >
+            Standard Member
+          </button>
+          <button
+            type="button"
+            onClick={() => applyPreset("sales")}
+            className="px-2.5 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-[11px] text-sky-300 border border-sky-500/30 transition cursor-pointer"
+          >
+            Sales & Closer
+          </button>
+          <button
+            type="button"
+            onClick={() => applyPreset("reviewer")}
+            className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-[11px] text-amber-300 border border-amber-500/30 transition cursor-pointer"
+          >
+            Autopilot Reviewer
+          </button>
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={() => applyPreset("all")}
+              className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-[11px] text-emerald-300 border border-emerald-500/30 font-semibold transition cursor-pointer"
+            >
+              Full Platform Access
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Group 1: Lead Database & Contacts */}
+      <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-bold text-sky-400">
+          <Database className="w-3.5 h-3.5" />
+          <span>Lead Operations & Contacts</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_view_leads !== false}
+              onChange={(e) => onChange({ ...perms, can_view_leads: e.target.checked })}
+              className="rounded accent-sky-500"
+            />
+            <span className="text-slate-300">View Qualified Leads</span>
+          </label>
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-emerald-500/30 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_edit_leads !== false}
+              onChange={(e) => onChange({ ...perms, can_edit_leads: e.target.checked })}
+              className="rounded accent-emerald-500"
+            />
+            <span className="text-emerald-300 font-semibold">Edit Lead Details & Info</span>
+          </label>
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_export_leads !== false}
+              onChange={(e) => onChange({ ...perms, can_export_leads: e.target.checked })}
+              className="rounded accent-sky-500"
+            />
+            <span className="text-slate-300">Export Sheets (CSV / JSON)</span>
+          </label>
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_delete_leads === true}
+              onChange={(e) => onChange({ ...perms, can_delete_leads: e.target.checked })}
+              className="rounded accent-rose-500"
+            />
+            <span className="text-rose-400 font-medium">Delete Lead Records</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Group 2: Mail, Inbox & Communications */}
+      <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-bold text-sky-400">
+          <Mail className="w-3.5 h-3.5" />
+          <span>Cold Outreach Mail & Inbox</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-sky-500/30 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_view_inbox !== false}
+              onChange={(e) => onChange({ ...perms, can_view_inbox: e.target.checked })}
+              className="rounded accent-sky-500"
+            />
+            <span className="text-sky-300 font-semibold">View Cold Email Inbox</span>
+          </label>
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_view_replies !== false}
+              onChange={(e) => onChange({ ...perms, can_view_replies: e.target.checked })}
+              className="rounded accent-sky-500"
+            />
+            <span className="text-slate-200 font-medium">View Client Replies</span>
+          </label>
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_send_emails === true}
+              onChange={(e) => onChange({ ...perms, can_send_emails: e.target.checked })}
+              className="rounded accent-purple-500"
+            />
+            <span className="text-slate-300">Send Direct Emails</span>
+          </label>
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_manage_templates === true}
+              onChange={(e) => onChange({ ...perms, can_manage_templates: e.target.checked })}
+              className="rounded accent-purple-500"
+            />
+            <span className="text-slate-300">Email Templates & Signature</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Group 3: Autonomous Autopilot Suite */}
+      <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/30 space-y-2.5">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+          <div className="flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-amber-400 fill-current" />
+            <span className="text-amber-300 font-bold text-xs">Autonomous Autopilot Suite</span>
+          </div>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={perms.can_access_autopilot === true}
+              onChange={(e) => {
+                const val = e.target.checked;
+                onChange({
+                  ...perms,
+                  can_access_autopilot: val,
+                  can_create_autopilot_campaigns: val ? perms.can_create_autopilot_campaigns : false,
+                  can_run_autopilot_cycle: val ? perms.can_run_autopilot_cycle : false,
+                  can_verify_autopilot_leads: val ? perms.can_verify_autopilot_leads : false,
+                });
+              }}
+              className="rounded accent-amber-500"
+            />
+            <span className="text-[11px] font-semibold text-amber-400">Enable Suite</span>
+          </label>
+        </div>
+
+        {perms.can_access_autopilot && (
+          <div className="space-y-1.5 pl-3 pt-1">
+            <label className="flex items-center justify-between text-xs cursor-pointer p-1.5 rounded hover:bg-slate-900/60 transition">
+              <span className="text-slate-300">Search Keywords & Campaign Limits</span>
+              <input
+                type="checkbox"
+                checked={perms.can_create_autopilot_campaigns === true}
+                onChange={(e) => onChange({ ...perms, can_create_autopilot_campaigns: e.target.checked })}
+                className="rounded accent-amber-500"
+              />
+            </label>
+            <label className="flex items-center justify-between text-xs cursor-pointer p-1.5 rounded hover:bg-slate-900/60 transition">
+              <span className="text-slate-300">Trigger Discovery Cycles & Batches</span>
+              <input
+                type="checkbox"
+                checked={perms.can_run_autopilot_cycle === true}
+                onChange={(e) => onChange({ ...perms, can_run_autopilot_cycle: e.target.checked })}
+                className="rounded accent-amber-500"
+              />
+            </label>
+            <label className="flex items-center justify-between text-xs cursor-pointer p-1.5 rounded hover:bg-slate-900/60 transition">
+              <span className="text-slate-300">Quality Review & Email Verification</span>
+              <input
+                type="checkbox"
+                checked={perms.can_verify_autopilot_leads === true}
+                onChange={(e) => onChange({ ...perms, can_verify_autopilot_leads: e.target.checked })}
+                className="rounded accent-amber-500"
+              />
+            </label>
+          </div>
+        )}
+      </div>
+
+      {/* Group 4: Channels & Research */}
+      <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-bold text-sky-400">
+          <Globe className="w-3.5 h-3.5" />
+          <span>Growth Channels & Research</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_run_research === true}
+              onChange={(e) => onChange({ ...perms, can_run_research: e.target.checked })}
+              className="rounded accent-sky-500"
+            />
+            <span className="text-slate-300">Launch Deep Research</span>
+          </label>
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_edit_campaigns === true}
+              onChange={(e) => onChange({ ...perms, can_edit_campaigns: e.target.checked })}
+              className="rounded accent-sky-500"
+            />
+            <span className="text-slate-300">Meta Ad Campaigns</span>
+          </label>
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_access_voice === true}
+              onChange={(e) => onChange({ ...perms, can_access_voice: e.target.checked })}
+              className="rounded accent-sky-500"
+            />
+            <span className="text-slate-300">AI Voice Calling Agent</span>
+          </label>
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_view_dashboard !== false}
+              onChange={(e) => onChange({ ...perms, can_view_dashboard: e.target.checked })}
+              className="rounded accent-sky-500"
+            />
+            <span className="text-slate-300">View Analytics Dashboard</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Group 5: Advanced & Administrative */}
+      {isSuperAdmin && (
+        <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
+            <Crown className="w-3.5 h-3.5" />
+            <span>Platform Configuration (Super Admin Controlled)</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+              <input
+                type="checkbox"
+                checked={perms.can_manage_kb === true}
+                onChange={(e) => onChange({ ...perms, can_manage_kb: e.target.checked })}
+                className="rounded accent-amber-500"
+              />
+              <span className="text-slate-300">Knowledge Base & Pitches</span>
+            </label>
+            <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+              <input
+                type="checkbox"
+                checked={perms.can_manage_smtp === true}
+                onChange={(e) => onChange({ ...perms, can_manage_smtp: e.target.checked })}
+                className="rounded accent-amber-500"
+              />
+              <span className="text-slate-300">SMTP Server Accounts</span>
+            </label>
+            <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+              <input
+                type="checkbox"
+                checked={perms.can_manage_ai_settings === true}
+                onChange={(e) => onChange({ ...perms, can_manage_ai_settings: e.target.checked })}
+                className="rounded accent-amber-500"
+              />
+              <span className="text-slate-300">AI Models & API Keys</span>
+            </label>
+            <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+              <input
+                type="checkbox"
+                checked={perms.can_manage_users === true}
+                onChange={(e) => onChange({ ...perms, can_manage_users: e.target.checked })}
+                className="rounded accent-amber-500"
+              />
+              <span className="text-slate-300">Manage Team Users</span>
+            </label>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPortalPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
@@ -546,14 +941,24 @@ export default function AdminPortalPage() {
   const [createPermissions, setCreatePermissions] = useState<DashboardPermissions>({
     can_view_dashboard: true,
     can_view_leads: true,
+    can_edit_leads: true,
+    can_delete_leads: false,
     can_export_leads: true,
     can_run_research: false,
+    can_view_inbox: true,
+    can_send_emails: false,
+    can_view_replies: true,
     can_access_autopilot: false,
     can_create_autopilot_campaigns: false,
     can_run_autopilot_cycle: false,
     can_verify_autopilot_leads: false,
     can_edit_campaigns: false,
     can_access_voice: false,
+    can_manage_templates: false,
+    can_manage_kb: false,
+    can_manage_smtp: false,
+    can_manage_ai_settings: false,
+    can_manage_users: false,
   });
   const [createSubmitting, setCreateSubmitting] = useState(false);
 
@@ -721,6 +1126,57 @@ export default function AdminPortalPage() {
     setCurrentUser(null);
   };
 
+  const handleRoleChange = (role: "admin" | "member") => {
+    setCreateRole(role);
+    if (role === "admin") {
+      setCreatePermissions({
+        can_view_dashboard: true,
+        can_view_leads: true,
+        can_edit_leads: true,
+        can_delete_leads: true,
+        can_export_leads: true,
+        can_run_research: true,
+        can_view_inbox: true,
+        can_send_emails: true,
+        can_view_replies: true,
+        can_access_autopilot: true,
+        can_create_autopilot_campaigns: true,
+        can_run_autopilot_cycle: true,
+        can_verify_autopilot_leads: true,
+        can_edit_campaigns: true,
+        can_access_voice: true,
+        can_manage_templates: true,
+        can_manage_kb: true,
+        can_manage_smtp: false,
+        can_manage_ai_settings: false,
+        can_manage_users: true,
+      });
+    } else {
+      setCreatePermissions({
+        can_view_dashboard: true,
+        can_view_leads: true,
+        can_edit_leads: true,
+        can_delete_leads: false,
+        can_export_leads: true,
+        can_run_research: false,
+        can_view_inbox: true,
+        can_send_emails: false,
+        can_view_replies: true,
+        can_access_autopilot: false,
+        can_create_autopilot_campaigns: false,
+        can_run_autopilot_cycle: false,
+        can_verify_autopilot_leads: false,
+        can_edit_campaigns: false,
+        can_access_voice: false,
+        can_manage_templates: false,
+        can_manage_kb: false,
+        can_manage_smtp: false,
+        can_manage_ai_settings: false,
+        can_manage_users: false,
+      });
+    }
+  };
+
   const handleCreateUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUserActionError(null);
@@ -744,14 +1200,24 @@ export default function AdminPortalPage() {
       setCreatePermissions({
         can_view_dashboard: true,
         can_view_leads: true,
+        can_edit_leads: true,
+        can_delete_leads: false,
         can_export_leads: true,
         can_run_research: false,
+        can_view_inbox: true,
+        can_send_emails: false,
+        can_view_replies: true,
         can_access_autopilot: false,
         can_create_autopilot_campaigns: false,
         can_run_autopilot_cycle: false,
         can_verify_autopilot_leads: false,
         can_edit_campaigns: false,
         can_access_voice: false,
+        can_manage_templates: false,
+        can_manage_kb: false,
+        can_manage_smtp: false,
+        can_manage_ai_settings: false,
+        can_manage_users: false,
       });
       await loadUsersList();
     } catch (err: any) {
@@ -766,14 +1232,24 @@ export default function AdminPortalPage() {
     setEditPermissions(u.permissions_json || {
       can_view_dashboard: true,
       can_view_leads: true,
+      can_edit_leads: true,
+      can_delete_leads: false,
       can_export_leads: true,
       can_run_research: false,
+      can_view_inbox: true,
+      can_send_emails: false,
+      can_view_replies: true,
       can_access_autopilot: false,
       can_create_autopilot_campaigns: false,
       can_run_autopilot_cycle: false,
       can_verify_autopilot_leads: false,
       can_edit_campaigns: false,
       can_access_voice: false,
+      can_manage_templates: false,
+      can_manage_kb: false,
+      can_manage_smtp: false,
+      can_manage_ai_settings: false,
+      can_manage_users: false,
     });
   };
 
@@ -1517,19 +1993,39 @@ export default function AdminPortalPage() {
                                 ★ Full Master Access (All Modules)
                               </span>
                             ) : (
-                              <div className="flex items-center gap-1.5 flex-wrap max-w-sm">
+                              <div className="flex items-center gap-1.5 flex-wrap max-w-md">
                                 {u.permissions_json?.can_view_dashboard !== false && (
                                   <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
                                     Dashboard
                                   </span>
                                 )}
                                 {u.permissions_json?.can_view_leads !== false && (
-                                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
                                     Leads
                                   </span>
                                 )}
+                                {u.permissions_json?.can_edit_leads !== false && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">
+                                    Edit Leads
+                                  </span>
+                                )}
+                                {u.permissions_json?.can_view_inbox !== false && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 font-medium">
+                                    Inbox
+                                  </span>
+                                )}
+                                {u.permissions_json?.can_view_replies !== false && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                                    Replies
+                                  </span>
+                                )}
+                                {u.permissions_json?.can_send_emails && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                    Send Email
+                                  </span>
+                                )}
                                 {u.permissions_json?.can_export_leads !== false && (
-                                  <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
                                     Export
                                   </span>
                                 )}
@@ -1551,6 +2047,21 @@ export default function AdminPortalPage() {
                                 {u.permissions_json?.can_access_voice && (
                                   <span className="text-[10px] px-2 py-0.5 rounded bg-teal-500/10 text-teal-400 border border-teal-500/20">
                                     Voice
+                                  </span>
+                                )}
+                                {u.permissions_json?.can_manage_templates && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-violet-500/10 text-violet-300 border border-violet-500/20">
+                                    Templates
+                                  </span>
+                                )}
+                                {u.permissions_json?.can_manage_kb && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-200 border border-amber-500/20">
+                                    KB
+                                  </span>
+                                )}
+                                {u.permissions_json?.can_manage_smtp && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20">
+                                    SMTP
                                   </span>
                                 )}
                               </div>
@@ -1648,7 +2159,7 @@ export default function AdminPortalPage() {
 
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-sky-400" />
@@ -1713,7 +2224,7 @@ export default function AdminPortalPage() {
                 {isSuperAdmin ? (
                   <select
                     value={createRole}
-                    onChange={(e) => setCreateRole(e.target.value as "admin" | "member")}
+                    onChange={(e) => handleRoleChange(e.target.value as "admin" | "member")}
                     className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-100 focus:outline-none focus:border-sky-500 cursor-pointer"
                   >
                     <option value="member">Team Member / Reviewer</option>
@@ -1729,147 +2240,16 @@ export default function AdminPortalPage() {
                 )}
               </div>
 
-              <div className="pt-2 border-t border-slate-800 space-y-2">
-                <span className="text-xs font-semibold text-slate-300 block">
-                  Assign Dashboard Permissions:
+              <div className="pt-3 border-t border-slate-800 space-y-2">
+                <span className="text-xs font-semibold text-slate-200 block">
+                  Assign Dashboard & Module Permissions:
                 </span>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                    <input
-                      type="checkbox"
-                      checked={createPermissions.can_view_dashboard !== false}
-                      onChange={(e) =>
-                        setCreatePermissions({ ...createPermissions, can_view_dashboard: e.target.checked })
-                      }
-                      className="rounded accent-sky-500"
-                    />
-                    <span className="text-slate-300">View Dashboard</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                    <input
-                      type="checkbox"
-                      checked={createPermissions.can_view_leads !== false}
-                      onChange={(e) =>
-                        setCreatePermissions({ ...createPermissions, can_view_leads: e.target.checked })
-                      }
-                      className="rounded accent-sky-500"
-                    />
-                    <span className="text-slate-300">View Leads</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                    <input
-                      type="checkbox"
-                      checked={createPermissions.can_export_leads !== false}
-                      onChange={(e) =>
-                        setCreatePermissions({ ...createPermissions, can_export_leads: e.target.checked })
-                      }
-                      className="rounded accent-sky-500"
-                    />
-                    <span className="text-slate-300">Download Sheets</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                    <input
-                      type="checkbox"
-                      checked={createPermissions.can_run_research === true}
-                      onChange={(e) =>
-                        setCreatePermissions({ ...createPermissions, can_run_research: e.target.checked })
-                      }
-                      className="rounded accent-sky-500"
-                    />
-                    <span className="text-slate-300">Launch Research</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                    <input
-                      type="checkbox"
-                      checked={createPermissions.can_edit_campaigns === true}
-                      onChange={(e) =>
-                        setCreatePermissions({ ...createPermissions, can_edit_campaigns: e.target.checked })
-                      }
-                      className="rounded accent-sky-500"
-                    />
-                    <span className="text-slate-300">Ad Campaigns</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-950/60 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                    <input
-                      type="checkbox"
-                      checked={createPermissions.can_access_voice === true}
-                      onChange={(e) =>
-                        setCreatePermissions({ ...createPermissions, can_access_voice: e.target.checked })
-                      }
-                      className="rounded accent-sky-500"
-                    />
-                    <span className="text-slate-300">Voice Agent</span>
-                  </label>
-
-                  <div className="col-span-2 p-3 rounded-xl bg-amber-500/5 border border-amber-500/30 space-y-2.5">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                      <div className="flex items-center gap-1.5">
-                        <Zap className="w-3.5 h-3.5 text-amber-400 fill-current" />
-                        <span className="text-amber-300 font-bold text-xs">Autonomous Cold Email & Autopilot Suite</span>
-                      </div>
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={createPermissions.can_access_autopilot === true}
-                          onChange={(e) => {
-                            const val = e.target.checked;
-                            setCreatePermissions({
-                              ...createPermissions,
-                              can_access_autopilot: val,
-                              can_create_autopilot_campaigns: val ? createPermissions.can_create_autopilot_campaigns : false,
-                              can_run_autopilot_cycle: val ? createPermissions.can_run_autopilot_cycle : false,
-                              can_verify_autopilot_leads: val ? createPermissions.can_verify_autopilot_leads : false,
-                            });
-                          }}
-                          className="rounded accent-amber-500"
-                        />
-                        <span className="text-[11px] font-semibold text-amber-400">Enable Access</span>
-                      </label>
-                    </div>
-
-                    {createPermissions.can_access_autopilot && (
-                      <div className="space-y-1.5 pl-4 pt-1">
-                        <label className="flex items-center justify-between text-xs cursor-pointer">
-                          <span className="text-slate-300">Allow Search Input & Campaign Configuration</span>
-                          <input
-                            type="checkbox"
-                            checked={createPermissions.can_create_autopilot_campaigns === true}
-                            onChange={(e) =>
-                              setCreatePermissions({ ...createPermissions, can_create_autopilot_campaigns: e.target.checked })
-                            }
-                            className="rounded accent-amber-500"
-                          />
-                        </label>
-                        <label className="flex items-center justify-between text-xs cursor-pointer">
-                          <span className="text-slate-300">Allow Triggering Search Runs & Batches</span>
-                          <input
-                            type="checkbox"
-                            checked={createPermissions.can_run_autopilot_cycle === true}
-                            onChange={(e) =>
-                              setCreatePermissions({ ...createPermissions, can_run_autopilot_cycle: e.target.checked })
-                            }
-                            className="rounded accent-amber-500"
-                          />
-                        </label>
-                        <label className="flex items-center justify-between text-xs cursor-pointer">
-                          <span className="text-slate-300">Allow Quality Review & Email Approvals</span>
-                          <input
-                            type="checkbox"
-                            checked={createPermissions.can_verify_autopilot_leads === true}
-                            onChange={(e) =>
-                              setCreatePermissions({ ...createPermissions, can_verify_autopilot_leads: e.target.checked })
-                            }
-                            className="rounded accent-amber-500"
-                          />
-                        </label>
-                      </div>
-                    )}
-                  </div>
+                <div className="max-h-[44vh] overflow-y-auto pr-1">
+                  <PermissionSelector
+                    perms={createPermissions}
+                    onChange={setCreatePermissions}
+                    isSuperAdmin={isSuperAdmin}
+                  />
                 </div>
               </div>
 
@@ -1896,11 +2276,11 @@ export default function AdminPortalPage() {
 
       {editingUser && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Sliders className="w-5 h-5 text-sky-400" />
-                <h3 className="text-base font-bold text-white">Dashboard Permissions</h3>
+                <h3 className="text-base font-bold text-white">Dashboard & Module Permissions</h3>
               </div>
               <button
                 type="button"
@@ -1913,161 +2293,19 @@ export default function AdminPortalPage() {
 
             <div>
               <p className="text-xs text-slate-300">
-                Configure module and feature permissions for: <strong className="text-sky-400">{editingUser.email}</strong>
+                Configure module and feature permissions for: <strong className="text-sky-400">{editingUser.email}</strong>{" "}
+                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono ml-1 uppercase">
+                  {editingUser.role}
+                </span>
               </p>
             </div>
 
-            <div className="space-y-2 text-xs">
-              <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                <span className="text-slate-200 font-medium">View Dashboard & Statistics</span>
-                <input
-                  type="checkbox"
-                  checked={editPermissions.can_view_dashboard !== false}
-                  onChange={(e) =>
-                    setEditPermissions({ ...editPermissions, can_view_dashboard: e.target.checked })
-                  }
-                  className="rounded accent-sky-500 w-4 h-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                <span className="text-slate-200 font-medium">View & Filter Qualified Leads</span>
-                <input
-                  type="checkbox"
-                  checked={editPermissions.can_view_leads !== false}
-                  onChange={(e) =>
-                    setEditPermissions({ ...editPermissions, can_view_leads: e.target.checked })
-                  }
-                  className="rounded accent-sky-500 w-4 h-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                <span className="text-slate-200 font-medium">Export Leads (Sheet & JSON)</span>
-                <input
-                  type="checkbox"
-                  checked={editPermissions.can_export_leads !== false}
-                  onChange={(e) =>
-                    setEditPermissions({ ...editPermissions, can_export_leads: e.target.checked })
-                  }
-                  className="rounded accent-sky-500 w-4 h-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                <span className="text-slate-200 font-medium">Launch OpenClaw Research</span>
-                <input
-                  type="checkbox"
-                  checked={editPermissions.can_run_research === true}
-                  onChange={(e) =>
-                    setEditPermissions({ ...editPermissions, can_run_research: e.target.checked })
-                  }
-                  className="rounded accent-sky-500 w-4 h-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                <span className="text-slate-200 font-medium">Manage Ad Campaigns</span>
-                <input
-                  type="checkbox"
-                  checked={editPermissions.can_edit_campaigns === true}
-                  onChange={(e) =>
-                    setEditPermissions({ ...editPermissions, can_edit_campaigns: e.target.checked })
-                  }
-                  className="rounded accent-sky-500 w-4 h-4"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 cursor-pointer hover:bg-slate-800/40 transition">
-                <span className="text-slate-200 font-medium">Access AI Voice Agent</span>
-                <input
-                  type="checkbox"
-                  checked={editPermissions.can_access_voice === true}
-                  onChange={(e) =>
-                    setEditPermissions({ ...editPermissions, can_access_voice: e.target.checked })
-                  }
-                  className="rounded accent-sky-500 w-4 h-4"
-                />
-              </label>
-
-              <div className="p-3 rounded-xl bg-slate-950 border border-amber-500/30 space-y-2.5">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-amber-400 fill-current" />
-                    <div>
-                      <span className="text-amber-300 font-bold text-xs block">Autonomous Cold Email & Autopilot Suite</span>
-                      <span className="text-[10px] text-slate-400">Granular controls (Super Admin Controlled)</span>
-                    </div>
-                  </div>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editPermissions.can_access_autopilot === true}
-                      onChange={(e) => {
-                        const val = e.target.checked;
-                        setEditPermissions({
-                          ...editPermissions,
-                          can_access_autopilot: val,
-                          can_create_autopilot_campaigns: val ? editPermissions.can_create_autopilot_campaigns : false,
-                          can_run_autopilot_cycle: val ? editPermissions.can_run_autopilot_cycle : false,
-                          can_verify_autopilot_leads: val ? editPermissions.can_verify_autopilot_leads : false,
-                        });
-                      }}
-                      className="rounded accent-amber-500 w-4 h-4"
-                    />
-                    <span className="text-[11px] font-semibold text-amber-400">Enable Module</span>
-                  </label>
-                </div>
-
-                {editPermissions.can_access_autopilot && (
-                  <div className="space-y-2 pt-1 pl-6">
-                    <label className="flex items-center justify-between cursor-pointer text-xs">
-                      <div>
-                        <span className="text-slate-200 block font-medium">Configure Search Inputs & Campaigns</span>
-                        <span className="text-[10px] text-slate-500">Allows adding keywords, country, subcities & daily limits</span>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={editPermissions.can_create_autopilot_campaigns === true}
-                        onChange={(e) =>
-                          setEditPermissions({ ...editPermissions, can_create_autopilot_campaigns: e.target.checked })
-                        }
-                        className="rounded accent-amber-500 w-4 h-4"
-                      />
-                    </label>
-
-                    <label className="flex items-center justify-between cursor-pointer text-xs">
-                      <div>
-                        <span className="text-slate-200 block font-medium">Trigger Search & Batch Cycles</span>
-                        <span className="text-[10px] text-slate-500">Allows clicking "Run Cycle Now" for discovery batches</span>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={editPermissions.can_run_autopilot_cycle === true}
-                        onChange={(e) =>
-                          setEditPermissions({ ...editPermissions, can_run_autopilot_cycle: e.target.checked })
-                        }
-                        className="rounded accent-amber-500 w-4 h-4"
-                      />
-                    </label>
-
-                    <label className="flex items-center justify-between cursor-pointer text-xs">
-                      <div>
-                        <span className="text-slate-200 block font-medium">Quality Verification & Email Approvals</span>
-                        <span className="text-[10px] text-slate-500">Allows reviewing leads and approving into outreach queue</span>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={editPermissions.can_verify_autopilot_leads === true}
-                        onChange={(e) =>
-                          setEditPermissions({ ...editPermissions, can_verify_autopilot_leads: e.target.checked })
-                        }
-                        className="rounded accent-amber-500 w-4 h-4"
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
+            <div className="max-h-[50vh] overflow-y-auto pr-1">
+              <PermissionSelector
+                perms={editPermissions}
+                onChange={setEditPermissions}
+                isSuperAdmin={isSuperAdmin}
+              />
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">

@@ -74,7 +74,31 @@ def check_autopilot_permission(user: User, required_perm: str = "can_access_auto
     perms = user.permissions_json or {}
     if perms.get("all") is True:
         return
-    
+
+    if required_perm == "can_view_inbox":
+        if perms.get("can_view_inbox") is not False or perms.get("can_access_autopilot") is True:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission Denied: Your account does not have permission to view the Mail Inbox."
+        )
+
+    if required_perm == "can_view_replies":
+        if perms.get("can_view_replies") is not False or perms.get("can_access_autopilot") is True:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission Denied: Your account does not have permission to view Client Replies."
+        )
+
+    if required_perm == "can_send_emails":
+        if perms.get("can_send_emails") is True or perms.get("can_access_autopilot") is True:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission Denied: Your account does not have permission to send or reply to emails."
+        )
+
     if perms.get("can_access_autopilot") is not True:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -652,7 +676,7 @@ async def get_replies_intelligence(
     Each entry includes lead info, campaign context, reply text, and AI verdict.
     filter: 'hot' | 'neutral' | 'rejected' | None (returns all)
     """
-    check_autopilot_permission(current_user, "can_access_autopilot")
+    check_autopilot_permission(current_user, "can_view_replies")
 
     sentiment_map = {
         "hot": "HOT_LEAD",
@@ -742,7 +766,7 @@ async def get_inbox_messages(
     Returns a unified inbox view sorted by date (newest first).
     Used by the Mail Client Dashboard (/inbox page).
     """
-    check_autopilot_permission(current_user, "can_access_autopilot")
+    check_autopilot_permission(current_user, "can_view_inbox")
     from app.services.imap_sync_service import IMAPInboxSyncService
 
     all_creds = await IMAPInboxSyncService.get_all_imap_credentials(session=db)
@@ -831,7 +855,7 @@ async def delete_inbox_message(
     current_user: User = Depends(get_current_user)
 ):
     """Delete an email from IMAP inbox by sequence ID or remove outbound log."""
-    check_autopilot_permission(current_user, "can_access_autopilot")
+    check_autopilot_permission(current_user, "can_view_inbox")
 
     if data.account_id == "outbound" or str(data.imap_seq).startswith("sent_"):
         raw_id = str(data.imap_seq).replace("sent_", "")
@@ -894,7 +918,7 @@ async def send_manual_reply(
     current_user: User = Depends(get_current_user)
 ):
     """Send a manual reply email from one of the configured SMTP accounts."""
-    check_autopilot_permission(current_user, "can_access_autopilot")
+    check_autopilot_permission(current_user, "can_send_emails")
 
     clean_email = data.to_email.strip().lower()
 
@@ -958,7 +982,7 @@ async def get_email_thread(
     - Replies THEY sent (from EmailOutreachLog where status=REPLIED)
     Sorted chronologically so you can see the full conversation.
     """
-    check_autopilot_permission(current_user, "can_access_autopilot")
+    check_autopilot_permission(current_user, "can_view_inbox")
 
     clean_email = client_email.strip().lower()
 

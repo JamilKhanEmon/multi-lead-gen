@@ -931,9 +931,13 @@ export async function synthesizeTTSAudio(text: string, voiceId?: string): Promis
 export interface DashboardPermissions {
   can_view_dashboard?: boolean;
   can_view_leads?: boolean;
+  can_edit_leads?: boolean;
   can_delete_leads?: boolean;
   can_export_leads?: boolean;
   can_run_research?: boolean;
+  can_view_inbox?: boolean;
+  can_send_emails?: boolean;
+  can_view_replies?: boolean;
   can_access_autopilot?: boolean;
   can_create_autopilot_campaigns?: boolean;
   can_run_autopilot_cycle?: boolean;
@@ -941,6 +945,9 @@ export interface DashboardPermissions {
   can_edit_campaigns?: boolean;
   can_access_voice?: boolean;
   can_manage_templates?: boolean;
+  can_manage_kb?: boolean;
+  can_manage_smtp?: boolean;
+  can_manage_ai_settings?: boolean;
   can_manage_users?: boolean;
   all?: boolean;
   [key: string]: any;
@@ -978,7 +985,11 @@ export function hasPermission(
     permissionKey === "can_access_autopilot" ||
     permissionKey === "can_create_autopilot_campaigns" ||
     permissionKey === "can_run_autopilot_cycle" ||
-    permissionKey === "can_verify_autopilot_leads"
+    permissionKey === "can_verify_autopilot_leads" ||
+    permissionKey === "can_manage_smtp" ||
+    permissionKey === "can_manage_ai_settings" ||
+    permissionKey === "can_manage_users" ||
+    permissionKey === "can_delete_leads"
   ) {
     return false;
   }

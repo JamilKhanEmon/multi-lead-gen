@@ -45,6 +45,7 @@ import {
   Instagram,
   Linkedin,
   ExternalLink,
+  Edit3,
 } from "lucide-react";
 
 type PipelineStage = "ALL" | "REVIEW" | "READY" | "SENT" | "HOT_DEALS" | "NO_EMAIL";
@@ -75,6 +76,78 @@ export default function LeadsPipelinePage() {
 
   const [activeScriptLead, setActiveScriptLead] = useState<Lead | null>(null);
   const [copiedScript, setCopiedScript] = useState(false);
+
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [editFormEmail, setEditFormEmail] = useState("");
+  const [editFormPhone, setEditFormPhone] = useState("");
+  const [editFormContactPerson, setEditFormContactPerson] = useState("");
+  const [editFormContactTitle, setEditFormContactTitle] = useState("");
+  const [editFormAddress, setEditFormAddress] = useState("");
+  const [editFormTier, setEditFormTier] = useState<"Strong Potential" | "Review Needed" | "Rejected">("Strong Potential");
+  const [editFormOutreachStatus, setEditFormOutreachStatus] = useState<string>("PENDING");
+  const [editFormPrimaryGap, setEditFormPrimaryGap] = useState("");
+  const [editFormWhyUs, setEditFormWhyUs] = useState("");
+  const [editFormMatchedService, setEditFormMatchedService] = useState("");
+  const [isSavingLead, setIsSavingLead] = useState(false);
+
+  const handleOpenEditLead = (lead: Lead) => {
+    setEditingLead(lead);
+    setEditFormEmail(lead.email || "");
+    setEditFormPhone(lead.phone || "");
+    setEditFormContactPerson(lead.contact_person || "");
+    setEditFormContactTitle(lead.contact_title || "");
+    setEditFormAddress(lead.address || "");
+    setEditFormTier(lead.tier || "Strong Potential");
+    setEditFormOutreachStatus(lead.outreach_status || "PENDING");
+    setEditFormPrimaryGap(lead.primary_gap_summary || "");
+    setEditFormWhyUs((lead as any).why_they_need_us || "");
+    setEditFormMatchedService((lead as any).matched_service || "");
+  };
+
+  const handleSaveLead = async () => {
+    if (!editingLead) return;
+    setIsSavingLead(true);
+    try {
+      const updated = await updateLeadDetails(editingLead.id, {
+        email: editFormEmail,
+        phone: editFormPhone,
+        contact_person: editFormContactPerson,
+        contact_title: editFormContactTitle,
+        address: editFormAddress,
+        tier: editFormTier,
+        outreach_status: editFormOutreachStatus as any,
+        primary_gap_summary: editFormPrimaryGap,
+        why_they_need_us: editFormWhyUs,
+        matched_service: editFormMatchedService,
+      });
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === editingLead.id
+            ? {
+                ...l,
+                ...updated,
+                email: editFormEmail,
+                phone: editFormPhone,
+                contact_person: editFormContactPerson,
+                contact_title: editFormContactTitle,
+                address: editFormAddress,
+                tier: editFormTier,
+                outreach_status: editFormOutreachStatus as any,
+                primary_gap_summary: editFormPrimaryGap,
+                why_they_need_us: editFormWhyUs,
+                matched_service: editFormMatchedService,
+              }
+            : l
+        )
+      );
+      showToast("Lead updated successfully!", "success");
+      setEditingLead(null);
+    } catch (err: any) {
+      showToast("Failed to save lead: " + (err.message || "Unknown error"), "error");
+    } finally {
+      setIsSavingLead(false);
+    }
+  };
 
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
 
@@ -1319,6 +1392,20 @@ export default function LeadsPipelinePage() {
                           <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
                           <span>Script</span>
                         </button>
+                        {hasPermission(currentUser, "can_edit_leads", true) && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditLead(lead);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 font-semibold text-xs transition border border-sky-500/30 cursor-pointer shadow-sm shadow-sky-500/10"
+                            title="Edit Lead Information & Contact"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Edit</span>
+                          </button>
+                        )}
                         <Link
                           href={`/leads/${lead.id}`}
                           onClick={(e) => e.stopPropagation()}
@@ -1668,6 +1755,219 @@ export default function LeadsPipelinePage() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Lead Modal */}
+      {editingLead && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl animate-in zoom-in-95 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Edit Lead & Contact Info</h3>
+                  <p className="text-xs text-slate-400">
+                    {editingLead.business_name} {editingLead.domain ? `(${editingLead.domain})` : ""}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingLead(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveLead();
+              }}
+              className="space-y-4 text-xs"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Contact Person Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormContactPerson}
+                    onChange={(e) => setEditFormContactPerson(e.target.value)}
+                    placeholder="e.g. John Doe"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Contact Job Title / Role
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormContactTitle}
+                    onChange={(e) => setEditFormContactTitle(e.target.value)}
+                    placeholder="e.g. Founder, CEO, General Manager"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1 flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Primary Outreach Email</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={editFormEmail}
+                    onChange={(e) => setEditFormEmail(e.target.value)}
+                    placeholder="contact@company.com"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Phone Number</span>
+                  </label>
+                  <input
+                    type="tel"
+                    value={editFormPhone}
+                    onChange={(e) => setEditFormPhone(e.target.value)}
+                    placeholder="+1 (555) 000-0000"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Address / City / Location</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormAddress}
+                    onChange={(e) => setEditFormAddress(e.target.value)}
+                    placeholder="e.g. 123 Main St, Austin, TX"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Target Matched Service
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormMatchedService}
+                    onChange={(e) => setEditFormMatchedService(e.target.value)}
+                    placeholder="e.g. Website Redesign & SEO"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Lead Qualification Tier
+                  </label>
+                  <select
+                    value={editFormTier}
+                    onChange={(e) => setEditFormTier(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:outline-none focus:border-sky-500 cursor-pointer"
+                  >
+                    <option value="Strong Potential">Strong Potential (Hot Prospect)</option>
+                    <option value="Review Needed">Review Needed (Needs Manual Check)</option>
+                    <option value="Rejected">Rejected / Disqualified</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Outreach & Deal Pipeline Status
+                  </label>
+                  <select
+                    value={editFormOutreachStatus}
+                    onChange={(e) => setEditFormOutreachStatus(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:outline-none focus:border-sky-500 cursor-pointer"
+                  >
+                    <option value="PENDING">PENDING (Uncontacted)</option>
+                    <option value="READY_FOR_OUTREACH">READY_FOR_OUTREACH (Approved)</option>
+                    <option value="SENT">SENT (Initial Email Delivered)</option>
+                    <option value="FOLLOWUP_SENT">FOLLOWUP_SENT (Follow-up Sent)</option>
+                    <option value="REPLIED_HOT">REPLIED_HOT (Positive Reply!)</option>
+                    <option value="REPLIED_NEUTRAL">REPLIED_NEUTRAL (Neutral Reply)</option>
+                    <option value="DISCARDED">DISCARDED</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Primary Gap / Problem Summary
+                </label>
+                <textarea
+                  rows={2}
+                  value={editFormPrimaryGap}
+                  onChange={(e) => setEditFormPrimaryGap(e.target.value)}
+                  placeholder="Identify core marketing or technical bottlenecks..."
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Why They Need Us (Pitch Angle)
+                </label>
+                <textarea
+                  rows={2}
+                  value={editFormWhyUs}
+                  onChange={(e) => setEditFormWhyUs(e.target.value)}
+                  placeholder="The concrete value proposition or revenue upside..."
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+                <Link
+                  href={`/leads/${editingLead.id}`}
+                  onClick={() => setEditingLead(null)}
+                  className="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1"
+                >
+                  Open Full Lead Detail Page <ArrowUpRight className="w-3.5 h-3.5" />
+                </Link>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingLead(null)}
+                    className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingLead}
+                    className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer shadow-lg shadow-sky-500/20"
+                  >
+                    {isSavingLead ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" /> Save Changes
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}
