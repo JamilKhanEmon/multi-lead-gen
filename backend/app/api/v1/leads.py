@@ -1193,6 +1193,8 @@ async def submit_lead_feedback(
     act = data.action.upper()
     if act == "APPROVED":
         lead.outreach_status = "READY_FOR_OUTREACH"
+        lead.followup_step = 0
+        lead.last_contacted_at = None
         lead.tier = "Strong Potential"
         lead.is_qualified = True
         if lead.email_status == "NEEDS_REVIEW" or not lead.email_status:
@@ -1343,13 +1345,9 @@ async def update_lead_details(
         flag_modified(lead, "explanation_json")
 
     if data.approve_for_outreach is True:
-        has_already_sent = bool(lead.followup_step and lead.followup_step > 0) or bool(lead.last_contacted_at)
-        has_replied = lead.outreach_status in ("REPLIED_HOT", "REPLIED_NEUTRAL", "DISCARDED")
-        if not has_already_sent and not has_replied:
-            lead.outreach_status = "READY_FOR_OUTREACH"
-        elif has_already_sent and not has_replied:
-            lead.outreach_status = "SENT"
-
+        lead.outreach_status = "READY_FOR_OUTREACH"
+        lead.followup_step = 0
+        lead.last_contacted_at = None
         lead.tier = "Strong Potential"
         lead.is_qualified = True
         if lead.email_status == "NEEDS_REVIEW" or not lead.email_status:

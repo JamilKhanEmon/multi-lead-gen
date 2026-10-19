@@ -285,8 +285,10 @@ export default function LeadsPipelinePage() {
       if (pipelineStage === "SENT" && !isSentMail(lead)) return false;
       if (pipelineStage === "HOT_DEALS" && !isHotDeal(lead)) return false;
       if (pipelineStage === "NO_EMAIL" && hasEmailForOutreach(lead)) return false;
-
-      if (activeTier !== "ALL" && lead.tier !== activeTier) return false;
+      // Only filter by activeTier when on ALL or REVIEW stages so approved leads in READY/SENT are not hidden
+      if (pipelineStage === "ALL" || pipelineStage === "REVIEW") {
+        if (activeTier !== "ALL" && lead.tier !== activeTier) return false;
+      }
 
       if (fitTierFilter !== "ALL" && (lead.fit_tier || "HOT") !== fitTierFilter) return false;
 

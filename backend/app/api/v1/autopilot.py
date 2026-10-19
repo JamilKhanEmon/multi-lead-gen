@@ -534,6 +534,8 @@ async def human_verify_lead_email(
 
     if data.approve_for_outreach:
         lead.outreach_status = "READY_FOR_OUTREACH"
+        lead.followup_step = 0
+        lead.last_contacted_at = None
         lead.tier = "Strong Potential"
         lead.is_qualified = True
         if lead.email_status == "NEEDS_REVIEW" or not lead.email_status:
