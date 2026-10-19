@@ -710,12 +710,13 @@ class MockAIClient:
         if "email step" in full_context or "cold email" in full_context:
             co_m = re.search(r"target company:\s*([^\n]+)", user_prompt, re.IGNORECASE)
             rec_m = re.search(r"recipient:\s*([^\n]+)", user_prompt, re.IGNORECASE)
-            sol_m = re.search(r"matched solution:\s*([^\n]+)", user_prompt, re.IGNORECASE)
-            gap_m = re.search(r"identified gap:\s*([^\n]+)", user_prompt, re.IGNORECASE)
+            sol_m = re.search(r"(?:our )?matched solution(?: to offer)?:\s*([^\n]+)", user_prompt, re.IGNORECASE)
+            gap_m = re.search(r"identified (?:real )?gap:\s*([^\n]+)", user_prompt, re.IGNORECASE)
 
             c_name = co_m.group(1).strip() if co_m else "your team"
             r_name = rec_m.group(1).strip() if rec_m else f"Team {c_name}"
-            s_name = sol_m.group(1).strip() if sol_m else "our specialized enterprise software"
+            s_name = sol_m.group(1).strip() if sol_m else "specialized enterprise software"
+            s_name = re.sub(r"^our\s+", "", s_name, flags=re.IGNORECASE)
             g_name = gap_m.group(1).strip() if gap_m else "streamlining client inquiries"
 
             return {
