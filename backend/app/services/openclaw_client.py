@@ -3,6 +3,7 @@ import os
 import json
 import uuid
 import re
+import random
 import urllib.request
 import urllib.parse
 from typing import Dict, Any, Optional, List, Tuple
@@ -141,32 +142,55 @@ class LiveResearchEngine:
 
         logger.info(f"DiscoveryOptimizer: Using {len(plan.get('search_queries', []))} targeted search queries and {len(plan.get('osm_queries', []))} OSM targets.")
 
-        # 1. Primary: High-coverage Web Search for genuine companies with official domains
+        # 1. Primary Goldmine: Live Google Maps & Places Local Business Discovery (Direct Phone Numbers & Official Websites)
         try:
-            browser_discovered = await cls._search_commercial_companies_via_browser(
+            maps_discovered = await cls._search_google_maps_via_browser(
                 industry=industry,
                 location=full_location,
                 limit=effective_limit,
-                business_type_override=business_type_override,
                 seen_domains=seen_domains,
                 seen_names=seen_names,
-                search_queries=plan.get("search_queries"),
-                plan=plan,
                 city=city,
                 country=country,
                 on_candidate_found=_stream_candidate,
             )
-            for b in browser_discovered:
-                if b not in discovered:
-                    b["city"] = city
-                    b["country"] = country
-                    discovered.append(b)
-                await _stream_candidate(b)
-            logger.info(f"LiveResearchEngine: Found {len(browser_discovered)} commercial entities with verified websites via live web search.")
+            for m in maps_discovered:
+                if m not in discovered:
+                    m["city"] = city
+                    m["country"] = country
+                    discovered.append(m)
+                await _stream_candidate(m)
+            logger.info(f"LiveResearchEngine: Found {len(maps_discovered)} verified local businesses via Google Maps & Places.")
         except Exception as e:
-            logger.warning(f"Live browser discovery fallback: {e}")
+            logger.warning(f"Google Maps discovery notice: {e}")
 
-        # 2. Multi-engine search expansion across targeted queries (capped to avoid stalls)
+        # 2. Multi-Engine Web & Multi-Social Search (Brave, Bing, Facebook, Instagram, LinkedIn)
+        if len(discovered) < effective_limit:
+            try:
+                browser_discovered = await cls._search_commercial_companies_via_browser(
+                    industry=industry,
+                    location=full_location,
+                    limit=effective_limit - len(discovered),
+                    business_type_override=business_type_override,
+                    seen_domains=seen_domains,
+                    seen_names=seen_names,
+                    search_queries=plan.get("search_queries"),
+                    plan=plan,
+                    city=city,
+                    country=country,
+                    on_candidate_found=_stream_candidate,
+                )
+                for b in browser_discovered:
+                    if b not in discovered:
+                        b["city"] = city
+                        b["country"] = country
+                        discovered.append(b)
+                    await _stream_candidate(b)
+                logger.info(f"LiveResearchEngine: Found {len(browser_discovered)} commercial entities via multi-engine web search.")
+            except Exception as e:
+                logger.warning(f"Live browser discovery fallback: {e}")
+
+        # 3. Supplemental search expansion across targeted queries (capped to avoid stalls)
         target_cap = effective_limit if not is_unlimited else 100
         if len(discovered) < target_cap:
             queries = plan.get("search_queries", []) or GeoExpander.build_search_queries(industry, full_location)
@@ -318,6 +342,207 @@ class LiveResearchEngine:
                     launch_kwargs["executable_path"] = cp
                     break
         return await p.chromium.launch(**launch_kwargs)
+
+    @classmethod
+    async def _search_google_maps_via_browser(
+        cls,
+        industry: str,
+        location: str,
+        limit: int = 25,
+        seen_domains: Optional[set] = None,
+        seen_names: Optional[set] = None,
+        city: str = "",
+        country: str = "",
+        on_candidate_found: Optional[Any] = None,
+    ) -> List[Dict[str, Any]]:
+        if seen_domains is None:
+            seen_domains = set()
+        if seen_names is None:
+            seen_names = set()
+
+        results = []
+        try:
+            from playwright.async_api import async_playwright
+            async with async_playwright() as p:
+                browser = await cls._launch_browser(p)
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    locale="en-US"
+                )
+                await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                page = await context.new_page()
+
+                search_query = f"{industry} in {location}".strip()
+                encoded_q = urllib.parse.quote(search_query)
+                maps_url = f"https://www.google.com/maps/search/{encoded_q}"
+                logger.info(f"OpenClaw [Maps]: Launching Google Maps live local extraction for '{search_query}'...")
+
+                try:
+                    await page.goto(maps_url, timeout=16000, wait_until="domcontentloaded")
+                    await page.wait_for_timeout(2500)
+
+                    # Handle Google consent dialog if present
+                    try:
+                        consent_btn = await page.query_selector('button[aria-label*="Accept all"], button:has-text("Accept all"), form[action*="consent"] button')
+                        if consent_btn:
+                            await consent_btn.click()
+                            await page.wait_for_timeout(1500)
+                    except Exception:
+                        pass
+
+                    # Human-like progressive scrolling of the feed to reveal 25-40 business cards
+                    feed_selector = 'div[role="feed"]'
+                    scroll_cycles = min(4, max(2, int(limit // 6)))
+                    for sc in range(scroll_cycles):
+                        try:
+                            await page.evaluate(f'''() => {{
+                                const feed = document.querySelector('{feed_selector}');
+                                if (feed) feed.scrollTop += 1200;
+                            }}''')
+                            # Anti-bot humanized jitter delay
+                            await asyncio.sleep(random.uniform(1.2, 1.8))
+                        except Exception:
+                            break
+
+                    raw_cards = await page.query_selector_all('div[role="feed"] > div > div[jsaction*="mouseover"]')
+                    if not raw_cards:
+                        raw_cards = await page.query_selector_all('div.Nv2PK')
+
+                    logger.info(f"OpenClaw [Maps]: Discovered {len(raw_cards)} raw Google business cards for '{search_query}'.")
+
+                    for card in raw_cards:
+                        if len(results) >= limit:
+                            break
+                        try:
+                            text = await card.inner_text()
+                            if not text or len(text.strip()) < 4:
+                                continue
+
+                            lines = [l.strip() for l in text.split("\n") if l.strip()]
+                            if not lines:
+                                continue
+                            raw_name = lines[0]
+                            # Clean name
+                            clean_name = re.sub(r'[\(\[\{].*?[\)\]\}]', '', raw_name).strip()
+                            clean_name = re.sub(r'\b(রিয়েল এস্টেট|রিয়েল এস্টেট|এজেন্সি|ডেভেলপার)\b', '', clean_name, flags=re.I).strip()
+                            clean_name = re.sub(r'[\s\-|,]+$', '', clean_name).strip()
+                            if not clean_name or len(clean_name) < 3:
+                                clean_name = raw_name.strip()
+
+                            clean_norm_name = re.sub(r'[^a-zA-Z0-9\u0980-\u09FF]', '', clean_name.lower())
+                            if not clean_norm_name or clean_norm_name in seen_names:
+                                continue
+
+                            # Extract links
+                            links = await card.eval_on_selector_all(
+                                'a',
+                                'els => els.map(e => ({href: e.href, label: e.getAttribute("aria-label") || "", text: e.innerText || ""}))'
+                            )
+
+                            website = None
+                            item_maps_url = None
+                            for l in links:
+                                h = l.get("href", "")
+                                if "maps/place" in h:
+                                    item_maps_url = h
+                                elif h.startswith("http") and not any(bad in h for bad in ["google.com", "goo.gl", "gstatic.com", "googleusercontent.com"]):
+                                    website = h
+
+                            # Extract phone
+                            phone_matches = re.findall(
+                                r'(?:\+?880\s?1[3-9]\d{8}|01[3-9]\d{2}[\s.-]?\d{6}|\+?[0-9]{2,4}[\s.-]?[0-9]{3,4}[\s.-]?[0-9]{4,6})',
+                                text
+                            )
+                            phone = phone_matches[0].strip() if phone_matches else None
+                            if phone and len(re.sub(r'\D', '', phone)) < 7:
+                                phone = None
+
+                            # Extract address snippet
+                            addr_lines = [
+                                l for l in lines[1:]
+                                if any(kw in l.lower() for kw in ["house", "road", "sector", "block", "floor", "plot", "avenue", "সড়ক", "সেক্টর", "প্লট", "রোড", "উত্তরা", "ঢাকা"])
+                                and not re.search(r'^\d+\.\d+', l)
+                            ]
+                            resolved_address = addr_lines[0] if addr_lines else location
+
+                            # Rating and review count
+                            rating = None
+                            review_count = None
+                            r_match = re.search(r'([১-৯0-9]\.[১-৯0-9])', text)
+                            if r_match:
+                                rating = r_match.group(1)
+
+                            domain = None
+                            facebook_url = None
+                            instagram_url = None
+                            is_social_only = False
+
+                            if website:
+                                parsed_web = urllib.parse.urlparse(website)
+                                d_net = parsed_web.netloc.lower().replace("www.", "")
+                                if "facebook.com" in d_net:
+                                    facebook_url = website
+                                    website = None
+                                    is_social_only = True
+                                elif "instagram.com" in d_net:
+                                    instagram_url = website
+                                    website = None
+                                    is_social_only = True
+                                else:
+                                    domain = d_net
+                                    if domain in seen_domains:
+                                        continue
+                                    seen_domains.add(domain)
+
+                            if not website and not phone and not facebook_url and not instagram_url:
+                                continue
+
+                            seen_names.add(clean_norm_name)
+                            m_q = urllib.parse.quote(f"{clean_name} {location}")
+                            final_maps_url = item_maps_url or f"https://www.google.com/maps/search/{m_q}"
+
+                            item = {
+                                "canonical_name": clean_name,
+                                "industry": industry,
+                                "location": location,
+                                "city": city,
+                                "country": country,
+                                "address": resolved_address,
+                                "website": website,
+                                "domain": domain,
+                                "facebook_url": facebook_url,
+                                "instagram_url": instagram_url,
+                                "google_maps_url": final_maps_url,
+                                "google_search_url": f"https://www.google.com/search?q={m_q}",
+                                "phone": phone,
+                                "email": None,
+                                "rating": rating,
+                                "review_count": review_count,
+                                "source_url": website or facebook_url or instagram_url or final_maps_url,
+                                "business_type": industry.lower().replace(" ", "_"),
+                                "snippet": text.replace("\n", " | ")[:250],
+                                "confidence": 0.98 if (website and phone) else 0.94,
+                                "is_social_only": is_social_only,
+                            }
+                            results.append(item)
+                            if on_candidate_found:
+                                try:
+                                    await on_candidate_found(item)
+                                except Exception as st_err:
+                                    logger.debug(f"Maps stream callback notice: {st_err}")
+
+                        except Exception as card_err:
+                            logger.debug(f"Maps card extraction notice: {card_err}")
+
+                except Exception as nav_err:
+                    logger.warning(f"Google Maps live navigation notice: {nav_err}")
+
+                await browser.close()
+        except Exception as e:
+            logger.warning(f"OpenClaw Google Maps browser extraction notice: {e}")
+
+        logger.info(f"OpenClaw [Maps]: Successfully extracted {len(results)} verified businesses with direct phones and websites.")
+        return results
 
     @classmethod
     async def _search_commercial_companies_via_browser(
@@ -943,6 +1168,83 @@ class LiveResearchEngine:
                 "source_url": actual_url,
                 "phone": phone,
                 "email": email,
+                "confidence": 0.95,
+                "is_social_only": True,
+            }
+            seen_names.add(clean_norm_name)
+            maps_query = urllib.parse.quote(f"{company_name} {location}")
+            candidate["google_maps_url"] = f"https://www.google.com/maps/search/{maps_query}"
+            candidate["google_search_url"] = f"https://www.google.com/search?q={maps_query}"
+            return candidate
+
+        # Check if actual_url is an Instagram business profile
+        is_ig_page = "instagram.com" in domain and len(parsed.path.strip("/")) > 0 and not any(
+            bad in parsed.path.lower() for bad in ["/p/", "/reel/", "/stories/", "/explore/", "/accounts/", "/developer/", "/about/"]
+        )
+        if is_ig_page:
+            company_name, detected_btype = cls._clean_company_identity(title, "instagram.com", snippet, industry, business_type_override)
+            clean_norm_name = re.sub(r'[^a-zA-Z0-9\u0980-\u09FF]', '', company_name.lower())
+            if clean_norm_name in seen_names or len(company_name) < 3 or clean_norm_name in ["instagram", "login", "home", "reels"]:
+                return None
+
+            phone = None
+            email = None
+            full_text = f"{title} {snippet}"
+            phone_match = re.search(r'(?:\+?880\s?1[3-9]\d{8}|01[3-9]\d{2}[\s.-]?\d{6}|\+?[0-9]{2,4}[\s.-]?[0-9]{3,4}[\s.-]?[0-9]{4,6})', full_text)
+            if phone_match:
+                raw_ph = phone_match.group(0).strip()
+                if len(re.sub(r'\D', '', raw_ph)) >= 7:
+                    phone = raw_ph
+
+            email_match = re.search(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', full_text)
+            if email_match:
+                cand_em = email_match.group(0).lower()
+                if not any(cand_em.endswith(x) for x in [".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"]):
+                    email = cand_em
+
+            candidate = {
+                "canonical_name": company_name,
+                "industry": industry,
+                "location": location,
+                "address": None,
+                "website": None,
+                "domain": None,
+                "instagram_url": actual_url,
+                "business_type": detected_btype,
+                "snippet": snippet or title,
+                "source_url": actual_url,
+                "phone": phone,
+                "email": email,
+                "confidence": 0.94,
+                "is_social_only": True,
+            }
+            seen_names.add(clean_norm_name)
+            maps_query = urllib.parse.quote(f"{company_name} {location}")
+            candidate["google_maps_url"] = f"https://www.google.com/maps/search/{maps_query}"
+            candidate["google_search_url"] = f"https://www.google.com/search?q={maps_query}"
+            return candidate
+
+        # Check if actual_url is a LinkedIn company page
+        is_li_page = "linkedin.com" in domain and "/company/" in parsed.path.lower()
+        if is_li_page:
+            company_name, detected_btype = cls._clean_company_identity(title, "linkedin.com", snippet, industry, business_type_override)
+            clean_norm_name = re.sub(r'[^a-zA-Z0-9\u0980-\u09FF]', '', company_name.lower())
+            if clean_norm_name in seen_names or len(company_name) < 3 or clean_norm_name in ["linkedin", "login", "jobs"]:
+                return None
+
+            candidate = {
+                "canonical_name": company_name,
+                "industry": industry,
+                "location": location,
+                "address": None,
+                "website": None,
+                "domain": None,
+                "linkedin_url": actual_url,
+                "business_type": detected_btype,
+                "snippet": snippet or title,
+                "source_url": actual_url,
+                "phone": None,
+                "email": None,
                 "confidence": 0.95,
                 "is_social_only": True,
             }

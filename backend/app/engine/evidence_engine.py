@@ -201,7 +201,7 @@ class EvidenceEngine:
             em = str(website_contact.get("extracted_email") or website_contact.get("email")).strip().lower()
             email_candidates.append({"email": em, "source": "Official Website"})
         if social_contact and social_contact.get("email"):
-            email_candidates.append({"email": str(social_contact["email"]).strip().lower(), "source": "Facebook"})
+            email_candidates.append({"email": str(social_contact["email"]).strip().lower(), "source": "Social Media (FB/IG/LI)"})
 
         emails_by_addr: Dict[str, List[str]] = {}
         for cand in email_candidates:

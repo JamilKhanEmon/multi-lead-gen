@@ -176,7 +176,7 @@ class DiscoveryOptimizer:
                 "3. High-Yield Web Queries: Generate 15 to 25 natural search queries combining each normalized sub-industry with the target city and specified sub-areas.\n"
                 "   CRITICAL: Focus primarily on commercial district and city-level queries (e.g. 'Car Showroom in Uttara Dhaka', 'Car Dealer Uttara Dhaka') rather than hyper-narrow sector/gali alleys (e.g. 'Sector 3 Road 4 Uttara') which return 0 search results. Search engines index businesses by commercial hub and city.\n"
                 "   CRITICAL: NEVER wrap multi-word combinations or whole queries in strict double quotes (\"...\"). Keep them natural so search engines return rich commercial results.\n"
-                "4. Social Media Discovery: Include queries targeting commercial Facebook business pages (e.g. 'site:facebook.com solar energy Dhaka', 'site:facebook.com IPS battery Dhaka').\n"
+                "4. Social Media Discovery: Include queries targeting commercial Facebook business pages, Instagram business profiles, and LinkedIn company pages (e.g. 'site:facebook.com solar energy Dhaka', 'site:instagram.com interior design Dhaka', 'site:linkedin.com/company real estate Dhaka').\n"
                 "5. Directory / OSM Targets: Generate 3 to 5 single-concept directory query strings (e.g. 'Solar Energy', 'Generator', 'Electrical Supplies').\n"
                 "6. Positive Keywords: Words indicating legitimate operating commercial businesses/services in these sectors.\n"
                 "7. Negative Keywords: Irrelevant noise, retail consumer goods, or unrelated shops to filter out (e.g. tyre, grocery, salon, dental, pharmacy, restaurant, clothes).\n\n"
@@ -289,10 +289,14 @@ class DiscoveryOptimizer:
             queries.append(f"{s_ind} company in {city_target} official website")
             queries.append(f"top {s_ind} firms and suppliers in {city_target}")
             queries.append(f"site:facebook.com {s_ind} {city_target}")
+            queries.append(f"site:instagram.com {s_ind} {city_target}")
+            queries.append(f"site:linkedin.com/company {s_ind} {city_target}")
 
             for a in areas:
                 queries.append(f"{s_ind} company in {a}, {city_target}".strip())
                 queries.append(f"site:facebook.com {s_ind} {a} {city_target}".strip())
+                queries.append(f"site:instagram.com {s_ind} {a} {city_target}".strip())
+                queries.append(f"site:linkedin.com/company {s_ind} {a} {city_target}".strip())
 
         queries = list(dict.fromkeys(queries))
         osm = list(dict.fromkeys(osm))[:5]
