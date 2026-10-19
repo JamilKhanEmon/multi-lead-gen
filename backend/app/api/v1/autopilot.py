@@ -767,13 +767,21 @@ async def get_inbox_messages(
         for s in sent_logs:
             body_txt = getattr(s, "body_snippet", "") or ""
             dt = s.sent_at or getattr(s, "created_at", None)
+            sender_email = "Outreach Sender"
+            err_msg = getattr(s, "error_message", "") or ""
+            if "(" in err_msg and ")" in err_msg:
+                try:
+                    sender_email = err_msg.split("(")[1].split(")")[0].strip()
+                except Exception:
+                    sender_email = "Outreach Sender"
+
             outbound_messages.append({
                 "id": f"sent_{s.id}",
                 "imap_seq": f"sent_{s.id}",
-                "account_email": s.recipient_email,
+                "account_email": sender_email if "@" in sender_email else s.recipient_email,
                 "account_id": "outbound",
-                "from_email": s.recipient_email,
-                "from_raw": f"To: {s.recipient_email}",
+                "from_email": sender_email,
+                "from_raw": f"From: {sender_email}",
                 "to": s.recipient_email,
                 "subject": s.subject or "(No Subject)",
                 "body": body_txt,
