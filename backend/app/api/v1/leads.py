@@ -1533,131 +1533,188 @@ async def dispatch_staggered_outreach(
     from datetime import timezone
     from app.engine.outreach_engine import OutreachEngine
     from app.models.autopilot import EmailOutreachLog
-
-    stmt = select(Lead).options(selectinload(Lead.business))
-    if data.lead_ids and len(data.lead_ids) > 0:
-        stmt = stmt.where(Lead.id.in_(data.lead_ids))
-    else:
-        stmt = stmt.where(
-            Lead.outreach_status.in_(["READY_FOR_OUTREACH", "HOLD", "PENDING"]),
-            Lead.is_qualified == True,
-            Lead.followup_step == 0,
-            Lead.last_contacted_at.is_(None)
-        )
-
-    res = await db.execute(stmt)
-    leads_to_send = res.scalars().all()
-
-    if not leads_to_send:
-        return {
-            "status": "COMPLETED",
-            "dispatched_count": 0,
-            "results": [],
-            "message": "No valid uncontacted leads found to dispatch."
-        }
-
     from app.models.email_template import EmailTemplate
 
-    active_personas = await OutreachEngine.get_active_personas(db=db)
-    active_inboxes = await OutreachEngine.get_active_inboxes(db=db)
-
-    t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
-    t_res = await db.execute(t_stmt)
-    active_tpl = t_res.scalar_one_or_none()
-
-    is_live = await OutreachEngine.is_smtp_configured(db=db)
-
-    dispatched = 0
-    results = []
-
-    for idx, lead in enumerate(leads_to_send):
-        biz = lead.business
-        if not biz or not biz.email:
-            continue
-
-        # Strict Safety Guard: Never re-dispatch to leads already sent or replied
-        if (lead.followup_step and lead.followup_step > 0) or lead.last_contacted_at:
-            logger.info(f"[Outreach Guard] Skipping '{biz.canonical_name}' - already contacted.")
-            continue
-        if lead.outreach_status in ("SENT", "FOLLOWUP_SENT", "REPLIED_HOT", "REPLIED_NEUTRAL", "DISCARDED"):
-            logger.info(f"[Outreach Guard] Skipping '{biz.canonical_name}' - status is '{lead.outreach_status}'.")
-            continue
-
-        recipient = biz.email.strip()
-        selected_inbox = active_inboxes[idx % len(active_inboxes)] if active_inboxes else None
-        selected_persona = active_personas[idx % len(active_personas)] if active_personas else None
-
-        # Always dynamically generate hyper-personalized email with rotated admin persona & inbox
-        subject, body = await OutreachEngine.render_email(
-            step=1,
-            lead_data={
-                "company_name": biz.canonical_name,
-                "contact_person": biz.contact_person or "Executive",
-                "city": biz.address or "",
-                "website": getattr(biz, "domain", ""),
-                "industry": getattr(biz, "business_type", ""),
-                "primary_gap": lead.primary_gap_summary,
-                "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
-                "what_they_need": getattr(lead, "what_they_need", None) or "",
-                "matched_service": getattr(lead, "matched_service", None) or "",
-                "selected_persona": selected_persona,
-                "personas": active_personas,
-                "selected_inbox": selected_inbox,
-                "custom_template": active_tpl
-            }
-        )
-
-        success, note = await OutreachEngine.dispatch_smtp_email(
-            recipient_email=recipient,
-            subject=subject,
-            body=body,
-            dry_run=not is_live,
-            db=db,
-            account_id=selected_inbox.get("id") if selected_inbox else None
-        )
-
-        if success:
-            lead.outreach_status = "SENT"
-            lead.followup_step = 1
-            lead.last_contacted_at = datetime.now(timezone.utc)
-
-            exp = dict(lead.explanation_json or {})
-            exp["outreach_draft"] = {
-                "subject": subject,
-                "body": body,
-                "full_email": f"Subject: {subject}\n\n{body}",
-                "is_llm_generated": True,
-                "sent_via_inbox": selected_inbox.get("from_email") if selected_inbox else None
-            }
-            lead.explanation_json = exp
-
-            log = EmailOutreachLog(
-                lead_id=lead.id,
-                step=1,
-                recipient_email=recipient,
-                subject=subject,
-                body_snippet=body,
-                status="SENT",
-                error_message=note,
-                sent_at=datetime.now(timezone.utc)
-            )
-            db.add(log)
-            dispatched += 1
-            results.append({"lead_id": str(lead.id), "company": biz.canonical_name, "email": recipient, "status": "SENT", "note": note})
+    try:
+        stmt = select(Lead).options(selectinload(Lead.business))
+        if data.lead_ids and len(data.lead_ids) > 0:
+            parsed_ids = []
+            for item in data.lead_ids:
+                try:
+                    parsed_ids.append(uuid.UUID(str(item).strip()))
+                except Exception:
+                    pass
+            if parsed_ids:
+                stmt = stmt.where(Lead.id.in_(parsed_ids))
         else:
-            results.append({"lead_id": str(lead.id), "company": biz.canonical_name, "email": recipient, "status": "FAILED", "note": note})
+            stmt = stmt.where(
+                Lead.outreach_status.in_(["READY_FOR_OUTREACH", "HOLD", "PENDING"]),
+                Lead.is_qualified == True,
+                Lead.followup_step == 0,
+                Lead.last_contacted_at.is_(None)
+            )
 
-        await db.commit()
+        res = await db.execute(stmt)
+        leads_to_send = res.scalars().all()
 
-        if idx < len(leads_to_send) - 1:
-            delay = random.uniform(data.min_delay_sec, data.max_delay_sec)
-            await asyncio.sleep(delay)
+        if not leads_to_send:
+            return {
+                "status": "COMPLETED",
+                "dispatched_count": 0,
+                "results": [],
+                "message": "No valid uncontacted leads found to dispatch."
+            }
 
-    return {
-        "status": "COMPLETED",
-        "mode": "LIVE SMTP" if is_live else "SIMULATED (DRY-RUN)",
-        "dispatched_count": dispatched,
-        "results": results,
-        "message": f"Successfully dispatched {dispatched} emails with human-paced anti-spam timing."
-    }
+        active_personas = await OutreachEngine.get_active_personas(db=db)
+        active_inboxes = await OutreachEngine.get_active_inboxes(db=db)
+
+        t_stmt = select(EmailTemplate).where(EmailTemplate.name == "default", EmailTemplate.is_active == True)
+        t_res = await db.execute(t_stmt)
+        active_tpl = t_res.scalar_one_or_none()
+
+        is_live = await OutreachEngine.is_smtp_configured(db=db)
+
+        dispatched = 0
+        results = []
+
+        for idx, lead in enumerate(leads_to_send):
+            biz = lead.business
+            c_name = getattr(biz, "canonical_name", "Unknown Lead") if biz else "Unknown Lead"
+
+            if not biz or not biz.email or not biz.email.strip():
+                results.append({
+                    "lead_id": str(lead.id),
+                    "company": c_name,
+                    "email": "N/A",
+                    "status": "SKIPPED",
+                    "note": "No valid email address found for this business record."
+                })
+                continue
+
+            # Strict Safety Guard: Never re-dispatch to leads already sent or replied
+            if (lead.followup_step and lead.followup_step > 0) or lead.last_contacted_at:
+                logger.info(f"[Outreach Guard] Skipping '{c_name}' - already contacted.")
+                results.append({
+                    "lead_id": str(lead.id),
+                    "company": c_name,
+                    "email": biz.email.strip(),
+                    "status": "SKIPPED",
+                    "note": f"Already contacted on {lead.last_contacted_at}"
+                })
+                continue
+
+            if lead.outreach_status in ("SENT", "FOLLOWUP_SENT", "REPLIED_HOT", "REPLIED_NEUTRAL", "DISCARDED"):
+                logger.info(f"[Outreach Guard] Skipping '{c_name}' - status is '{lead.outreach_status}'.")
+                results.append({
+                    "lead_id": str(lead.id),
+                    "company": c_name,
+                    "email": biz.email.strip(),
+                    "status": "SKIPPED",
+                    "note": f"Lead status is already '{lead.outreach_status}'"
+                })
+                continue
+
+            recipient = biz.email.strip()
+            selected_inbox = active_inboxes[idx % len(active_inboxes)] if active_inboxes else None
+            selected_persona = active_personas[idx % len(active_personas)] if active_personas else None
+
+            try:
+                # Always dynamically generate hyper-personalized email with rotated admin persona & inbox
+                subject, body = await OutreachEngine.render_email(
+                    step=1,
+                    lead_data={
+                        "company_name": c_name,
+                        "contact_person": biz.contact_person or "Executive",
+                        "city": biz.address or "",
+                        "website": getattr(biz, "domain", ""),
+                        "industry": getattr(biz, "business_type", ""),
+                        "primary_gap": lead.primary_gap_summary,
+                        "why_they_need_us": getattr(lead, "why_they_need_us", None) or lead.primary_gap_summary,
+                        "what_they_need": getattr(lead, "what_they_need", None) or "",
+                        "matched_service": getattr(lead, "matched_service", None) or "",
+                        "selected_persona": selected_persona,
+                        "personas": active_personas,
+                        "selected_inbox": selected_inbox,
+                        "custom_template": active_tpl
+                    }
+                )
+
+                success, note = await OutreachEngine.dispatch_smtp_email(
+                    recipient_email=recipient,
+                    subject=subject,
+                    body=body,
+                    dry_run=not is_live,
+                    db=db,
+                    account_id=selected_inbox.get("id") if selected_inbox else None
+                )
+
+                if success:
+                    lead.outreach_status = "SENT"
+                    lead.followup_step = 1
+                    lead.last_contacted_at = datetime.now(timezone.utc)
+
+                    exp = dict(lead.explanation_json or {})
+                    exp["outreach_draft"] = {
+                        "subject": subject,
+                        "body": body,
+                        "full_email": f"Subject: {subject}\n\n{body}",
+                        "is_llm_generated": True,
+                        "sent_via_inbox": selected_inbox.get("from_email") if selected_inbox else None
+                    }
+                    lead.explanation_json = exp
+
+                    try:
+                        log = EmailOutreachLog(
+                            lead_id=lead.id,
+                            campaign_id=None,
+                            step=1,
+                            recipient_email=recipient,
+                            subject=subject,
+                            body_snippet=body,
+                            status="SENT",
+                            error_message=note,
+                            sent_at=datetime.now(timezone.utc)
+                        )
+                        db.add(log)
+                    except Exception as log_err:
+                        logger.warning(f"Outreach log insertion note: {log_err}")
+
+                    dispatched += 1
+                    results.append({"lead_id": str(lead.id), "company": c_name, "email": recipient, "status": "SENT", "note": note})
+                else:
+                    results.append({"lead_id": str(lead.id), "company": c_name, "email": recipient, "status": "FAILED", "note": note})
+
+                try:
+                    await db.commit()
+                except Exception as commit_err:
+                    await db.rollback()
+                    logger.error(f"DB commit error during lead dispatch: {commit_err}")
+
+            except Exception as item_err:
+                logger.error(f"Error dispatching lead '{c_name}': {item_err}", exc_info=True)
+                results.append({"lead_id": str(lead.id), "company": c_name, "email": recipient, "status": "FAILED", "note": str(item_err)})
+
+            # Safe delay between 1.0 and 3.0 seconds so Nginx proxy timeout (60s) is never hit
+            if idx < len(leads_to_send) - 1:
+                raw_min = float(data.min_delay_sec or 1.0)
+                raw_max = float(data.max_delay_sec or 2.0)
+                min_d = min(max(raw_min, 0.5), 3.0)
+                max_d = min(max(raw_max, min_d), 5.0)
+                delay = random.uniform(min_d, max_d)
+                await asyncio.sleep(delay)
+
+        return {
+            "status": "COMPLETED",
+            "mode": "LIVE SMTP" if is_live else "SIMULATED (DRY-RUN)",
+            "dispatched_count": dispatched,
+            "results": results,
+            "message": f"Successfully dispatched {dispatched} emails with human-paced anti-spam timing."
+        }
+
+    except Exception as e:
+        logger.error(f"Fatal error in dispatch_staggered_outreach: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Outreach dispatch failed: {str(e)}"
+        )
 

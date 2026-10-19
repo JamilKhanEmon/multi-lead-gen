@@ -316,7 +316,11 @@ export async function dispatchStaggeredOutreach(data: {
     headers,
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to dispatch staggered outreach emails");
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    const msg = errData.detail || errData.message || `Server error (${res.status} ${res.statusText})`;
+    throw new Error(msg);
+  }
   return res.json();
 }
 

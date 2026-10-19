@@ -142,6 +142,7 @@ class LeadUpdate(BaseModel):
     custom_outreach_body: Optional[str] = None
 
 class StaggeredDispatchCreate(BaseModel):
-    lead_ids: Optional[List[uuid.UUID]] = None
-    min_delay_sec: int = Field(default=45, ge=1, le=600)
-    max_delay_sec: int = Field(default=90, ge=1, le=600)
+    lead_ids: Optional[List[Any]] = None
+    min_delay_sec: Optional[float] = Field(default=2.0, ge=0, le=600)
+    max_delay_sec: Optional[float] = Field(default=5.0, ge=0, le=600)
+

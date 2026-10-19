@@ -111,14 +111,14 @@ export default function LeadsPipelinePage() {
     setShowDispatchModal(true);
     setDispatchResult(null);
 
-    let minDelay = 45;
-    let maxDelay = 90;
+    let minDelay = 2;
+    let maxDelay = 4;
     if (dispatchPace === "WARMUP") {
-      minDelay = 60;
-      maxDelay = 120;
+      minDelay = 3;
+      maxDelay = 6;
     } else if (dispatchPace === "QUICK") {
-      minDelay = 15;
-      maxDelay = 30;
+      minDelay = 1;
+      maxDelay = 2;
     }
 
     try {

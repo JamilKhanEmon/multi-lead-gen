@@ -766,6 +766,9 @@ class OutreachEngine:
             selected_inbox = inboxes[cls._inbox_index % len(inboxes)]
             cls._inbox_index = (cls._inbox_index + 1) % len(inboxes)
 
+        if not selected_inbox:
+            return False, "No active SMTP inboxes configured to dispatch email."
+
         smtp_host = selected_inbox["host"]
         smtp_port = selected_inbox["port"]
         smtp_user = selected_inbox["user"]
