@@ -961,7 +961,15 @@ class LiveResearchEngine:
         business_type_override: Optional[str] = None,
     ) -> Tuple[str, str]:
         b_type = (business_type_override or search_industry).lower().replace(" ", "_").replace("-", "_")
-        dom_name = domain.split(".")[0].replace("-", " ").replace("_", " ").title()
+        dom_parts = (domain or "").lower().split(".")
+        subdomain_stops = {"www", "careers", "career", "jobs", "job", "m", "portal", "mail", "app", "dev", "en", "info"}
+        if len(dom_parts) >= 3 and dom_parts[0] in subdomain_stops:
+            dom_root = dom_parts[1]
+        elif len(dom_parts) >= 2 and dom_parts[0] in subdomain_stops:
+            dom_root = dom_parts[1]
+        else:
+            dom_root = dom_parts[0] if dom_parts else domain
+        dom_name = dom_root.replace("-", " ").replace("_", " ").title()
 
         GENERIC_TAGLINES = [
             "leading", "welcome to", "official website", "home page",
@@ -970,7 +978,14 @@ class LiveResearchEngine:
         ]
         GENERIC_STOP_WORDS = {
             "home", "official", "website", "company", "ltd", "limited", "inc", "corp", "llc",
-            "goodfirms", "clutch", "crunchbase", "yellowpages", "justdial", "directory", "listing", "pdf"
+            "goodfirms", "clutch", "crunchbase", "yellowpages", "justdial", "directory", "listing", "pdf",
+            "careers", "career", "jobs", "job", "hiring", "vacancy", "vacancies",
+            "contact", "contact us", "contactus", "about", "about us", "aboutus", "who we are",
+            "services", "our services", "service", "pricing", "plans",
+            "privacy policy", "terms of service", "terms", "terms and conditions",
+            "faq", "faqs", "help", "support", "blog", "blogs", "news", "articles",
+            "team", "our team", "portfolio", "projects", "gallery",
+            "login", "sign in", "signin", "signup", "sign up", "register", "cart", "checkout", "account", "my account"
         }
 
         parts = re.split(r'\||-|—|@|:|,', raw_title)
@@ -983,7 +998,7 @@ class LiveResearchEngine:
             if len(clean) >= 3 and len(clean) <= 80 and not any(k in clean_l for k in [
                 "best", "top", "ranked", "reviews", "directory", "directories", "listing", "listings",
                 "near me", "list", "guide", "2026", "2025", "home", "official", ".pdf",
-                "goodfirms", "clutch", "crunchbase"
+                "goodfirms", "clutch", "crunchbase", "careers", "privacy policy"
             ]):
                 if clean_l == target_ind_l or clean_l == f"{target_ind_l} company" or clean_l == f"{target_ind_l} services":
                     continue

@@ -278,7 +278,7 @@ export default function InboxPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
                     <span className={`text-[11px] truncate font-semibold ${msg.is_unread ? "text-white" : "text-slate-400"}`}>
-                      {msg.from_email}
+                      {msg.direction === "outbound" ? `To: ${msg.to || msg.from_email}` : msg.from_email}
                     </span>
                     <span className="text-[9px] text-slate-700 flex-shrink-0">{timeAgo(msg.date)}</span>
                   </div>
@@ -289,6 +289,7 @@ export default function InboxPage() {
                   <div className="flex items-center gap-1 mt-1">
                     {msg.is_unread && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />}
                     {msg.is_reply && <span className="text-[8px] px-1 py-0.5 rounded bg-sky-500/15 text-sky-400">↩ Reply</span>}
+                    {msg.direction === "outbound" && <span className="text-[8px] px-1 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-medium">📤 Sent</span>}
                   </div>
                 </div>
 

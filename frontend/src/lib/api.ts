@@ -2230,8 +2230,9 @@ export interface InboxMessage {
   date: string | null;
   is_unread: boolean;
   in_reply_to: string;
-  message_id: string;
   is_reply: boolean;
+  direction?: "inbound" | "outbound";
+  status?: string;
 }
 
 export async function fetchInboxMessages(limit = 50): Promise<{

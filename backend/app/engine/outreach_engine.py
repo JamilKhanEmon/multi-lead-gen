@@ -81,6 +81,36 @@ class OutreachEngine:
     # ── LLM-based classification — no keyword lists needed ──────────────────
 
     @classmethod
+    def _sanitize_company_name(cls, raw_name: str, domain: str = "") -> str:
+        name = (raw_name or "").strip()
+        GENERIC_STOPS = {
+            "careers", "career", "jobs", "job", "hiring", "vacancy", "vacancies",
+            "contact", "contact us", "contactus", "about", "about us", "aboutus", "who we are",
+            "services", "our services", "service", "pricing", "plans",
+            "privacy policy", "terms of service", "terms", "terms and conditions",
+            "faq", "faqs", "help", "support", "blog", "blogs", "news", "articles",
+            "team", "our team", "portfolio", "projects", "gallery",
+            "login", "sign in", "signin", "signup", "sign up", "register", "cart", "checkout", "account", "my account",
+            "home", "official", "website", "company", "untitled", "test", "demo"
+        }
+        name_lower = name.lower()
+        if not name or name_lower in GENERIC_STOPS or len(name) < 2:
+            if domain:
+                dom_parts = (domain or "").lower().split(".")
+                subdomain_stops = {"www", "careers", "career", "jobs", "job", "m", "portal", "mail", "app", "dev", "en", "info"}
+                if len(dom_parts) >= 3 and dom_parts[0] in subdomain_stops:
+                    dom_root = dom_parts[1]
+                elif len(dom_parts) >= 2 and dom_parts[0] in subdomain_stops:
+                    dom_root = dom_parts[1]
+                else:
+                    dom_root = dom_parts[0] if dom_parts else ""
+                clean_dom = dom_root.replace("-", " ").replace("_", " ").title().strip()
+                if clean_dom and clean_dom.lower() not in GENERIC_STOPS and len(clean_dom) >= 2:
+                    return clean_dom
+            return "your team"
+        return name
+
+    @classmethod
     def _resolve_signature(cls, company_name: str, lead_data: Dict[str, Any]) -> Tuple[str, str, str, str]:
         personas = lead_data.get("personas") or []
         sig_block = ""
@@ -135,14 +165,35 @@ class OutreachEngine:
                         parts.append(custom_tpl["sender_website"])
                     sig_block = "\n".join(parts).strip()
             
-            if not sig_block:
-                sender_name = lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or ""
-                if str(sender_name).strip().lower() == "test":
-                    sender_name = ""
-                sender_title = lead_data.get("sender_title") or ""
-                sender_company = lead_data.get("sender_company") or os.getenv("COMPANY_NAME") or ""
-                sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
-                sig_block = lead_data.get("signature_text") or ("\n".join(sig_lines) if sig_lines else "")
+        if not sig_block or sig_block.strip().lower() in ["test", ""]:
+            from app.core.config import settings
+            sender_company = (
+                lead_data.get("sender_company")
+                or getattr(settings, "COMPANY_NAME", "")
+                or os.getenv("COMPANY_NAME")
+                or getattr(settings, "SMTP_FROM_NAME", "")
+                or "NiBiz Soft"
+            ).strip() or "NiBiz Soft"
+
+            raw_s_name = (
+                lead_data.get("sender_name")
+                or getattr(settings, "SMTP_FROM_NAME", "")
+                or os.getenv("SMTP_FROM_NAME")
+                or ""
+            ).strip()
+
+            if not raw_s_name or raw_s_name.lower() in ["test", "", sender_company.lower()]:
+                sender_name = "Business Development Team"
+            else:
+                sender_name = raw_s_name
+
+            sender_title = (lead_data.get("sender_title") or "Client Solutions Director").strip()
+
+            sig_lines = ["Best regards,", "", sender_name, sender_title, sender_company]
+            sig_block = "\n".join([s for s in sig_lines if s is not None]).strip()
+        elif not any(sig_block.strip().lower().startswith(greeting) for greeting in ["best regards", "regards", "sincerely", "thanks", "warm regards", "cheers"]):
+            sig_block = f"Best regards,\n\n{sig_block}"
+
         return sig_block, sender_name, sender_title, sender_company
 
     @classmethod
@@ -161,7 +212,9 @@ class OutreachEngine:
         if custom_tpl and lead_data.get("force_template"):
             return cls.render_email_template(step, lead_data)
 
-        company_name = lead_data.get("company_name") or "Your Team"
+        raw_company = lead_data.get("company_name") or "Your Team"
+        website = lead_data.get("website") or ""
+        company_name = cls._sanitize_company_name(raw_company, website)
         raw_contact = str(lead_data.get("contact_person") or "").strip()
         if raw_contact and raw_contact.lower() not in ["there", "sir", "madam", "n/a", "none", "unknown", "team", "executive"]:
             contact_person = raw_contact
@@ -286,9 +339,11 @@ class OutreachEngine:
 
     @classmethod
     def render_email_template(cls, step: int, lead_data: Dict[str, Any]) -> Tuple[str, str]:
-        company_name = lead_data.get("company_name") or "Your Team"
+        raw_company = lead_data.get("company_name") or "Your Team"
+        website = lead_data.get("website") or ""
+        company_name = cls._sanitize_company_name(raw_company, website)
         raw_contact = str(lead_data.get("contact_person") or "").strip()
-        if raw_contact and raw_contact.lower() not in ["there", "sir", "madam", "n/a", "none", "unknown", "team"]:
+        if raw_contact and raw_contact.lower() not in ["there", "sir", "madam", "n/a", "none", "unknown", "team", "executive", "careers", "contact"]:
             contact_person = raw_contact
         else:
             contact_person = f"Team {company_name}"
@@ -361,7 +416,8 @@ class OutreachEngine:
             
             # Post-cleanup: Remove accidental double placeholders or punctuation
             subj = subj.replace("in your city", company_name).replace("your city", company_name).strip()
-            bdy = bdy.replace("in your city", f"in {city}" if has_real_city else "").replace("..).", ".)")
+            if sig_block and sig_block not in bdy:
+                bdy = f"{bdy.rstrip()}\n\n{sig_block}"
             return subj, bdy
 
         matched_svc = lead_data.get("matched_service") or f"{industry.title() if industry else 'Commercial'} Digital Workflow & Growth Solution"
@@ -374,11 +430,18 @@ class OutreachEngine:
             value_pitch = f"automate client inquiry response, eliminate operational bottlenecks, and scale customer conversions with {matched_svc}"
             call_to_action = f"walk through a brief 5-minute interactive live software demo prepared for {company_name}"
 
+        if has_real_city and city:
+            subject = f"Quick question regarding {company_name} ({city})"
+            intro_loc = f"in {city}"
+        else:
+            subject = f"Quick question regarding {company_name}"
+            intro_loc = "in your market"
+
         if step == 2:
             subject = f"Following up: Live Demo & Solution for {company_name}"
             body = (
                 f"Hi {contact_person},\n\n"
-                f"Just following up on my previous note regarding {company_name}. I know you're busy managing operations in {city}.\n\n"
+                f"Just following up on my previous note regarding {company_name}. I know you're busy managing operations {intro_loc}.\n\n"
                 f"We specialize in helping businesses in your space {value_pitch}.\n\n"
                 f"Would you be open to a quick 5-minute chat this week to walk through the live demo, or would you prefer a concise 1-page overview by email?\n\n"
                 f"{sig_block}"
@@ -393,15 +456,18 @@ class OutreachEngine:
                 f"{sig_block}"
             )
         else:
-            subject = f"Quick question regarding {company_name} ({city})"
             body = (
                 f"Hi {contact_person},\n\n"
-                f"I was researching top businesses in {city} and came across {company_name}.\n\n"
+                f"I was researching top businesses {intro_loc} and came across {company_name}.\n\n"
                 f"We develop specialized systems and marketing solutions to help companies in your industry {value_pitch}.\n\n"
                 f"We currently have a ready 5-minute interactive live software demo showcasing exactly how this works.\n\n"
                 f"Would you be open to a brief 5-minute call sometime this week or early next week to {call_to_action}?\n\n"
                 f"{sig_block}"
             )
+
+        # Guarantee signature is always cleanly attached
+        if sig_block and not body.endswith(sig_block):
+            body = f"{body.rstrip()}\n\n{sig_block}"
 
         return subject, body
 

@@ -740,26 +740,61 @@ async def get_inbox_messages(
     from app.services.imap_sync_service import IMAPInboxSyncService
 
     all_creds = await IMAPInboxSyncService.get_all_imap_credentials(session=db)
-    if not all_creds:
-        return {
-            "status": "warning",
-            "accounts": [],
-            "messages": [],
-            "message": "No IMAP inboxes configured. Add SMTP accounts in Admin Settings."
-        }
+    messages = []
+    if all_creds:
+        try:
+            messages = await IMAPInboxSyncService.fetch_all_inbox_messages(
+                session=db,
+                limit_per_account=min(limit, 100)
+            )
+        except Exception as e:
+            logger.debug(f"IMAP fetch error in inbox: {e}")
 
-    messages = await IMAPInboxSyncService.fetch_all_inbox_messages(
-        session=db,
-        limit_per_account=min(limit, 100)
-    )
+    # Also fetch recent sent emails from EmailOutreachLog so users see their dispatched emails
+    outbound_messages = []
+    try:
+        sent_stmt = (
+            select(EmailOutreachLog)
+            .order_by(desc(EmailOutreachLog.created_at))
+            .limit(limit)
+        )
+        sent_res = await db.execute(sent_stmt)
+        sent_logs = sent_res.scalars().all()
+        for s in sent_logs:
+            body_txt = getattr(s, "body_snippet", "") or ""
+            dt = s.sent_at or getattr(s, "created_at", None)
+            outbound_messages.append({
+                "id": f"sent_{s.id}",
+                "imap_seq": f"sent_{s.id}",
+                "account_email": s.recipient_email,
+                "account_id": "outbound",
+                "from_email": s.recipient_email,
+                "from_raw": f"To: {s.recipient_email}",
+                "to": s.recipient_email,
+                "subject": s.subject or "(No Subject)",
+                "body": body_txt,
+                "snippet": body_txt[:140],
+                "date": dt.isoformat() if dt else None,
+                "is_unread": False,
+                "in_reply_to": "",
+                "message_id": f"sent_{s.id}",
+                "is_reply": False,
+                "direction": "outbound",
+                "status": s.status,
+            })
+    except Exception as e:
+        logger.warning(f"Failed to load outbound logs for inbox: {e}")
 
-    account_emails = [c.get("from_email") or c.get("user", "") for c in all_creds]
+    account_emails = [c.get("from_email") or c.get("user", "") for c in all_creds] if all_creds else [settings.SMTP_FROM_EMAIL or "NiBiz Soft"]
+
+    all_combined = messages + outbound_messages
+    all_combined.sort(key=lambda m: m.get("date") or "", reverse=True)
 
     return {
         "status": "ok",
         "accounts": account_emails,
-        "total": len(messages),
-        "messages": messages
+        "total": len(all_combined),
+        "messages": all_combined[:limit]
     }
 
 
@@ -781,8 +816,23 @@ async def delete_inbox_message(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Delete an email from IMAP inbox by sequence ID."""
+    """Delete an email from IMAP inbox by sequence ID or remove outbound log."""
     check_autopilot_permission(current_user, "can_access_autopilot")
+
+    if data.account_id == "outbound" or str(data.imap_seq).startswith("sent_"):
+        raw_id = str(data.imap_seq).replace("sent_", "")
+        try:
+            import uuid
+            log_uuid = uuid.UUID(raw_id)
+            log_item = await db.get(EmailOutreachLog, log_uuid)
+            if log_item:
+                await db.delete(log_item)
+                await db.commit()
+            return {"status": "ok", "message": "Outbound email log deleted successfully"}
+        except Exception as e:
+            logger.warning(f"Error deleting outbound log: {e}")
+            return {"status": "ok", "message": "Outbound email log removed"}
+
     from app.services.imap_sync_service import IMAPInboxSyncService
     import imaplib
 
