@@ -1390,12 +1390,17 @@ export default function LeadsPipelinePage() {
                 {dispatchResult.results && dispatchResult.results.length > 0 && (
                   <div className="max-h-60 overflow-y-auto space-y-2 pr-1 text-xs">
                     {dispatchResult.results.map((res, i) => (
-                      <div key={i} className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
-                        <div className="truncate max-w-[260px]">
+                      <div key={i} className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex items-start justify-between gap-2">
+                        <div className="max-w-[340px] pr-2">
                           <span className="font-bold text-slate-200 block truncate">{res.company}</span>
                           <span className="text-[11px] text-slate-400 font-mono truncate block">{res.email}</span>
+                          {res.note && (
+                            <span className={`text-[10px] block mt-1 break-words font-mono ${res.status === "SENT" ? "text-emerald-400" : res.status === "SKIPPED" ? "text-amber-400" : "text-rose-400"}`}>
+                              {res.note}
+                            </span>
+                          )}
                         </div>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${res.status === "SENT" ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"}`}>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 ${res.status === "SENT" ? "bg-emerald-500/20 text-emerald-300" : res.status === "SKIPPED" ? "bg-amber-500/20 text-amber-300" : "bg-rose-500/20 text-rose-300"}`}>
                           {res.status}
                         </span>
                       </div>

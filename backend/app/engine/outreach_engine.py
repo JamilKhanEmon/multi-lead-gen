@@ -794,27 +794,33 @@ class OutreachEngine:
 
         def _send():
             try:
+                from email.header import Header
                 msg = MIMEMultipart("alternative")
-                msg["Subject"] = subject
-                msg["From"] = f"{from_name} <{from_email}>"
+                msg["Subject"] = Header(subject, "utf-8")
+                msg["From"] = f"{from_name} <{from_email}>" if from_name else from_email
                 msg["To"] = recipient_email
-                msg.attach(MIMEText(body, "plain"))
+                msg.attach(MIMEText(body, "plain", "utf-8"))
 
-                if smtp_port == 465:
-                    server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
+                port_int = int(smtp_port) if str(smtp_port).isdigit() else 587
+
+                if port_int == 465:
+                    server = smtplib.SMTP_SSL(smtp_host, port_int, timeout=15)
                 else:
-                    server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
+                    server = smtplib.SMTP(smtp_host, port_int, timeout=15)
                     server.starttls()
 
                 if smtp_user and smtp_pass:
                     server.login(smtp_user, smtp_pass)
 
-                server.sendmail(from_email, [recipient_email], msg.as_string())
+                # Envelope sender fallback for strict providers like Gmail
+                sender_addr = smtp_user if ("@" in str(smtp_user) and "gmail" in str(smtp_host).lower()) else from_email
+                server.sendmail(sender_addr, [recipient_email], msg.as_string())
                 server.quit()
                 return True, f"Sent via SMTP Inbox #{inbox_id} ({from_email}) successfully"
             except Exception as e:
-                logger.error(f"SMTP Dispatch Error (Inbox #{inbox_id}) to {recipient_email}: {e}")
-                return False, str(e)
+                err_detail = f"SMTP Error ({type(e).__name__}): {str(e)}"
+                logger.error(f"SMTP Dispatch Error (Inbox #{inbox_id}) to {recipient_email}: {err_detail}")
+                return False, err_detail
 
         return await loop.run_in_executor(None, _send)
 
