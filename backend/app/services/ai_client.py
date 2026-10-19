@@ -341,9 +341,11 @@ class AIClient:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 resp = await client.post(endpoint, json=payload, headers=headers)
                 
-                # If provider errors on strict response_format json_object, retry once without it
-                if resp.status_code == 400 and "response_format" in resp.text:
+                # If provider errors on strict response_format json_object or json_validate_failed (reasoning models), retry once
+                if resp.status_code == 400 and ("response_format" in resp.text or "json_validate_failed" in resp.text):
                     payload.pop("response_format", None)
+                    if payload.get("max_tokens", 0) < 1200:
+                        payload["max_tokens"] = 1500
                     resp = await client.post(endpoint, json=payload, headers=headers)
 
                 if resp.status_code == 200:
@@ -540,7 +542,7 @@ class AIClient:
         payload: Dict[str, Any] = {
             "model": model.strip(),
             "messages": test_messages,
-            "max_tokens": 60,
+            "max_tokens": 500,
             "temperature": 0.0,
             "response_format": {"type": "json_object"},
         }
@@ -549,8 +551,9 @@ class AIClient:
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.post(endpoint, json=payload, headers=headers)
-                if resp.status_code == 400 and "response_format" in resp.text:
+                if resp.status_code == 400 and ("response_format" in resp.text or "json_validate_failed" in resp.text):
                     payload.pop("response_format", None)
+                    payload["max_tokens"] = 800
                     resp = await client.post(endpoint, json=payload, headers=headers)
 
                 elapsed_ms = round((time.time() - t0) * 1000, 1)
