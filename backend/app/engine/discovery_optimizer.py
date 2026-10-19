@@ -67,6 +67,82 @@ class DiscoveryOptimizer:
 
         return [clean_country]
 
+    _zone_cache: Dict[str, List[str]] = {}
+
+    @classmethod
+    async def get_city_commercial_zones(cls, city: str, country: str = "", limit: int = 35) -> List[str]:
+        clean_city = (city or "").strip()
+        clean_country = (country or "").strip()
+        if not clean_city:
+            return []
+
+        base_city = clean_city.split(",")[-1].strip() if "," in clean_city else clean_city
+        cache_key = f"{base_city.lower()}_{clean_country.lower()}_{limit}"
+        if cache_key in cls._zone_cache and len(cls._zone_cache[cache_key]) > 1:
+            return cls._zone_cache[cache_key]
+
+        try:
+            ai = AIClient(timeout=20.0)
+            system_prompt = (
+                "You are an expert urban commercial geography intelligence engine for B2B sales discovery.\n"
+                "Your job is to decompose any major city in the world into its top high-density commercial business districts, "
+                "economic corridors, corporate hubs, and active commercial neighborhoods.\n"
+                "Examples:\n"
+                "- Dhaka, Bangladesh: Gulshan, Banani, Uttara, Dhanmondi, Mirpur, Motijheel, Mohakhali, Tejgaon, Badda, Bashundhara, Baridhara, Kawran Bazar, Panthapath, Shantinagar, Khilgaon, Lalmatia, Wari, Rampura, Mogbazar, Malibagh\n"
+                "- New York, USA: Manhattan, Brooklyn, Queens, Midtown, Financial District, Chelsea, SoHo, DUMBO, Long Island City, Astoria\n"
+                "- London, UK: City of London, Westminster, Canary Wharf, Camden, Kensington, Shoreditch, Islington, Greenwich, Hackney\n"
+                "- Dubai, UAE: Business Bay, Downtown Dubai, Dubai Marina, Deira, Bur Dubai, JLT, Al Barsha, Sheikh Zayed Road, Al Quoz\n\n"
+                f"Decompose the target city into up to {limit} prominent commercial districts.\n"
+                "Format: Return pure JSON with key 'zones': ['Area 1', 'Area 2', ...]."
+            )
+            user_prompt = f"Target City: {base_city}\nTarget Country: {clean_country}\nList up to {limit} commercial hubs and business districts."
+            result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt, max_tokens=800)
+            if isinstance(result, dict) and "zones" in result and isinstance(result["zones"], list):
+                valid_zones = [f"{str(z).strip()}, {base_city}" for z in result["zones"] if str(z).strip() and str(z).strip().lower() != base_city.lower()]
+                if len(valid_zones) > 1:
+                    logger.info(f"DiscoveryOptimizer: Urban zone decomposition for '{base_city}' produced {len(valid_zones)} commercial zones.")
+                    cls._zone_cache[cache_key] = valid_zones[:limit]
+                    return valid_zones[:limit]
+        except Exception as e:
+            logger.warning(f"DiscoveryOptimizer: Urban zone expansion note for '{base_city}': {e}")
+
+        # Deterministic fallback for common major cities
+        if "dhaka" in base_city.lower():
+            fallback_dhaka = [
+                f"{a}, Dhaka" for a in [
+                    "Gulshan", "Banani", "Uttara", "Dhanmondi", "Mirpur", "Motijheel",
+                    "Mohakhali", "Tejgaon", "Badda", "Bashundhara", "Baridhara",
+                    "Kawran Bazar", "Panthapath", "Shantinagar", "Khilgaon", "Lalmatia", "Wari"
+                ]
+            ]
+            cls._zone_cache[cache_key] = fallback_dhaka[:limit]
+            return fallback_dhaka[:limit]
+
+        return [clean_city]
+
+    @classmethod
+    async def get_related_b2b_keywords(cls, industry: str, limit: int = 6) -> List[str]:
+        clean_ind = (industry or "").strip()
+        if not clean_ind:
+            return []
+        try:
+            ai = AIClient(timeout=15.0)
+            system_prompt = (
+                "You are an expert B2B market researcher.\n"
+                "Given an industry keyword, return 4 to 6 closely related B2B business search terms/sub-sectors to discover more companies in the same market.\n"
+                "Example for 'Real Estate': ['Property Developer', 'Real Estate Agency', 'Commercial Property', 'Apartment Developer', 'Real Estate Broker']\n"
+                "Format: Return pure JSON with key 'keywords': ['Term 1', 'Term 2', ...]."
+            )
+            user_prompt = f"Target Industry: {clean_ind}"
+            result = await ai.analyze(system_prompt=system_prompt, user_prompt=user_prompt, max_tokens=300)
+            if isinstance(result, dict) and "keywords" in result and isinstance(result["keywords"], list):
+                kws = [str(k).strip() for k in result["keywords"] if str(k).strip()]
+                if kws:
+                    return kws[:limit]
+        except Exception:
+            pass
+        return [clean_ind]
+
     @classmethod
     async def optimize_search_plan(
         cls,

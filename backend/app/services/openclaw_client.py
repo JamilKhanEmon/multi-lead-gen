@@ -444,6 +444,59 @@ class LiveResearchEngine:
                                     await on_candidate_found(biz)
                                 except Exception as stream_err:
                                     logger.debug(f"Browser stream candidate callback notice: {stream_err}")
+
+                    # Page 2 deep search when target limit requires higher lead volume
+                    if limit > 20 and len(results) < limit and items:
+                        try:
+                            await page.goto(
+                                f"https://www.bing.com/search?q={encoded_q}&first=11",
+                                timeout=7000,
+                                wait_until="domcontentloaded",
+                            )
+                            p2_items = await page.eval_on_selector_all(
+                                'li.b_algo',
+                                '''els => els.map(el => {
+                                    const a = el.querySelector('h2 a') || el.querySelector('a[href^="http"]');
+                                    const desc = el.querySelector('.b_caption p, p');
+                                    let href = a ? a.href : '';
+                                    if (href.includes('bing.com/ck/a')) {
+                                        const match = href.match(/[?&]u=a1([a-zA-Z0-9_\\-]+)/);
+                                        if (match && match[1]) {
+                                            try {
+                                                let b64 = match[1].replace(/-/g, '+').replace(/_/g, '/');
+                                                while (b64.length % 4) b64 += '=';
+                                                href = atob(b64);
+                                            } catch(e) {}
+                                        }
+                                    }
+                                    return {
+                                        url: href,
+                                        title: a ? (a.innerText || a.textContent || '') : '',
+                                        snippet: desc ? (desc.innerText || desc.textContent || '') : ''
+                                    };
+                                }).filter(x => x.url && !x.url.includes('bing.com'))'''
+                            )
+                            for it in (p2_items or []):
+                                if len(results) >= limit:
+                                    break
+                                url = it.get("url", "")
+                                title = it.get("title", "")
+                                snippet = it.get("snippet", "")
+                                biz = cls._process_candidate_url(
+                                    url, title, snippet, industry, location, business_type_override, seen_domains, seen_names, plan=plan
+                                )
+                                if biz:
+                                    biz["city"] = city
+                                    biz["country"] = country
+                                    results.append(biz)
+                                    if on_candidate_found:
+                                        try:
+                                            await on_candidate_found(biz)
+                                        except Exception:
+                                            pass
+                        except Exception as p2_err:
+                            logger.debug(f"Bing page 2 pagination notice: {p2_err}")
+
                 await browser.close()
         except Exception as e:
             logger.info(f"Browser search unavailable ({e}), using fast HTTP search engine fallback.")

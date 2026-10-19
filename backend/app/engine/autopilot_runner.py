@@ -87,6 +87,18 @@ class AutopilotRunner:
                 campaign.sub_cities = expanded
                 await db.commit()
 
+        # If sub_cities has small count (e.g. 1-3 cities) but user requested high volume (e.g. 200 leads):
+        # Automatically decompose city into its active commercial business zones
+        if (effective_batch > 20 or effective_batch <= 0) and len(sub_cities) <= 3:
+            expanded_zones = []
+            for sc in sub_cities:
+                if sc and sc.lower() not in ["all", ""]:
+                    zones = await DiscoveryOptimizer.get_city_commercial_zones(sc, campaign.country or "", limit=35)
+                    expanded_zones.extend(zones)
+            if len(expanded_zones) > len(sub_cities):
+                sub_cities = expanded_zones
+                logger.info(f"[AUTOPILOT EXPANSION] Expanded city into {len(sub_cities)} commercial business zones to satisfy target of {effective_batch} leads.")
+
         if not sub_cities:
             sub_cities = [campaign.country] if campaign.country else [""]
 
@@ -661,6 +673,47 @@ class AutopilotRunner:
 
                 if effective_batch > 0 and len(all_added_leads) >= effective_batch:
                     break
+
+            # Secondary Persistent Autopilot Target Loop: Keep discovering until effective_batch is reached
+            if effective_batch > 0 and len(all_added_leads) < effective_batch:
+                logger.info(
+                    f"[AUTOPILOT TARGET EXTENSION] Discovered {len(all_added_leads)}/{effective_batch} leads in primary pass. "
+                    "Expanding into related commercial keywords and adjacent commercial zones to satisfy target quota..."
+                )
+                primary_kw = keywords[0] if keywords else "Business"
+                related_kws = await DiscoveryOptimizer.get_related_b2b_keywords(primary_kw, limit=5)
+                extra_keywords = [rk for rk in related_kws if rk.lower() not in [k.lower() for k in keywords]]
+
+                secondary_pairs = [(ekw, sc) for ekw in extra_keywords for sc in sub_cities]
+                for ext_kw, ext_city in secondary_pairs:
+                    if len(all_added_leads) >= effective_batch:
+                        logger.info(f"[AUTOPILOT TARGET REACHED] Fully satisfied target batch with {len(all_added_leads)} verified leads.")
+                        break
+                    ext_city_clean = ext_city.strip()
+                    if not ext_city_clean:
+                        continue
+                    ext_sub = ""
+                    ext_main = ext_city_clean
+                    if "," in ext_city_clean:
+                        parts = [p.strip() for p in ext_city_clean.split(",") if p.strip()]
+                        if len(parts) > 1:
+                            ext_sub = parts[0]
+                            ext_main = parts[-1]
+                    try:
+                        ext_res = await LiveResearchEngine.discover_businesses(
+                            industry=ext_kw,
+                            country=campaign.country,
+                            city=ext_main,
+                            sub_city=ext_sub,
+                            company_limit=max(15, effective_batch - len(all_added_leads)),
+                            on_candidate_found=process_cand_live,
+                        )
+                        for cand in ext_res.get("discovered_companies", []):
+                            if len(all_added_leads) >= effective_batch:
+                                break
+                            await process_cand_live(cand)
+                    except Exception as ext_err:
+                        logger.debug(f"Autopilot secondary extension notice for '{ext_kw}' in {ext_city_clean}: {ext_err}")
 
         except Exception as batch_err:
             logger.error(f"[AUTOPILOT RUN FAIL] Error in campaign run: {batch_err}")

@@ -100,13 +100,22 @@ async def handle_discover_businesses(
     city = payload.get("city", "").strip()
     sub_city = payload.get("sub_city", "").strip()
 
+    sub_areas = payload.get("sub_areas")
+    if (not sub_areas or len(sub_areas) <= 2) and (company_limit > 20 or company_limit <= 0):
+        target_zone_city = city or location or country
+        if target_zone_city:
+            auto_zones = await DiscoveryOptimizer.get_city_commercial_zones(target_zone_city, country, limit=35)
+            if auto_zones and len(auto_zones) > 1:
+                sub_areas = auto_zones
+                logger.info(f"TaskDiscover: Auto-expanded '{target_zone_city}' into {len(sub_areas)} commercial zones for high target ({company_limit}).")
+
     val_plan = await DiscoveryOptimizer.optimize_search_plan(
         industry=industry,
         location=location,
         country=country,
         city=city,
         sub_city=sub_city,
-        sub_areas=payload.get("sub_areas"),
+        sub_areas=sub_areas,
     )
 
     seen_biz_ids = set()
@@ -282,7 +291,7 @@ async def handle_discover_businesses(
                 "location": location,
                 "company_limit": company_limit,
                 "business_type_override": payload.get("business_type_override"),
-                "sub_areas": payload.get("sub_areas"),
+                "sub_areas": sub_areas,
                 "on_candidate_found": process_and_enqueue_candidate,
             },
         )
