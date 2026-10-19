@@ -1981,9 +1981,7 @@ export async function resetCompanyKBDefaults(): Promise<CompanyKB> {
   return res.json();
 }
 
-// ---------------------------------------------------------------------------
 // Conversational Lead Qualification & Meta Chatbot API
-// ---------------------------------------------------------------------------
 
 export interface ConversationMessage {
   id: string;
