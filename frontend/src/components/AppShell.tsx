@@ -23,12 +23,13 @@ import {
   Bot,
   MessageSquare,
 } from "lucide-react";
-import { getStoredUser, logoutUser, AuthUser, hasPermission, changePassword, changeEmail } from "@/lib/api";
+import { getStoredUser, logoutUser, AuthUser, hasPermission, changePassword, changeEmail, fetchCurrentUser } from "@/lib/api";
 import NotificationCenter from "@/components/NotificationCenter";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -58,6 +59,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     const user = getStoredUser();
     setCurrentUser(user);
     setAuthChecked(true);
+
+    if (user) {
+      fetchCurrentUser()
+        .then((fresh) => {
+          if (fresh) {
+            localStorage.setItem("leadgen_user", JSON.stringify(fresh));
+            setCurrentUser(fresh);
+          }
+        })
+        .catch(() => {});
+    }
 
     const isAuthRoute = pathname === "/login" || pathname === "/admin";
 
