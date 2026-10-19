@@ -570,6 +570,10 @@ class AutopilotRunner:
                             city=target_city_clean
                         )
                         if is_office_hrs:
+                            active_inboxes = await OutreachEngine.get_active_inboxes(db=db)
+                            selected_inbox = active_inboxes[total_dispatched_count % len(active_inboxes)] if active_inboxes else None
+                            selected_persona = active_personas[total_dispatched_count % len(active_personas)] if active_personas else None
+
                             subject, body = await OutreachEngine.render_email(
                                 step=1,
                                 lead_data={
@@ -582,7 +586,9 @@ class AutopilotRunner:
                                     "why_they_need_us": why_they_need_us,
                                     "what_they_need": what_they_need,
                                     "matched_service": matched_service,
+                                    "selected_persona": selected_persona,
                                     "personas": active_personas,
+                                    "selected_inbox": selected_inbox,
                                     "custom_template": active_tpl if getattr(campaign, "use_global_template", True) else None
                                 }
                             )
@@ -591,7 +597,8 @@ class AutopilotRunner:
                                 subject=subject,
                                 body=body,
                                 dry_run=False,
-                                db=db
+                                db=db,
+                                account_id=str(selected_inbox["id"]) if selected_inbox else None
                             )
                             if success:
                                 lead.outreach_status = "SENT"

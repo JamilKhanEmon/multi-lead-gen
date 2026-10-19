@@ -785,7 +785,7 @@ async def get_inbox_messages(
     except Exception as e:
         logger.warning(f"Failed to load outbound logs for inbox: {e}")
 
-    account_emails = [c.get("from_email") or c.get("user", "") for c in all_creds] if all_creds else [settings.SMTP_FROM_EMAIL or "NiBiz Soft"]
+    account_emails = [c.get("from_email") or c.get("user", "") for c in all_creds] if all_creds else [settings.SMTP_FROM_EMAIL or "Default Account"]
 
     all_combined = messages + outbound_messages
     all_combined.sort(key=lambda m: m.get("date") or "", reverse=True)

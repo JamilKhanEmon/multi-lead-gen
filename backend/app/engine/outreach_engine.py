@@ -110,33 +110,44 @@ class OutreachEngine:
             return "your team"
         return name
 
+    _sig_index: int = 0
+    _inbox_index: int = 0
+
     @classmethod
     def _resolve_signature(cls, company_name: str, lead_data: Dict[str, Any]) -> Tuple[str, str, str, str]:
-        personas = lead_data.get("personas") or []
+        # 1. First check if a persona was already chosen in runner rotation
+        p = lead_data.get("selected_persona")
+        if not p:
+            personas = lead_data.get("personas") or []
+            if personas:
+                p = personas[cls._sig_index % len(personas)]
+                cls._sig_index = (cls._sig_index + 1) % len(personas)
+
         sig_block = ""
         sender_name = ""
         sender_title = ""
         sender_company = ""
-        if personas:
-            p = personas[hash(company_name) % len(personas)]
+
+        if p:
             if isinstance(p, dict):
-                raw_sig = p.get("raw_content") or p.get("raw_signature") or ""
-                if not raw_sig and (p.get("name") or p.get("title")):
-                    raw_sig = f"{p.get('name', '')}\n{p.get('title', '')}\n{p.get('company', '')}".strip()
-                sig_block = raw_sig.strip()
-                sender_name = p.get("name") or ""
-                sender_title = p.get("title") or ""
-                sender_company = p.get("company") or os.getenv("COMPANY_NAME", "")
+                raw_sig = (p.get("raw_content") or p.get("raw_signature") or "").strip()
+                sender_name = (p.get("name") or "").strip()
+                sender_title = (p.get("title") or "").strip()
+                sender_company = (p.get("company") or "").strip()
             else:
                 raw_sig = getattr(p, "raw_content", "") or ""
                 if not raw_sig and hasattr(p, "render_signature"):
                     raw_sig = p.render_signature()
-                elif not raw_sig and (getattr(p, "name", None) or getattr(p, "title", None)):
-                    raw_sig = f"{getattr(p, 'name', '')}\n{getattr(p, 'title', '')}\n{getattr(p, 'company', '')}".strip()
-                sig_block = raw_sig.strip()
-                sender_name = getattr(p, "name", "")
-                sender_title = getattr(p, "title", "")
-                sender_company = getattr(p, "company", os.getenv("COMPANY_NAME", ""))
+                raw_sig = (raw_sig or "").strip()
+                sender_name = (getattr(p, "name", "") or "").strip()
+                sender_title = (getattr(p, "title", "") or "").strip()
+                sender_company = (getattr(p, "company", "") or "").strip()
+
+            if raw_sig:
+                sig_block = raw_sig
+            else:
+                sig_lines = [s for s in [sender_name, sender_title, sender_company] if s]
+                sig_block = "\n".join(sig_lines).strip()
         else:
             custom_tpl = lead_data.get("custom_template")
             if custom_tpl:
@@ -164,33 +175,15 @@ class OutreachEngine:
                     if custom_tpl.get("sender_website"):
                         parts.append(custom_tpl["sender_website"])
                     sig_block = "\n".join(parts).strip()
-            
-        if not sig_block or sig_block.strip().lower() in ["test", ""]:
-            from app.core.config import settings
-            sender_company = (
-                lead_data.get("sender_company")
-                or getattr(settings, "COMPANY_NAME", "")
-                or os.getenv("COMPANY_NAME")
-                or getattr(settings, "SMTP_FROM_NAME", "")
-                or "NiBiz Soft"
-            ).strip() or "NiBiz Soft"
 
-            raw_s_name = (
-                lead_data.get("sender_name")
-                or getattr(settings, "SMTP_FROM_NAME", "")
-                or os.getenv("SMTP_FROM_NAME")
-                or ""
-            ).strip()
-
-            if not raw_s_name or raw_s_name.lower() in ["test", "", sender_company.lower()]:
-                sender_name = "Business Development Team"
+        # If still no signature from admin pool or template, fall back strictly to active inbox from_name
+        if not sig_block:
+            inbox_cfg = lead_data.get("inbox") or lead_data.get("selected_inbox") or {}
+            sender_name = inbox_cfg.get("from_name") or lead_data.get("sender_name") or os.getenv("SMTP_FROM_NAME") or ""
+            if sender_name and sender_name.strip().lower() not in ["test", ""]:
+                sig_block = f"Best regards,\n\n{sender_name.strip()}"
             else:
-                sender_name = raw_s_name
-
-            sender_title = (lead_data.get("sender_title") or "Client Solutions Director").strip()
-
-            sig_lines = ["Best regards,", "", sender_name, sender_title, sender_company]
-            sig_block = "\n".join([s for s in sig_lines if s is not None]).strip()
+                sig_block = "Best regards"
         elif not any(sig_block.strip().lower().startswith(greeting) for greeting in ["best regards", "regards", "sincerely", "thanks", "warm regards", "cheers"]):
             sig_block = f"Best regards,\n\n{sig_block}"
 
@@ -248,30 +241,26 @@ class OutreachEngine:
         try:
             if ai_client is None:
                 from app.services.ai_client import AIClient
-                ai_client = AIClient(timeout=12.0)
+                ai_client = AIClient(timeout=35.0)
 
             step_descriptions = {
-                1: "Step 1 Initial Cold Outreach: Introduce high-value growth opportunity or operational software solution, mention specific gap respectfully, offer a 5-minute interactive live software demo or walkthrough sometime this week or early next week.",
-                2: "Step 2 Follow-up (Sent 4 days later): Polite, concise check-in referencing previous observation, ask if they'd like a 1-page summary or a 5-minute live demo call.",
-                3: "Step 3 Breakup Email (Sent 8 days later): Respectful final note acknowledging they may be busy, closing the file politely while leaving the door open for future modernization."
+                1: "Step 1 Initial Cold Outreach: Introduce high-value growth opportunity, mention specific gap respectfully, offer a 5-minute brief walkthrough or conversation sometime this week or early next week.",
+                2: "Step 2 Follow-up (Sent 4 days later): Polite, concise check-in referencing previous observation, ask if they'd like a 1-page summary or a 5-minute call.",
+                3: "Step 3 Breakup Email (Sent 8 days later): Respectful final note acknowledging they may be busy, closing the file politely while leaving the door open for future collaboration."
             }
             step_instruction = step_descriptions.get(step, step_descriptions[1])
 
-            sender_agency = (sender_company or "our software and digital solutions team").strip()
+            sender_agency = sender_company.strip() if sender_company else "our team"
             system_prompt = (
                 f"You are an elite B2B Sales Director writing tailored, concise, high-converting cold emails on behalf of {sender_agency}.\n\n"
                 "STRICT STRUCTURE (Follow this exact 4-part skeleton):\n"
                 f"Line 1 (Greeting): Hi {contact_person},\n"
-                "Line 2 (Hook & Real Finding): Exactly 1 respectful, natural sentence referencing their company in their city and their ACTUAL verified gap or growth observation from the prompt. Speak directly to their industry.\n"
-                f"Line 3 (Value & Matched Solution): 1-2 concise sentences highlighting how our specific solution ({matched_service}) eliminates this exact bottleneck and drives tangible business ROI for them.\n"
-                "Line 4 (Low-Friction CTA): Exactly 1 friendly sentence asking for a 5-minute brief interactive walkthrough or discussion sometime this week or early next week.\n\n"
+                "Line 2 (Hook & Real Finding): Exactly 1 respectful, natural sentence referencing their company in their market and their ACTUAL verified gap or growth observation from the prompt. Speak directly to their industry.\n"
+                f"Line 3 (Value & Matched Solution): 1-2 concise sentences highlighting how {matched_service} eliminates this exact bottleneck and drives tangible business ROI for them.\n"
+                "Line 4 (Low-Friction CTA): Exactly 1 friendly sentence asking for a 5-minute brief walkthrough or discussion sometime this week or early next week.\n\n"
                 "CRITICAL CONSTRAINTS (ZERO REPETITION / ZERO CANNED PHRASES):\n"
-                "- ADAPT STRICTLY TO THE RECIPIENT'S INDUSTRY:\n"
-                "  * If Solar, Energy, Construction, Engineering, Manufacturing, or B2B: NEVER mention 'online booking' or 'booking calendars'. Focus on project quote requests, solar ROI calculators, RFP / project inquiry workflows, inventory & operational tracking, or commercial project pipeline.\n"
-                "  * If Healthcare, Dental, Clinic, Salon, or Spa: Focus on automated patient/client appointment scheduling and calendar sync.\n"
-                "  * If Wholesale, Distribution, or Retail: Focus on bulk quote requests, WhatsApp catalog inquiries, and automated order routing.\n"
-                "  * If Real Estate or Architecture: Focus on property inquiries, viewing requests, and lead follow-up.\n"
-                "- LENGTH: STRICT MAXIMUM 80 WORDS. Keep paragraphs separated by double newlines. Mobile-friendly.\n"
+                "- ADAPT STRICTLY TO THE RECIPIENT'S INDUSTRY.\n"
+                "- LENGTH: STRICT MAXIMUM 90 WORDS. Keep paragraphs separated by double newlines. Mobile-friendly.\n"
                 "- TONE: Human, conversational, executive-level. NO corporate fluff ('Hope you are well', 'Allow me to introduce', 'I am writing to').\n"
                 "- NO hardcoded days of the week (never mention Thursday, Monday, etc.).\n"
                 "- NEVER include proof links, URLs, raw data brackets, or citations (e.g. absolutely no '[Proof Link: ...]'). Write completely natural, professional business sentences.\n"
@@ -318,18 +307,14 @@ class OutreachEngine:
 
                 llm_body = f"{first_line}\n{rest}" if rest else first_line
 
-                # Guardrail: If LLM produced an excessively long essay (> 130 words), fall back to crisp template
-                word_count = len(llm_body.split())
-                if word_count > 130:
-                    logger.warning(f"OutreachEngine: LLM body exceeded 130 words ({word_count} words). Falling back to crisp template.")
-                    return cls.render_email_template(step, lead_data)
+                # Strip any sign-off the LLM might have written so admin signature attaches cleanly
+                for sign_off in ["best regards", "warm regards", "sincerely", "regards", "cheers", "thanks"]:
+                    pattern = rf"\n\s*{sign_off}[^\n]*(\n.*)?$"
+                    llm_body = re.sub(pattern, "", llm_body, flags=re.IGNORECASE).strip()
 
-                if sig_block:
-                    full_body = f"{llm_body}\n\n{sig_block}"
-                else:
-                    full_body = llm_body
+                full_body = f"{llm_body}\n\n{sig_block}" if sig_block else llm_body
 
-                logger.info(f"OutreachEngine: LLM successfully generated Step {step} email for '{company_name}' ({word_count} words)")
+                logger.info(f"OutreachEngine: LLM successfully generated Step {step} email for '{company_name}'")
                 return llm_subject, full_body
 
         except Exception as e:
@@ -423,45 +408,41 @@ class OutreachEngine:
         matched_svc = lead_data.get("matched_service") or f"{industry.title() if industry else 'Commercial'} Digital Workflow & Growth Solution"
         has_no_website = bool("Zero official website" in str(primary_gap) or "NO_WEBSITE" in str(lead_data.get("why_they_need_us") or ""))
 
-        if has_no_website:
-            value_pitch = f"launch a high-converting digital portal and automated client inquiry funnel tailored for your {industry or 'business'}"
-            call_to_action = f"see the live interactive software demo and prototype we modeled for {company_name}"
-        else:
-            value_pitch = f"automate client inquiry response, eliminate operational bottlenecks, and scale customer conversions with {matched_svc}"
-            call_to_action = f"walk through a brief 5-minute interactive live software demo prepared for {company_name}"
-
+        sol_text = str(matched_svc).strip() if matched_svc else "streamlining client communication and inquiry capture"
         if has_real_city and city:
             subject = f"Quick question regarding {company_name} ({city})"
             intro_loc = f"in {city}"
         else:
             subject = f"Quick question regarding {company_name}"
-            intro_loc = "in your market"
+            intro_loc = ""
+
+        loc_phrase = f" {intro_loc}" if intro_loc else ""
+        gap_phrase = f" regarding {primary_gap}" if primary_gap else ""
 
         if step == 2:
-            subject = f"Following up: Live Demo & Solution for {company_name}"
+            subject = f"Following up: {company_name}"
             body = (
                 f"Hi {contact_person},\n\n"
-                f"Just following up on my previous note regarding {company_name}. I know you're busy managing operations {intro_loc}.\n\n"
-                f"We specialize in helping businesses in your space {value_pitch}.\n\n"
-                f"Would you be open to a quick 5-minute chat this week to walk through the live demo, or would you prefer a concise 1-page overview by email?\n\n"
+                f"Just following up on my previous note regarding {company_name}.\n\n"
+                f"We specialize in {sol_text}.\n\n"
+                f"Would you be open to a quick 5-minute conversation sometime this week?\n\n"
                 f"{sig_block}"
             )
         elif step == 3:
             subject = f"Permission to close your file, {contact_person}?"
             body = (
                 f"Hi {contact_person},\n\n"
-                f"I haven't heard back, so I assume modernizing systems to {value_pitch} isn't an active priority for {company_name} right now.\n\n"
-                f"I won't take up any more of your time. If you ever want to see the interactive demo in the future, feel free to reach out anytime.\n\n"
+                f"I haven't heard back, so I assume this isn't an active priority for {company_name} right now.\n\n"
+                f"I won't take up any more of your time. If your priorities change in the future, feel free to reach out anytime.\n\n"
                 f"Wishing {company_name} continued success!\n\n"
                 f"{sig_block}"
             )
         else:
             body = (
                 f"Hi {contact_person},\n\n"
-                f"I was researching top businesses {intro_loc} and came across {company_name}.\n\n"
-                f"We develop specialized systems and marketing solutions to help companies in your industry {value_pitch}.\n\n"
-                f"We currently have a ready 5-minute interactive live software demo showcasing exactly how this works.\n\n"
-                f"Would you be open to a brief 5-minute call sometime this week or early next week to {call_to_action}?\n\n"
+                f"I was researching top businesses{loc_phrase} and came across {company_name}{gap_phrase}.\n\n"
+                f"We specialize in {sol_text}.\n\n"
+                f"Would you be open to a brief 5-minute call sometime this week or early next week to discuss this?\n\n"
                 f"{sig_block}"
             )
 
