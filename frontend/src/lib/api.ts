@@ -937,6 +937,7 @@ export interface DashboardPermissions {
   can_run_research?: boolean;
   can_view_inbox?: boolean;
   can_send_emails?: boolean;
+  can_delete_inbox?: boolean;
   can_view_replies?: boolean;
   can_access_autopilot?: boolean;
   can_create_autopilot_campaigns?: boolean;
@@ -989,7 +990,8 @@ export function hasPermission(
     permissionKey === "can_manage_smtp" ||
     permissionKey === "can_manage_ai_settings" ||
     permissionKey === "can_manage_users" ||
-    permissionKey === "can_delete_leads"
+    permissionKey === "can_delete_leads" ||
+    permissionKey === "can_delete_inbox"
   ) {
     return false;
   }

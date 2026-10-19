@@ -212,6 +212,7 @@ function PermissionSelector({
         can_run_research: true,
         can_view_inbox: true,
         can_send_emails: true,
+        can_delete_inbox: isSuperAdmin,
         can_view_replies: true,
         can_access_autopilot: true,
         can_create_autopilot_campaigns: true,
@@ -235,6 +236,7 @@ function PermissionSelector({
         can_run_research: false,
         can_view_inbox: true,
         can_send_emails: false,
+        can_delete_inbox: false,
         can_view_replies: true,
         can_access_autopilot: false,
         can_create_autopilot_campaigns: false,
@@ -258,6 +260,7 @@ function PermissionSelector({
         can_run_research: true,
         can_view_inbox: true,
         can_send_emails: true,
+        can_delete_inbox: false,
         can_view_replies: true,
         can_access_autopilot: false,
         can_create_autopilot_campaigns: false,
@@ -281,6 +284,7 @@ function PermissionSelector({
         can_run_research: false,
         can_view_inbox: true,
         can_send_emails: false,
+        can_delete_inbox: false,
         can_view_replies: false,
         can_access_autopilot: true,
         can_create_autopilot_campaigns: false,
@@ -426,6 +430,15 @@ function PermissionSelector({
               className="rounded accent-purple-500"
             />
             <span className="text-slate-300">Email Templates & Signature</span>
+          </label>
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800/80 cursor-pointer hover:bg-slate-800/50 transition">
+            <input
+              type="checkbox"
+              checked={perms.can_delete_inbox === true}
+              onChange={(e) => onChange({ ...perms, can_delete_inbox: e.target.checked })}
+              className="rounded accent-rose-500"
+            />
+            <span className="text-rose-400 font-medium">Delete Inbox Messages</span>
           </label>
         </div>
       </div>
@@ -1138,6 +1151,7 @@ export default function AdminPortalPage() {
         can_run_research: true,
         can_view_inbox: true,
         can_send_emails: true,
+        can_delete_inbox: true,
         can_view_replies: true,
         can_access_autopilot: true,
         can_create_autopilot_campaigns: true,
@@ -1161,6 +1175,7 @@ export default function AdminPortalPage() {
         can_run_research: false,
         can_view_inbox: true,
         can_send_emails: false,
+        can_delete_inbox: false,
         can_view_replies: true,
         can_access_autopilot: false,
         can_create_autopilot_campaigns: false,
@@ -1238,6 +1253,7 @@ export default function AdminPortalPage() {
       can_run_research: false,
       can_view_inbox: true,
       can_send_emails: false,
+      can_delete_inbox: false,
       can_view_replies: true,
       can_access_autopilot: false,
       can_create_autopilot_campaigns: false,
@@ -2616,7 +2632,7 @@ export default function AdminPortalPage() {
               )}
 
 
-              {hasPermission(currentUser, "can_access_autopilot", false) && (
+              {(hasPermission(currentUser, "can_view_replies", true) || hasPermission(currentUser, "can_access_autopilot", false)) && (
                 <Link
                   href="/replies"
                   className="w-full py-2 px-4 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 hover:border-orange-400/50 text-orange-300 font-semibold text-xs flex items-center justify-center gap-2 transition"
@@ -2626,7 +2642,7 @@ export default function AdminPortalPage() {
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               )}
-              {hasPermission(currentUser, "can_access_autopilot", false) && (
+              {(hasPermission(currentUser, "can_view_inbox", true) || hasPermission(currentUser, "can_access_autopilot", false)) && (
                 <Link
                   href="/inbox"
                   className="w-full py-2 px-4 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 hover:border-sky-400/50 text-sky-300 font-semibold text-xs flex items-center justify-center gap-2 transition"

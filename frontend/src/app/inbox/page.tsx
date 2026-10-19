@@ -311,6 +311,10 @@ export default function InboxPage() {
   };
 
   const handleDeleteConversation = async (conv: ConversationThread) => {
+    if (!hasPermission(currentUser, "can_delete_inbox", false)) {
+      alert("Permission Denied: Your account does not have permission to delete inbox messages.");
+      return;
+    }
     if (!confirm(`Delete conversation with "${conv.client_email}" (${conv.message_count} messages)?`)) return;
     setDeletingId(conv.id);
     try {
@@ -570,17 +574,19 @@ export default function InboxPage() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteConversation(conv);
-                    }}
-                    disabled={deletingId === conv.id}
-                    title="Delete entire conversation"
-                    className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 w-6 h-6 rounded-lg bg-red-500/20 hover:bg-red-500/40 text-red-400 flex items-center justify-center text-[10px] transition disabled:opacity-50"
-                  >
-                    {deletingId === conv.id ? "⏳" : "🗑"}
-                  </button>
+                  {hasPermission(currentUser, "can_delete_inbox", false) && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteConversation(conv);
+                      }}
+                      disabled={deletingId === conv.id}
+                      title="Delete entire conversation"
+                      className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 w-6 h-6 rounded-lg bg-red-500/20 hover:bg-red-500/40 text-red-400 flex items-center justify-center text-[10px] transition disabled:opacity-50"
+                    >
+                      {deletingId === conv.id ? "⏳" : "🗑"}
+                    </button>
+                  )}
                 </div>
               );
             })
@@ -642,14 +648,16 @@ export default function InboxPage() {
                       Reply (Restricted)
                     </span>
                   )}
-                  <button
-                    onClick={() => handleDeleteConversation(activeConv)}
-                    disabled={deletingId === activeConv.id}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-medium transition disabled:opacity-50"
-                    title="Delete Conversation"
-                  >
-                    {deletingId === activeConv.id ? "⏳" : "🗑️"}
-                  </button>
+                  {hasPermission(currentUser, "can_delete_inbox", false) && (
+                    <button
+                      onClick={() => handleDeleteConversation(activeConv)}
+                      disabled={deletingId === activeConv.id}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-medium transition disabled:opacity-50"
+                      title="Delete Conversation"
+                    >
+                      {deletingId === activeConv.id ? "⏳" : "🗑️"}
+                    </button>
+                  )}
                 </div>
               </div>
               <p className="text-[10px] text-slate-500 mt-1">

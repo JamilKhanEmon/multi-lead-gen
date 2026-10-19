@@ -99,6 +99,14 @@ def check_autopilot_permission(user: User, required_perm: str = "can_access_auto
             detail="Permission Denied: Your account does not have permission to send or reply to emails."
         )
 
+    if required_perm == "can_delete_inbox":
+        if perms.get("can_delete_inbox") is True or user.role in ["super_admin", "admin"]:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission Denied: Your account does not have permission to delete inbox emails or logs."
+        )
+
     if perms.get("can_access_autopilot") is not True:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -646,7 +654,7 @@ async def trigger_inbox_sync(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    check_autopilot_permission(current_user, "can_access_autopilot")
+    check_autopilot_permission(current_user, "can_view_inbox")
     from app.services.imap_sync_service import IMAPInboxSyncService
     
     all_creds = await IMAPInboxSyncService.get_all_imap_credentials(session=db)
@@ -855,7 +863,7 @@ async def delete_inbox_message(
     current_user: User = Depends(get_current_user)
 ):
     """Delete an email from IMAP inbox by sequence ID or remove outbound log."""
-    check_autopilot_permission(current_user, "can_view_inbox")
+    check_autopilot_permission(current_user, "can_delete_inbox")
 
     if data.account_id == "outbound" or str(data.imap_seq).startswith("sent_"):
         raw_id = str(data.imap_seq).replace("sent_", "")
