@@ -1,29 +1,14 @@
 import uuid
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, Boolean, Integer, DateTime, ForeignKey, Index
+from sqlalchemy import String, Text, Boolean, Integer, DateTime, ForeignKey, Index, Float
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin, UUIDMixin
 
-DEFAULT_OBJECTIONS: List[Dict[str, str]] = [
-    {
-        "trigger": "busy",
-        "counter": "আমি সম্পূর্ণ বুঝতে পারছি! এজন্যই আমি ফোনে সময় নেব না। মাত্র ১০ মিনিটের একটা ডেমোতে লাইভ সমাধান দেখিয়ে দেব। কাল সকাল ১১টায় নাকি বিকাল ৩টায় আপনার সুবিধা?"
-    },
-    {
-        "trigger": "price",
-        "counter": "আমাদের প্রাথমিক পাইলট টেস্ট সম্পূর্ণ রিস্ক-ফ্রি, কোনো অগ্রিম চার্জ ছাড়াই। কাল বিকাল ৩টায় বিস্তারিত শেয়ার করতে পারি?"
-    },
-    {
-        "trigger": "already have",
-        "counter": "চমৎকার! আমাদের বেশিরভাগ ক্লায়েন্ট ইতিমধ্যে থাকা সিস্টেমের সাথে আমাদের অডিট লেয়ার ব্যবহার করে কোনো ডাউনটাইম ছাড়াই। মাত্র ৫ মিনিটের একটা কম্প্যারিজন কি কাল দেখানো সম্ভব?"
-    },
-    {
-        "trigger": "send email",
-        "counter": "অবশ্যই, আমি এক্সিকিউটিভ ডকটি পাঠিয়ে দিচ্ছি! আপনি রিভিউ করার ফাঁকে কি শুক্রবার ১০ মিনিটের জন্য একটা কুইক ডেমো কল রেখে দেব?"
-    }
-]
+DEFAULT_OBJECTIONS: List[Dict[str, str]] = []
+DEFAULT_SCRIPT_QUESTIONS: List[Dict[str, Any]] = []
+DEFAULT_FAQ_KB: List[Dict[str, Any]] = []
 
 DEFAULT_COUNTRY_LANGUAGE_MAP: Dict[str, str] = {
     "Bangladesh": "Bengali",
@@ -66,20 +51,38 @@ When a time is agreed, confirm the slot and state that the meeting link is being
     )
     
     meeting_platform: Mapped[str] = mapped_column(String(50), default="Google Meet", nullable=False)
+    calendly_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    calendly_api_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     office_hours_start: Mapped[str] = mapped_column(String(10), default="10:00", nullable=False)
     office_hours_end: Mapped[str] = mapped_column(String(10), default="18:00", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     objections_json: Mapped[list] = mapped_column(JSONB, default=DEFAULT_OBJECTIONS, nullable=False)
+    script_questions_json: Mapped[list] = mapped_column(JSONB, default=DEFAULT_SCRIPT_QUESTIONS, nullable=False)
+    faq_kb_json: Mapped[list] = mapped_column(JSONB, default=DEFAULT_FAQ_KB, nullable=False)
 
     # ElevenLabs & Telephony Settings
     voice_provider: Mapped[str] = mapped_column(String(50), default="elevenlabs", nullable=False)
     elevenlabs_api_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     elevenlabs_voice_id: Mapped[str] = mapped_column(String(100), default="21m00Tcm4TlvDq8ikWAM", nullable=False) # Rachel / default
     elevenlabs_model_id: Mapped[str] = mapped_column(String(100), default="eleven_multilingual_v2", nullable=False)
+    elevenlabs_agent_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    elevenlabs_llm: Mapped[str] = mapped_column(String(50), default="gemini-1.5-flash", nullable=False)
     
     cloned_voice_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     cloned_voice_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     cloned_voice_sample_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # ElevenLabs Studio Controls
+    interruptible: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    voice_stability: Mapped[float] = mapped_column(Float, default=0.5, nullable=False)
+    voice_similarity: Mapped[float] = mapped_column(Float, default=0.75, nullable=False)
+    voice_speed: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    agent_timezone: Mapped[str] = mapped_column(String(50), default="Asia/Dhaka", nullable=False)
+
+    # Dynamic Speech Prompts (Zero Hardcoded Speech, Admin sets manually)
+    whatsapp_prompt_question: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    email_prompt_question: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    meeting_confirmation_speech: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Auto-Call Autopilot
     auto_call_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -100,17 +103,31 @@ When a time is agreed, confirm the slot and state that the meeting link is being
             "first_message": self.first_message,
             "system_prompt": self.system_prompt,
             "meeting_platform": self.meeting_platform,
+            "calendly_url": self.calendly_url or "",
+            "calendly_api_key_configured": bool(self.calendly_api_key),
             "office_hours_start": self.office_hours_start,
             "office_hours_end": self.office_hours_end,
             "is_active": self.is_active,
-            "objections_json": self.objections_json or DEFAULT_OBJECTIONS,
+            "objections_json": self.objections_json or [],
+            "script_questions_json": self.script_questions_json or [],
+            "faq_kb_json": self.faq_kb_json or [],
             "voice_provider": self.voice_provider,
             "elevenlabs_api_key_configured": bool(self.elevenlabs_api_key),
             "elevenlabs_voice_id": self.elevenlabs_voice_id,
             "elevenlabs_model_id": self.elevenlabs_model_id,
+            "elevenlabs_agent_id": self.elevenlabs_agent_id,
+            "elevenlabs_llm": self.elevenlabs_llm or "gemini-1.5-flash",
             "cloned_voice_id": self.cloned_voice_id,
             "cloned_voice_name": self.cloned_voice_name,
             "cloned_voice_sample_url": self.cloned_voice_sample_url,
+            "interruptible": self.interruptible if self.interruptible is not None else True,
+            "voice_stability": self.voice_stability if self.voice_stability is not None else 0.5,
+            "voice_similarity": self.voice_similarity if self.voice_similarity is not None else 0.75,
+            "voice_speed": self.voice_speed if self.voice_speed is not None else 1.0,
+            "agent_timezone": self.agent_timezone or "Asia/Dhaka",
+            "whatsapp_prompt_question": self.whatsapp_prompt_question or "",
+            "email_prompt_question": self.email_prompt_question or "",
+            "meeting_confirmation_speech": self.meeting_confirmation_speech or "",
             "auto_call_enabled": self.auto_call_enabled,
             "max_daily_calls": self.max_daily_calls,
             "country_language_map": self.country_language_map or DEFAULT_COUNTRY_LANGUAGE_MAP,

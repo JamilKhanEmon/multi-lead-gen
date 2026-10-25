@@ -11,19 +11,33 @@ class VoiceKnowledgeBaseCreate(BaseModel):
     first_message: str = "Hello {{client_name}}, this is {{agent_persona_name}} from {{my_company}}. I'm reaching out regarding {{company_name}}'s recent operational audit."
     system_prompt: str
     meeting_platform: str = "Google Meet"
+    calendly_url: Optional[str] = None
+    calendly_api_key: Optional[str] = None
     office_hours_start: str = "10:00"
     office_hours_end: str = "18:00"
     is_active: bool = True
     objections_json: List[Dict[str, str]] = Field(default_factory=list)
+    script_questions_json: List[Dict[str, Any]] = Field(default_factory=list)
+    faq_kb_json: List[Dict[str, Any]] = Field(default_factory=list)
     voice_provider: str = "elevenlabs"
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
     elevenlabs_model_id: str = "eleven_multilingual_v2"
+    elevenlabs_agent_id: Optional[str] = None
+    elevenlabs_llm: str = "gemini-1.5-flash"
     cloned_voice_id: Optional[str] = None
     cloned_voice_name: Optional[str] = None
     auto_call_enabled: bool = False
     max_daily_calls: int = 50
     country_language_map: Dict[str, str] = Field(default_factory=dict)
+    interruptible: bool = True
+    voice_stability: float = 0.5
+    voice_similarity: float = 0.75
+    voice_speed: float = 1.0
+    agent_timezone: str = "Asia/Dhaka"
+    whatsapp_prompt_question: Optional[str] = None
+    email_prompt_question: Optional[str] = None
+    meeting_confirmation_speech: Optional[str] = None
 
 class VoiceKnowledgeBaseUpdate(BaseModel):
     name: Optional[str] = None
@@ -35,20 +49,34 @@ class VoiceKnowledgeBaseUpdate(BaseModel):
     first_message: Optional[str] = None
     system_prompt: Optional[str] = None
     meeting_platform: Optional[str] = None
+    calendly_url: Optional[str] = None
+    calendly_api_key: Optional[str] = None
     office_hours_start: Optional[str] = None
     office_hours_end: Optional[str] = None
     is_active: Optional[bool] = None
     objections_json: Optional[List[Dict[str, str]]] = None
+    script_questions_json: Optional[List[Dict[str, Any]]] = None
+    faq_kb_json: Optional[List[Dict[str, Any]]] = None
     voice_provider: Optional[str] = None
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_voice_id: Optional[str] = None
     elevenlabs_model_id: Optional[str] = None
+    elevenlabs_agent_id: Optional[str] = None
+    elevenlabs_llm: Optional[str] = None
     cloned_voice_id: Optional[str] = None
     cloned_voice_name: Optional[str] = None
     cloned_voice_sample_url: Optional[str] = None
     auto_call_enabled: Optional[bool] = None
     max_daily_calls: Optional[int] = None
     country_language_map: Optional[Dict[str, str]] = None
+    interruptible: Optional[bool] = None
+    voice_stability: Optional[float] = None
+    voice_similarity: Optional[float] = None
+    voice_speed: Optional[float] = None
+    agent_timezone: Optional[str] = None
+    whatsapp_prompt_question: Optional[str] = None
+    email_prompt_question: Optional[str] = None
+    meeting_confirmation_speech: Optional[str] = None
 
 class VoiceKnowledgeBaseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -63,20 +91,34 @@ class VoiceKnowledgeBaseResponse(BaseModel):
     first_message: str
     system_prompt: str
     meeting_platform: str
+    calendly_url: Optional[str] = ""
+    calendly_api_key_configured: bool = False
     office_hours_start: str
     office_hours_end: str
     is_active: bool
     objections_json: List[Dict[str, str]] = Field(default_factory=list)
+    script_questions_json: List[Dict[str, Any]] = Field(default_factory=list)
+    faq_kb_json: List[Dict[str, Any]] = Field(default_factory=list)
     voice_provider: str = "elevenlabs"
     elevenlabs_api_key_configured: bool = False
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
     elevenlabs_model_id: str = "eleven_multilingual_v2"
+    elevenlabs_agent_id: Optional[str] = None
+    elevenlabs_llm: str = "gemini-1.5-flash"
     cloned_voice_id: Optional[str] = None
     cloned_voice_name: Optional[str] = None
     cloned_voice_sample_url: Optional[str] = None
     auto_call_enabled: bool = False
     max_daily_calls: int = 50
     country_language_map: Dict[str, str] = Field(default_factory=dict)
+    interruptible: bool = True
+    voice_stability: float = 0.5
+    voice_similarity: float = 0.75
+    voice_speed: float = 1.0
+    agent_timezone: str = "Asia/Dhaka"
+    whatsapp_prompt_question: Optional[str] = None
+    email_prompt_question: Optional[str] = None
+    meeting_confirmation_speech: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

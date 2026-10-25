@@ -654,6 +654,22 @@ export async function generateB2BPoster(payload: {
   return res.json();
 }
 
+export interface ScriptQuestionItem {
+  step: number;
+  purpose: string;
+  question: string;
+  active: boolean;
+}
+
+export interface FaqKbItem {
+  id: string;
+  category: string;
+  question: string;
+  triggers: string;
+  answer: string;
+  active: boolean;
+}
+
 export interface VoiceKnowledgeBase {
   id?: string;
   name: string;
@@ -665,21 +681,36 @@ export interface VoiceKnowledgeBase {
   first_message: string;
   system_prompt: string;
   meeting_platform: string;
+  calendly_url?: string;
+  calendly_api_key?: string;
+  calendly_api_key_configured?: boolean;
   office_hours_start: string;
   office_hours_end: string;
   is_active: boolean;
   objections_json: Array<{ trigger: string; counter: string }>;
+  script_questions_json?: ScriptQuestionItem[];
+  faq_kb_json?: FaqKbItem[];
   voice_provider?: string;
   elevenlabs_api_key?: string;
   elevenlabs_api_key_configured?: boolean;
   elevenlabs_voice_id?: string;
   elevenlabs_model_id?: string;
+  elevenlabs_agent_id?: string;
+  elevenlabs_llm?: string;
   cloned_voice_id?: string;
   cloned_voice_name?: string;
   cloned_voice_sample_url?: string;
   auto_call_enabled?: boolean;
   max_daily_calls?: number;
   country_language_map?: Record<string, string>;
+  interruptible?: boolean;
+  voice_stability?: number;
+  voice_similarity?: number;
+  voice_speed?: number;
+  agent_timezone?: string;
+  whatsapp_prompt_question?: string;
+  email_prompt_question?: string;
+  meeting_confirmation_speech?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -722,15 +753,44 @@ export interface VoiceCallLog {
 }
 
 export async function fetchVoiceKB(): Promise<VoiceKnowledgeBase> {
-  const res = await fetch(`${API_BASE}/voice-agent/kb`);
-  if (!res.ok) throw new Error("Failed to fetch Voice Agent KB");
-  return res.json();
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  try {
+    const res = await fetch(`${API_BASE}/voice-agent/kb`, { headers, cache: "no-store" });
+    if (!res.ok) throw new Error("Failed to fetch Voice Agent KB");
+    return await res.json();
+  } catch (err) {
+    console.warn("fetchVoiceKB fallback:", err);
+    return {
+      name: "",
+      company_name: "",
+      agent_persona_name: "",
+      service_name: "",
+      service_description: "",
+      core_offer: "",
+      first_message: "",
+      system_prompt: "",
+      meeting_platform: "Google Meet",
+      office_hours_start: "10:00",
+      office_hours_end: "18:00",
+      is_active: true,
+      objections_json: [],
+      script_questions_json: [],
+      faq_kb_json: [],
+    };
+  }
 }
 
 export async function saveVoiceKB(payload: Partial<VoiceKnowledgeBase>): Promise<VoiceKnowledgeBase> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const res = await fetch(`${API_BASE}/voice-agent/kb`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Failed to save Voice Agent KB");
@@ -738,8 +798,12 @@ export async function saveVoiceKB(payload: Partial<VoiceKnowledgeBase>): Promise
 }
 
 export async function fetchCallQueue(): Promise<VoiceCallQueueItem[]> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   try {
-    const res = await fetch(`${API_BASE}/voice-agent/queue`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/voice-agent/queue`, { headers, cache: "no-store" });
     if (!res.ok) return [];
     return await res.json();
   } catch (err) {
@@ -749,9 +813,13 @@ export async function fetchCallQueue(): Promise<VoiceCallQueueItem[]> {
 }
 
 export async function addLeadToQueue(payload: Partial<VoiceCallQueueItem>): Promise<VoiceCallQueueItem> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const res = await fetch(`${API_BASE}/voice-agent/queue`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Failed to add lead to queue");
@@ -759,9 +827,13 @@ export async function addLeadToQueue(payload: Partial<VoiceCallQueueItem>): Prom
 }
 
 export async function updateQueueItem(itemId: string, payload: Partial<VoiceCallQueueItem>): Promise<VoiceCallQueueItem> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const res = await fetch(`${API_BASE}/voice-agent/queue/${itemId}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Failed to update queue item");
@@ -769,18 +841,30 @@ export async function updateQueueItem(itemId: string, payload: Partial<VoiceCall
 }
 
 export async function deleteQueueItem(itemId: string): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const res = await fetch(`${API_BASE}/voice-agent/queue/${itemId}`, {
     method: "DELETE",
+    headers,
   });
   if (!res.ok) throw new Error("Failed to delete queue item");
   return res.json();
 }
 
-export async function batchQueueAction(action: "select_all" | "deselect_all" | "sync_from_leads"): Promise<any> {
+export async function batchQueueAction(
+  action: "select_all" | "deselect_all" | "sync_from_leads" | "delete_selected",
+  item_ids?: string[]
+): Promise<any> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const res = await fetch(`${API_BASE}/voice-agent/queue/batch`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action }),
+    headers,
+    body: JSON.stringify({ action, item_ids }),
   });
   if (!res.ok) throw new Error("Failed to execute batch queue action");
   return res.json();
@@ -850,9 +934,23 @@ export async function checkOfficeHours(): Promise<{
   office_hours_start: string;
   office_hours_end: string;
 }> {
-  const res = await fetch(`${API_BASE}/voice-agent/office-hours`);
-  if (!res.ok) throw new Error("Failed to check office hours");
-  return res.json();
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  try {
+    const res = await fetch(`${API_BASE}/voice-agent/office-hours`, { headers, cache: "no-store" });
+    if (!res.ok) throw new Error("Failed to check office hours");
+    return await res.json();
+  } catch (err) {
+    console.warn("checkOfficeHours notice:", err);
+    return {
+      is_within_hours: true,
+      message: "Active Office Hours",
+      office_hours_start: "10:00",
+      office_hours_end: "18:00",
+    };
+  }
 }
 
 export async function syncLeadsFromCard1(): Promise<{ success: boolean; synced_count: number; message: string }> {
@@ -926,6 +1024,114 @@ export async function synthesizeTTSAudio(text: string, voiceId?: string): Promis
   });
   if (!res.ok) throw new Error("TTS synthesis failed");
   return res.blob();
+}
+
+export async function syncElevenLabsAgent(): Promise<{
+  success: boolean;
+  agent_id: string;
+  status: string;
+  llm: string;
+  message: string;
+}> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/voice-agent/sync-elevenlabs-agent`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to deploy Agent to ElevenLabs");
+  }
+  return res.json();
+}
+
+export async function deleteElevenLabsAgent(agentId: string): Promise<{ success: boolean; message: string }> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/voice-agent/elevenlabs-agent/${encodeURIComponent(agentId)}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to delete Agent from ElevenLabs");
+  }
+  return res.json();
+}
+
+export async function fetchElevenLabsSignedUrl(): Promise<{
+  signed_url: string | null;
+  agent_id: string | null;
+  has_agent: boolean;
+}> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/voice-agent/signed-url`, { headers, cache: "no-store" });
+  if (!res.ok) return { signed_url: null, agent_id: null, has_agent: false };
+  return res.json();
+}
+
+export interface ElevenLabsAccountStatus {
+  is_connected: boolean;
+  error?: string;
+  subscription: {
+    tier: string;
+    character_count: number;
+    character_limit: number;
+    can_extend_character_limit: boolean;
+    status: string;
+    next_character_count_reset_unix?: number;
+  } | null;
+  models: Array<{
+    model_id: string;
+    name: string;
+    description: string;
+    can_do_text_to_speech: boolean;
+    languages: string[];
+  }>;
+  voices: Array<{
+    voice_id: string;
+    name: string;
+    category: string;
+    preview_url?: string;
+    labels?: Record<string, string>;
+  }>;
+  agents: Array<{
+    agent_id: string;
+    name: string;
+    created_at_unix?: number;
+  }>;
+}
+
+export async function fetchElevenLabsAccountStatus(apiKey?: string): Promise<ElevenLabsAccountStatus> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/voice-agent/elevenlabs/account-status`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ api_key: apiKey || undefined }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    return {
+      is_connected: false,
+      error: "Failed to connect to ElevenLabs API",
+      subscription: null,
+      models: [],
+      voices: [],
+      agents: [],
+    };
+  }
+  return res.json();
 }
 
 export interface DashboardPermissions {

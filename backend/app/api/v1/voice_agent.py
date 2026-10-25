@@ -89,6 +89,134 @@ async def save_or_update_knowledge_base(
     await db.refresh(kb)
     return kb.to_dict()
 
+@router.get("/office-hours")
+async def check_office_hours_status(
+    db: AsyncSession = Depends(get_db),
+):
+    """Check if current local time is within business calling office hours."""
+    stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
+    res = await db.execute(stmt)
+    kb = res.scalars().first()
+
+    start_str = kb.office_hours_start if (kb and kb.office_hours_start) else "10:00"
+    end_str = kb.office_hours_end if (kb and kb.office_hours_end) else "18:00"
+
+    is_within, msg = VoiceAgentService.is_within_office_hours(start_str, end_str)
+    return {
+        "is_within_hours": is_within,
+        "message": msg,
+        "office_hours_start": start_str,
+        "office_hours_end": end_str,
+    }
+
+@router.post("/sync-elevenlabs-agent")
+async def sync_elevenlabs_agent(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Deploy or sync current Knowledge Base, Script & Prompt directly to ElevenLabs Conversational AI Agent."""
+    stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
+    res = await db.execute(stmt)
+    kb = res.scalars().first()
+
+    if not kb:
+        raise HTTPException(status_code=404, detail="No active Knowledge Base found")
+
+    api_key = kb.elevenlabs_api_key
+    if not api_key:
+        raise HTTPException(status_code=400, detail="ElevenLabs API Key must be saved in Settings before deploying Agent.")
+
+    try:
+        result = await ElevenLabsService.create_or_sync_conversational_agent(kb, explicit_key=api_key)
+        agent_id = result.get("agent_id")
+        kb.elevenlabs_agent_id = agent_id
+        await db.commit()
+        await db.refresh(kb)
+        return {
+            "success": True,
+            "agent_id": agent_id,
+            "status": result.get("status"),
+            "llm": result.get("llm"),
+            "message": f"Agent successfully deployed to ElevenLabs (Agent ID: {agent_id})",
+        }
+    except Exception as e:
+        logger.error(f"Failed to sync ElevenLabs Agent: {e}")
+        raise HTTPException(status_code=500, detail=f"ElevenLabs sync error: {str(e)}")
+
+@router.delete("/elevenlabs-agent/{agent_id}")
+async def delete_elevenlabs_agent(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete an existing Conversational AI Agent from ElevenLabs account."""
+    stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
+    res = await db.execute(stmt)
+    kb = res.scalars().first()
+
+    if not kb:
+        raise HTTPException(status_code=404, detail="No active Knowledge Base found")
+
+    api_key = kb.elevenlabs_api_key
+    if not api_key:
+        raise HTTPException(status_code=400, detail="ElevenLabs API Key is required")
+
+    try:
+        await ElevenLabsService.delete_conversational_agent(agent_id=agent_id, explicit_key=api_key)
+        # If this deleted agent was the active one in KB, clear it
+        if kb.elevenlabs_agent_id == agent_id:
+            kb.elevenlabs_agent_id = None
+            await db.commit()
+            await db.refresh(kb)
+        return {
+            "success": True,
+            "agent_id": agent_id,
+            "message": f"Agent {agent_id} successfully deleted from ElevenLabs account.",
+        }
+    except Exception as e:
+        logger.error(f"Failed to delete ElevenLabs Agent: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete agent: {str(e)}")
+
+@router.get("/signed-url")
+async def get_elevenlabs_signed_url(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Obtain secure signed WebSocket URL for ElevenLabs Conversational AI browser streaming."""
+    stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
+    res = await db.execute(stmt)
+    kb = res.scalars().first()
+
+    if not kb or not kb.elevenlabs_agent_id:
+        return {"signed_url": None, "agent_id": None, "has_agent": False}
+
+    signed_url = await ElevenLabsService.get_signed_conversation_url(
+        agent_id=kb.elevenlabs_agent_id,
+        explicit_key=kb.elevenlabs_api_key
+    )
+    return {
+        "signed_url": signed_url,
+        "agent_id": kb.elevenlabs_agent_id,
+        "has_agent": bool(kb.elevenlabs_agent_id),
+    }
+
+@router.get("/elevenlabs/account-status")
+@router.post("/elevenlabs/account-status")
+async def get_elevenlabs_account_status(
+    payload: Optional[Dict[str, Any]] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fetch live account status: subscription tier, credit usage, models, voices, and convai agents."""
+    explicit_key = (payload or {}).get("api_key") if payload else None
+    if not explicit_key:
+        stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
+        res = await db.execute(stmt)
+        kb = res.scalars().first()
+        explicit_key = kb.elevenlabs_api_key if kb else None
+
+    return await ElevenLabsService.get_account_status(explicit_key=explicit_key)
+
 @router.get("/voices")
 async def list_available_voices(
     db: AsyncSession = Depends(get_db),
@@ -215,13 +343,24 @@ async def add_lead_to_queue(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    country = payload.country
+    language = payload.language
+    if not country or country.lower() in ["", "global"]:
+        auto_c, auto_l = VoiceAgentService.resolve_country_and_language_waterfall(
+            phone=payload.phone,
+            location_country=payload.country,
+        )
+        country = auto_c
+        if not language or language in ["English", ""]:
+            language = auto_l
+
     item = VoiceCallQueueItem(
         contact_person=payload.contact_person,
         contact_title=payload.contact_title,
         company_name=payload.company_name,
         phone=payload.phone,
-        country=payload.country,
-        language=payload.language,
+        country=country,
+        language=language,
         exact_problem=payload.exact_problem,
         selected_for_call=payload.selected_for_call,
         lead_id=uuid.UUID(payload.lead_id) if payload.lead_id else None,
