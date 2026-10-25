@@ -443,6 +443,8 @@ async def lifespan(app: FastAPI):
                     await conn.execute(text("ALTER TABLE persona_signatures ALTER COLUMN company DROP NOT NULL;"))
                     await conn.execute(text("ALTER TABLE email_outreach_logs ALTER COLUMN campaign_id DROP NOT NULL;"))
                     await conn.execute(text("ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS usage_stats_json JSONB DEFAULT '{}'::jsonb;"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS calendly_url VARCHAR(500);"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS calendly_api_key VARCHAR(255);"))
                 except Exception:
                     pass
             except Exception as migration_err:

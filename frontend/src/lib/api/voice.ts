@@ -1,5 +1,21 @@
 import { API_BASE, getStoredToken } from "./common";
 
+export interface ScriptQuestionItem {
+  step: number;
+  purpose: string;
+  question: string;
+  active: boolean;
+}
+
+export interface FaqKbItem {
+  id: string;
+  category: string;
+  question: string;
+  triggers: string;
+  answer: string;
+  active: boolean;
+}
+
 export interface VoiceKnowledgeBase {
   id?: string;
   name: string;
@@ -15,11 +31,15 @@ export interface VoiceKnowledgeBase {
   office_hours_end: string;
   is_active: boolean;
   objections_json: Array<{ trigger: string; counter: string }>;
+  script_questions_json?: ScriptQuestionItem[];
+  faq_kb_json?: FaqKbItem[];
   voice_provider?: string;
   elevenlabs_api_key?: string;
   elevenlabs_api_key_configured?: boolean;
   elevenlabs_voice_id?: string;
   elevenlabs_model_id?: string;
+  elevenlabs_agent_id?: string;
+  elevenlabs_llm?: string;
   cloned_voice_id?: string;
   cloned_voice_name?: string;
   cloned_voice_sample_url?: string;
@@ -68,15 +88,44 @@ export interface VoiceCallLog {
 }
 
 export async function fetchVoiceKB(): Promise<VoiceKnowledgeBase> {
-  const res = await fetch(`${API_BASE}/voice-agent/kb`);
-  if (!res.ok) throw new Error("Failed to fetch Voice Agent KB");
-  return res.json();
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  try {
+    const res = await fetch(`${API_BASE}/voice-agent/kb`, { headers, cache: "no-store" });
+    if (!res.ok) throw new Error("Failed to fetch Voice Agent KB");
+    return await res.json();
+  } catch (err) {
+    console.warn("fetchVoiceKB fallback:", err);
+    return {
+      name: "Sales Assistant",
+      company_name: "Global Enterprise Solutions",
+      agent_persona_name: "Alex",
+      service_name: "Client Acquisition & Conversion Systems",
+      service_description: "Automated buyer lead qualification and operational gap fixing.",
+      core_offer: "100% Risk-Free 14-Day Pilot Implementation",
+      first_message: "Hello {{client_name}}, this is {{agent_persona_name}} from {{my_company}}. I'm reaching out regarding {{company_name}}'s digital presence and website audit.",
+      system_prompt: "You are an elite, consultative B2B Sales Executive.",
+      meeting_platform: "Google Meet",
+      office_hours_start: "10:00",
+      office_hours_end: "18:00",
+      is_active: true,
+      objections_json: [],
+      script_questions_json: [],
+      faq_kb_json: [],
+    };
+  }
 }
 
 export async function saveVoiceKB(payload: Partial<VoiceKnowledgeBase>): Promise<VoiceKnowledgeBase> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const res = await fetch(`${API_BASE}/voice-agent/kb`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Failed to save Voice Agent KB");
@@ -196,9 +245,23 @@ export async function checkOfficeHours(): Promise<{
   office_hours_start: string;
   office_hours_end: string;
 }> {
-  const res = await fetch(`${API_BASE}/voice-agent/office-hours`);
-  if (!res.ok) throw new Error("Failed to check office hours");
-  return res.json();
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  try {
+    const res = await fetch(`${API_BASE}/voice-agent/office-hours`, { headers, cache: "no-store" });
+    if (!res.ok) throw new Error("Failed to check office hours");
+    return await res.json();
+  } catch (err) {
+    console.warn("checkOfficeHours notice:", err);
+    return {
+      is_within_hours: true,
+      message: "Active Office Hours",
+      office_hours_start: "10:00",
+      office_hours_end: "18:00",
+    };
+  }
 }
 
 export async function syncLeadsFromCard1(): Promise<{ success: boolean; synced_count: number; message: string }> {
@@ -273,3 +336,40 @@ export async function synthesizeTTSAudio(text: string, voiceId?: string): Promis
   if (!res.ok) throw new Error("TTS synthesis failed");
   return res.blob();
 }
+
+export async function syncElevenLabsAgent(): Promise<{
+  success: boolean;
+  agent_id: string;
+  status: string;
+  llm: string;
+  message: string;
+}> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/voice-agent/sync-elevenlabs-agent`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to deploy Agent to ElevenLabs");
+  }
+  return res.json();
+}
+
+export async function fetchElevenLabsSignedUrl(): Promise<{
+  signed_url: string | null;
+  agent_id: string | null;
+  has_agent: boolean;
+}> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/voice-agent/signed-url`, { headers, cache: "no-store" });
+  if (!res.ok) return { signed_url: null, agent_id: null, has_agent: false };
+  return res.json();
+}
+

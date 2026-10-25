@@ -69,18 +69,9 @@ class VoiceAgentService:
             return True, "Office hours check bypassed"
 
     @classmethod
-    def generate_meeting_link(cls, platform: str = "Google Meet", company_name: str = "b2b") -> str:
-        slug = re.sub(r'[^a-zA-Z0-9]', '', company_name.lower())[:8] or "demo"
-        code = uuid.uuid4().hex[:6]
-        
-        if "zoom" in platform.lower():
-            meeting_id = f"8{uuid.uuid4().int % 900000000 + 100000000}"
-            return f"https://zoom.us/j/{meeting_id}?pwd=demo{code}"
-        else:
-            part1 = uuid.uuid4().hex[:3]
-            part2 = uuid.uuid4().hex[3:7]
-            part3 = uuid.uuid4().hex[7:10]
-            return f"https://meet.google.com/{part1}-{part2}-{part3}"
+    def generate_meeting_link(cls, platform: str = "", company_name: str = "") -> Optional[str]:
+        """Returns None. Zero fake or dummy meeting links are generated."""
+        return None
 
     @classmethod
     def detect_meeting_agreement(cls, user_text: str) -> Tuple[bool, Optional[str]]:
@@ -130,46 +121,68 @@ class VoiceAgentService:
 
     @classmethod
     def find_objection_counter(cls, user_text: str, objections_list: List[Dict[str, str]], language: str = "Bengali", company_name: str = "") -> Optional[str]:
+        """Matches user objection dynamically against admin-configured objections in Knowledge Base."""
         lower = user_text.lower().strip()
 
-        for obj in objections_list:
+        for obj in (objections_list or []):
             trigger = obj.get("trigger", "").lower().strip()
             counter = obj.get("counter", "").strip()
             if trigger and trigger in lower and counter:
                 return counter
 
-        is_bn = language.lower() in ["bengali", "bangla"]
-
-        # 1. Busy objection
-        busy_patterns = [
-            "busy right now", "very busy", "too busy", "no time", "don't have time", "dont have time",
-            "not right now", "call back later", "call me later", "driving", "in a meeting", "bad time",
-            "ব্যস্ত", "সময় নেই", "পরে কল করুন", "পরে কথা বলি"
-        ]
-        if any(bp in lower for bp in busy_patterns):
-            if is_bn:
-                return "আমি সম্পূর্ণ বুঝতে পারছি! এজন্যই মাত্র ১০ মিনিটের গুগল মিট কলে সমাধান দেখাব। কাল সকাল ১১টায় নাকি বিকাল ৩টায় আপনার সুবিধা?"
-            return "I understand completely! That's why I only need 10 minutes on Zoom. Does tomorrow 11 AM or 3 PM work better for you?"
-
-        # 2. Price objection
-        if any(w in lower for w in ["price", "cost", "how much", "expensive", "দাম", "কত টাকা", "খরচ"]):
-            if is_bn:
-                return "আমাদের প্রাথমিক টেস্ট সম্পূর্ণ রিস্ক-ফ্রি, কোনো অগ্রিম চার্জ ছাড়াই। কাল বিকাল ৩টায় বিস্তারিত রিভিউ করতে পারি?"
-            return "Our initial implementation is 100% risk-free with zero upfront cost. Can we review the breakdown tomorrow at 3 PM?"
-
-        # 3. Already have provider
-        if any(w in lower for w in ["already have", "another company", "vendor", "agency", "internal team", "আছে", "ডেভেলপার আছে"]):
-            if is_bn:
-                return "চমৎকার! বেশিরভাগ ক্লায়েন্ট আমাদের অডিট লেয়ার ব্যবহার করে কোনো ডাউনটাইম ছাড়াই। মাত্র ৫ মিনিটের একটা কম্প্যারিজন কি কাল দেখানো সম্ভব?"
-            return "Understood! Most clients use us as a complementary audit with zero downtime. Can I show you a 5-minute comparison?"
-
-        # 4. Send email
-        if any(w in lower for w in ["send email", "email me", "send info", "send details", "ইমেইল", "মেইল"]):
-            if is_bn:
-                return "অবশ্যই, আমি এক্সিকিউটিভ সামারি পাঠিয়ে দিচ্ছি! আপনি দেখার ফাঁকে কি শুক্রবার ১০ মিনিটের জন্য একটা কুইক স্লট রেখে দেব?"
-            return "Sending the executive brief right away! Can we tentatively pencil in 10 minutes for Friday while you review?"
-
         return None
+
+    @classmethod
+    def resolve_country_and_language_waterfall(
+        cls,
+        phone: str,
+        location_country: Optional[str] = None,
+        search_metadata: Optional[Dict[str, Any]] = None,
+        custom_country_map: Optional[Dict[str, str]] = None,
+    ) -> Tuple[str, str]:
+        """
+        Multi-Signal Waterfall Resolution:
+        - Signal 1 (Phone Prefix): Matches international dialing codes (+880, +971, +1, +44, etc.).
+        - Signal 2 (Search / Location Data): If phone has no country code (landline/local),
+          resolves from discovery search location / Google Places country metadata.
+        - Signal 3 (Live Call Fallback): Fallback to Global / English, adapted live by conversational ASR.
+        """
+        country_map = custom_country_map or DEFAULT_COUNTRY_LANGUAGE_MAP
+        clean_phone = re.sub(r'[\s\-\(\)\.]', '', phone or "").strip()
+
+        # Signal 1: Phone Country Dialing Code Prefix
+        phone_prefix_map = {
+            "+880": ("Bangladesh", "Bengali"),
+            "880": ("Bangladesh", "Bengali"),
+            "+971": ("United Arab Emirates", "Arabic"),
+            "+966": ("Saudi Arabia", "Arabic"),
+            "+974": ("Qatar", "Arabic"),
+            "+965": ("Kuwait", "Arabic"),
+            "+968": ("Oman", "Arabic"),
+            "+973": ("Bahrain", "Arabic"),
+            "+1": ("United States", "English"),
+            "+44": ("United Kingdom", "English"),
+            "+61": ("Australia", "English"),
+            "+34": ("Spain", "Spanish"),
+            "+49": ("Germany", "German"),
+            "+33": ("France", "French"),
+        }
+        for prefix, (p_country, p_lang) in phone_prefix_map.items():
+            if clean_phone.startswith(prefix):
+                return p_country, p_lang
+
+        # Signal 2: Search & Location Data from Google Places / Discovery Scraper
+        target_country = location_country or (search_metadata or {}).get("country") or (search_metadata or {}).get("search_country")
+        if target_country and target_country.strip():
+            norm = target_country.strip()
+            if norm in country_map:
+                return norm, country_map[norm]
+            for c_name, c_lang in country_map.items():
+                if c_name.lower() in norm.lower() or norm.lower() in c_name.lower():
+                    return c_name, c_lang
+
+        # Signal 3: Default Initial Fallback (Adapted dynamically on live call)
+        return "Global", "English"
 
     @classmethod
     async def sync_leads_from_card_1(cls, db: AsyncSession) -> int:
@@ -201,14 +214,14 @@ class VoiceAgentService:
 
             meta = biz.metadata_json or {}
             loc = biz.locations[0] if (biz.locations and len(biz.locations) > 0) else None
-            country = loc.country if loc and loc.country else (meta.get("country") or "Global")
-            
-            # Map country to language
-            lang = DEFAULT_COUNTRY_LANGUAGE_MAP.get(country, "English")
-            if any(k in country.lower() for k in ["bangla", "bd", "dhaka"]):
-                lang = "Bengali"
-            elif any(k in country.lower() for k in ["arab", "uae", "saudi", "dubai", "qatar"]):
-                lang = "Arabic"
+            loc_country = loc.country if loc and loc.country else (meta.get("country") or meta.get("search_country"))
+
+            # Multi-Signal Waterfall Resolution
+            country, lang = cls.resolve_country_and_language_waterfall(
+                phone=phone,
+                location_country=loc_country,
+                search_metadata=meta,
+            )
 
             raw_problem = lead.what_they_need or lead.why_they_need_us or lead.primary_gap_summary or "Website lacks click-to-contact and fast lead conversion"
             clean_problem = cls.sanitize_exact_problem(raw_problem, biz.canonical_name)
@@ -235,6 +248,56 @@ class VoiceAgentService:
         return synced_count
 
     @classmethod
+    def find_faq_kb_match(cls, user_text: str, faq_kb_list: List[Dict[str, Any]], variables: Dict[str, str]) -> Optional[str]:
+        """Matches user speech against admin-defined dynamic Knowledge Base questions and triggers."""
+        lower = user_text.lower().strip()
+        for item in faq_kb_list:
+            if not item.get("active", True):
+                continue
+
+            triggers_str = item.get("triggers", "")
+            triggers = [t.strip().lower() for t in triggers_str.split(",") if t.strip()]
+            q_text = item.get("question", "").lower().strip()
+
+            matched = False
+            for trig in triggers:
+                if trig and (trig in lower or re.search(r'\b' + re.escape(trig) + r'\b', lower)):
+                    matched = True
+                    break
+
+            if not matched and q_text and len(q_text) > 4 and q_text in lower:
+                matched = True
+
+            if matched:
+                raw_answer = item.get("answer", "")
+                return cls.render_prompt_template(raw_answer, variables)
+        return None
+
+    @classmethod
+    def find_next_script_question(
+        cls,
+        script_questions: List[Dict[str, Any]],
+        history: Optional[List[Dict[str, str]]],
+        variables: Dict[str, str]
+    ) -> Optional[str]:
+        """Progressively picks the next admin-defined script step based on dialogue turn count."""
+        if not script_questions:
+            return None
+        active_steps = [q for q in script_questions if q.get("active", True)]
+        if not active_steps:
+            return None
+
+        # Sort by step number
+        active_steps.sort(key=lambda s: s.get("step", 1))
+
+        # Count turns where lead spoke
+        user_turns = len([h for h in (history or []) if h.get("speaker") in ["lead", "user"]])
+        target_idx = min(user_turns, len(active_steps) - 1)
+        chosen = active_steps[target_idx]
+        raw_q = chosen.get("question", "")
+        return cls.render_prompt_template(raw_q, variables)
+
+    @classmethod
     async def process_dialogue_turn(
         cls,
         user_speech_text: str,
@@ -246,7 +309,7 @@ class VoiceAgentService:
         override_exact_problem: Optional[str] = None,
         override_language: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Processes a speech turn, handles objections or meeting scheduling, and generates ElevenLabs audio."""
+        """Processes a speech turn, checks dynamic KB & script flow, and generates ElevenLabs audio."""
         raw_company_name = override_company_name or (queue_item.company_name if queue_item else "Your Enterprise")
         client_name = override_client_name or (queue_item.contact_person if queue_item else "Business Leader")
         raw_problem = override_exact_problem or (queue_item.exact_problem if queue_item else None)
@@ -255,18 +318,51 @@ class VoiceAgentService:
         exact_problem = cls.sanitize_exact_problem(raw_problem, raw_company_name)
         company_name = raw_company_name.strip()
         meeting_platform = getattr(kb, "meeting_platform", "Google Meet")
-        is_bn = language.lower() in ["bengali", "bangla"]
+        has_bengali_chars = bool(re.search(r'[\u0980-\u09ff]', user_speech_text))
+        has_english_words = any(w in user_speech_text.lower() for w in ["tomorrow", "fine", "works", "available", "link", "meet", "zoom", "call", "dispatching"])
+        if has_bengali_chars:
+            is_bn = True
+        elif has_english_words:
+            is_bn = False
+        else:
+            is_bn = language.lower() in ["bengali", "bangla"]
+
+        variables = {
+            "client_name": client_name,
+            "company_name": company_name,
+            "agent_persona_name": getattr(kb, "agent_persona_name", "Alex"),
+            "my_company": getattr(kb, "company_name", "Global Enterprise Solutions"),
+            "exact_problem": exact_problem,
+            "core_offer": getattr(kb, "core_offer", "100% Risk-Free Pilot"),
+            "meeting_platform": meeting_platform,
+        }
 
         # 1. Detect Meeting Agreement
         agreed, slot = cls.detect_meeting_agreement(user_speech_text)
         if agreed:
-            meeting_link = cls.generate_meeting_link(platform=meeting_platform, company_name=company_name)
+            calendly_url = (getattr(kb, "calendly_url", None) or "").strip()
+            meeting_link = calendly_url if calendly_url else None
+            effective_platform = "Calendly" if calendly_url else "Direct Call"
+
             meeting_time = slot or "Tomorrow at 11:00 AM"
+            variables["meeting_time"] = meeting_time
+            variables["meeting_platform"] = effective_platform
+            variables["meeting_link"] = meeting_link or ""
             
-            if is_bn:
-                agent_reply = f"অসাধারণ! {meeting_time}-এ শিডিউল ফাইনাল হলো। আমি এখনই আপনার হোয়াটসঅ্যাপে {meeting_platform}-এর লিংক পাঠিয়ে দিচ্ছি। ভালো থাকবেন, {client_name} সাহেব!"
+            # Zero Hardcoded Speech: Render Admin Defined Confirmation Speech Template
+            admin_confirm_speech = getattr(kb, "meeting_confirmation_speech", None)
+            if admin_confirm_speech and admin_confirm_speech.strip():
+                agent_reply = cls.render_prompt_template(admin_confirm_speech, variables)
+            elif is_bn:
+                if calendly_url:
+                    agent_reply = f"অসাধারণ! আমি এখনই আপনার হোয়াটসঅ্যাপ ও ইমেইলে আমাদের ক্যালেন্ডার বুকিং লিংক পাঠিয়ে দিচ্ছি, যেখান থেকে আপনার সুবিধাজনক সময়ে মিটিং বুক করতে পারবেন। ভালো থাকবেন, {client_name} সাহেব!"
+                else:
+                    agent_reply = f"অসাধারণ! {meeting_time}-এ শিডিউল নোট করে নিলাম। ভালো থাকবেন, {client_name} সাহেব!"
             else:
-                agent_reply = f"Awesome! Locked in for {meeting_time}. I'm dispatching the {meeting_platform} link to your WhatsApp right now. Talk to you then, {client_name}!"
+                if calendly_url:
+                    agent_reply = f"Awesome! I'm sending our Calendly scheduling link to your WhatsApp and email right now, so you can pick any time that fits your schedule. Talk soon, {client_name}!"
+                else:
+                    agent_reply = f"Awesome! Locked in for {meeting_time}. Talk to you then, {client_name}!"
             
             audio_bytes = await cls._generate_elevenlabs_audio_if_available(kb, agent_reply)
             return {
@@ -279,7 +375,22 @@ class VoiceAgentService:
                 "language": language,
             }
 
-        # 2. Check Objection Counter
+        # 2. Check Admin Dynamic Knowledge Base (FAQ KB)
+        faq_kb_list = getattr(kb, "faq_kb_json", []) or []
+        kb_answer = cls.find_faq_kb_match(user_speech_text, faq_kb_list, variables)
+        if kb_answer:
+            audio_bytes = await cls._generate_elevenlabs_audio_if_available(kb, kb_answer)
+            return {
+                "agent_reply_text": kb_answer,
+                "audio_base64": base64.b64encode(audio_bytes).decode("utf-8") if audio_bytes else None,
+                "meeting_booked": False,
+                "meeting_link": None,
+                "meeting_time": None,
+                "detected_intent": "KB_ANSWERED",
+                "language": language,
+            }
+
+        # 3. Check Objection Counter
         objections = getattr(kb, "objections_json", []) or []
         counter = cls.find_objection_counter(user_speech_text, objections, language=language, company_name=company_name)
         if counter:
@@ -294,7 +405,22 @@ class VoiceAgentService:
                 "language": language,
             }
 
-        # 3. LLM Reasoning for Custom Dialogue
+        # 4. Check Admin Outbound Script Progression
+        script_questions = getattr(kb, "script_questions_json", []) or []
+        next_step_q = cls.find_next_script_question(script_questions, conversation_history, variables)
+        if next_step_q and len((conversation_history or [])) <= 4:
+            audio_bytes = await cls._generate_elevenlabs_audio_if_available(kb, next_step_q)
+            return {
+                "agent_reply_text": next_step_q,
+                "audio_base64": base64.b64encode(audio_bytes).decode("utf-8") if audio_bytes else None,
+                "meeting_booked": False,
+                "meeting_link": None,
+                "meeting_time": None,
+                "detected_intent": "SCRIPT_STEP",
+                "language": language,
+            }
+
+        # 5. LLM Reasoning for Custom Dialogue
         lang_instruction = "Speak in natural, polite Bengali (বাংলা)." if is_bn else f"Speak in fluent, professional {language}."
         system_instruction = (
             f"You are {getattr(kb, 'agent_persona_name', 'Alex')}, an elite B2B sales advisor calling {client_name} at {company_name}. "
@@ -305,10 +431,12 @@ class VoiceAgentService:
 
         clean_reply = await cls._generate_llm_reply(system_instruction, conversation_history, user_speech_text)
         if not clean_reply or len(clean_reply.split()) < 3:
-            if is_bn:
-                clean_reply = f"আমরা কোনো অগ্রিম চার্জ ছাড়াই {exact_problem} সমাধান করি। কাল সকাল ১১টায় কি ১০ মিনিট সময় দেওয়া সম্ভব?"
-            else:
-                clean_reply = f"We resolve {exact_problem} with zero upfront risk. Does tomorrow 11 AM or 3 PM work for a brief 10-minute demo?"
+            offer = getattr(kb, "core_offer", "") or exact_problem
+            clean_reply = (
+                f"{offer} সম্পর্কে কি কাল ১০ মিনিট আলোচনা করা সম্ভব?"
+                if is_bn
+                else f"Would you be open to a 10-minute discovery demo regarding {offer}?"
+            )
 
         audio_bytes = await cls._generate_elevenlabs_audio_if_available(kb, clean_reply)
 

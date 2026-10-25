@@ -2663,9 +2663,9 @@ export default function AdminPortalPage() {
                 <div className="w-12 h-12 rounded-xl bg-pink-500/10 border border-pink-500/30 text-pink-400 flex items-center justify-center shadow-md shadow-pink-500/10">
                   <Megaphone className="w-6 h-6" />
                 </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Module Active</span>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
+                  <Lock className="w-3 h-3 text-amber-400" />
+                  <span>Module Locked</span>
                 </div>
               </div>
 
@@ -2681,8 +2681,8 @@ export default function AdminPortalPage() {
               <div className="pt-3 border-t border-slate-800/80 space-y-2">
                 <div className="text-[11px] font-mono text-pink-400/90 font-semibold uppercase tracking-wider flex items-center justify-between">
                   <span>META ADS CAMPAIGN FEATURES:</span>
-                  <span className="text-[10px] font-mono text-emerald-400 font-normal flex items-center gap-1">
-                    ✓ Full System Unlocked
+                  <span className="text-[10px] font-mono text-amber-400 font-normal flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> Coming Soon
                   </span>
                 </div>
                 <ul className="space-y-1.5 text-xs text-slate-400">
@@ -2707,14 +2707,13 @@ export default function AdminPortalPage() {
             </div>
 
             <div className="pt-6">
-              <Link
-                href="/campaigns"
-                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-pink-600/20 transition group"
+              <div
+                title="Meta Ads Funnel Engine is currently locked."
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 font-medium text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none"
               >
-                <Megaphone className="w-3.5 h-3.5 text-white" />
-                <span>Launch Meta Ads Funnel</span>
-                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition" />
-              </Link>
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>Launch Meta Ads Funnel — Locked</span>
+              </div>
             </div>
           </div>
 
@@ -2726,9 +2725,9 @@ export default function AdminPortalPage() {
                 <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shadow-md shadow-emerald-500/10">
                   <PhoneCall className="w-6 h-6" />
                 </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
-                  <Lock className="w-3 h-3 text-amber-400" />
-                  <span>Module Locked</span>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold uppercase tracking-wider">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Module Active</span>
                 </div>
               </div>
 
@@ -2744,8 +2743,8 @@ export default function AdminPortalPage() {
               <div className="pt-3 border-t border-slate-800/80 space-y-2">
                 <div className="text-[11px] font-mono text-emerald-400/90 font-semibold uppercase tracking-wider flex items-center justify-between">
                   <span>VOICE OUTREACH FEATURES:</span>
-                  <span className="text-[10px] font-mono text-amber-400 font-normal flex items-center gap-1">
-                    <Lock className="w-2.5 h-2.5" /> Coming Soon
+                  <span className="text-[10px] font-mono text-emerald-400 font-normal flex items-center gap-1">
+                    ✓ Full System Unlocked
                   </span>
                 </div>
                 <ul className="space-y-1.5 text-xs text-slate-400">
@@ -2770,13 +2769,14 @@ export default function AdminPortalPage() {
             </div>
 
             <div className="pt-6">
-              <div
-                title="Autonomous Voice Outreach is currently locked."
-                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 font-medium text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none"
+              <Link
+                href="/voice-agent"
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition group"
               >
-                <Lock className="w-3.5 h-3.5 text-amber-400" />
-                <span>Launch Voice Outreach Hub (ElevenLabs AI Agent) — Locked</span>
-              </div>
+                <PhoneCall className="w-3.5 h-3.5 text-white" />
+                <span>Launch Voice Outreach Hub (ElevenLabs AI Agent)</span>
+                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition" />
+              </Link>
             </div>
           </div>
         </div>
