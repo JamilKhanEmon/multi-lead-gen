@@ -27,7 +27,8 @@ The system automates the entire sales pipeline: discovering verified businesses 
 7. [🚢 Production VPS Deployment Guide](#-production-vps-deployment-guide)
 8. [🔐 Complete Environment Variables Reference](#-complete-environment-variables-reference)
 9. [🌐 API Endpoints & WebSocket Architecture](#-api-endpoints--websocket-architecture)
-10. [📜 License](#-license)
+10. [🛡️ Security, Privacy & Public Deployment Guidelines](#️-security-privacy--public-deployment-guidelines)
+11. [📜 License](#-license)
 
 ---
 
@@ -512,6 +513,26 @@ docker compose -f docker-compose.prod.yml logs -f backend
 | `POST` | `/api/v1/voice-agent/dialogue` | Process real-time dialogue turn and synthesize AI speech response. |
 | `POST` | `/api/v1/voice-agent/tts` | Stream synthesized audio speech from ElevenLabs. |
 | `WS` | `/api/v1/ws/logs` | Real-time WebSocket live worker and pipeline logs. |
+
+---
+
+## 🛡️ Security, Privacy & Public Deployment Guidelines
+
+When running Multi-LeadGen AI in production or publishing code publicly:
+
+1. **Keep Secrets Confidential:**
+   - Never commit `.env` or files containing live credentials, SMTP passwords, ElevenLabs keys, or JWT secrets.
+   - Use `.env.example` as a template and ensure `.env` is listed in `.gitignore`.
+2. **Cryptographic Key Generation:**
+   - Always generate a fresh high-entropy `SECRET_KEY` for JWT signatures:
+     ```bash
+     openssl rand -hex 32
+     ```
+3. **Database & Network Isolation:**
+   - Avoid exposing PostgreSQL (port `5432`) or Redis (port `6379`) to the public internet. Use internal Docker network bridges or bind strictly to `127.0.0.1`.
+4. **Outreach & Compliance Safety:**
+   - The cold outreach engine includes automated follow-up spacing, daily per-inbox sending caps, and `List-Unsubscribe` headers compliant with CAN-SPAM, GDPR, and RFC 5322 deliverability standards.
+   - Human approval mode is enabled by default to allow manual verification before any outbound communication is dispatched.
 
 ---
 

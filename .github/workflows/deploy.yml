@@ -16,7 +16,6 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.repository == 'NIBIZ-SOFT/leadgenai'
     steps:
       - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.2.0
@@ -38,7 +37,7 @@ jobs:
             
             if [ ! -d "$DEPLOY_PATH" ]; then
               echo "Directory does not exist. Cloning repository..."
-              git clone https://github.com/NIBIZ-SOFT/leadgenai.git "$DEPLOY_PATH"
+              git clone "https://github.com/${{ github.repository }}.git" "$DEPLOY_PATH"
               cd "$DEPLOY_PATH"
             else
               cd "$DEPLOY_PATH"

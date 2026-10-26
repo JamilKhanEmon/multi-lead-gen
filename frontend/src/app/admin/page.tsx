@@ -3179,7 +3179,7 @@ export default function AdminPortalPage() {
                     type="text"
                     value={senderName}
                     onChange={(e) => setSenderName(e.target.value)}
-                    placeholder="e.g. Jamil Khan"
+                    placeholder="e.g. Alex Johnson"
                     className="w-full px-3.5 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 transition"
                   />
                 </div>

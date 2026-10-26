@@ -18,7 +18,7 @@ Examines public advertising transparency registries (Meta Ad Library) to detect 
 ### Step 1: Meta Ad Library Query Generation
 - Receive `canonical_name`, `domain`, and `has_meta_pixel`.
 - Construct the verified public Meta Ad Library URL:
-  `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BD&q={encoded_name}&search_type=keyword_unordered&media_type=all`
+  `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&q={encoded_name}&search_type=keyword_unordered&media_type=all`
 - Query search engine index to observe if active advertisements are currently associated with the brand name.
 
 ### Step 2: Conversion Tracking Audit (Meta Pixel Check)
@@ -30,7 +30,7 @@ Examines public advertising transparency registries (Meta Ad Library) to detect 
 ### Step 3: Landing Page & Funnel Alignment
 - If ads point directly to a phone number or a generic homepage without an inquiry form or WhatsApp router:
   - Flag as **`ADS_RUNNING_LEAD_LEAKAGE`**.
-  - *Sales Opener:* "We saw you are running active paid ads in Dhaka, but prospects clicking your ads don't have an automated inquiry capture form. Inquiries are getting lost."
+  - *Sales Opener:* "We saw you are running active paid ads, but prospects clicking your ads don't have an automated inquiry capture form. Inquiries are getting lost."
 
 ### Step 4: Output Generation
 - Assemble the auditable evidence note containing the live Meta Ad Library link.

@@ -7,15 +7,15 @@ description: "Demand-side autonomous B2B lead generation pipeline: detect verifi
 
 End-to-end pipeline: **Aggregate candidates → Dedup → FIT GATE → Prospect → Store in Database**.
 v2 Pipeline is DEMAND-SIDE. We no longer pitch every scraped business.
-A lead only gets prospected, scored, or handed to sales if it has **live evidence of a buying signal** matched to a **specific company service catalog solution**. No evidence → silently dropped. Goal: outreach only targets leads with a documented, specific reason to buy.
+A lead only gets prospected, scored, or handed to sales if it has **live evidence of a buying signal** matched to a **configured service catalog solution**. No evidence → silently dropped. Goal: outreach only targets leads with a documented, specific reason to buy.
 
 ## Trigger
-User asks for leads (e.g., "find me leads for restaurants in Chattogram", "run lead gen real estate").
+User asks for leads (e.g., "find me leads for dental clinics in Austin", "run lead gen for real estate").
 Default mode is fit-gated. "Just scrape anything" mode must be explicitly requested.
 
 ## Inputs
-1. **Keywords / Industry** — business type (e.g., "real estate developer", "restaurant", "hospital")
-2. **Location** — area/city in Bangladesh (+ lat/lon if known; default Dhaka 23.7806, 90.4074)
+1. **Keywords / Industry** — business type (e.g., "real estate developer", "restaurant", "clinic")
+2. **Location** — target area/city (+ lat/lon if known)
 3. **Count** — target number of FIT-GATED leads (default 10). Note: scrape 3–5x this number; the gate drops candidates without signals.
 
 ## Stage 1 — Candidate Aggregation
@@ -47,7 +47,7 @@ For each gate-passed lead:
 3. Record:
    - `why_they_need_us`: Live verified evidence / pain point.
    - `what_they_need`: Specific solution + wedge offer.
-   - `matched_service`: Best-fit service from company service matrix.
+   - `matched_service`: Best-fit service from configured service matrix.
 
 ## Stage 3 — 30-Second Discovery-First Call Script
 Employees pitch AFTER one discovery question, not before:

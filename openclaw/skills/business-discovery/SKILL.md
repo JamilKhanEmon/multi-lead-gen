@@ -6,7 +6,7 @@ description: "Discovers verified commercial businesses via Google Maps & web reg
 # Business Discovery Workflow — Candidate Pool Aggregation
 
 ## Purpose
-Discovers real, active commercial business entities matching requested industry and geographic criteria in Bangladesh. Builds the initial Candidate Pool for the pipeline, prioritizing demand-side decision-maker signals over generic pins.
+Discovers real, active commercial business entities matching requested industry and geographic criteria. Builds the initial Candidate Pool for the pipeline, prioritizing demand-side decision-maker signals over generic pins.
 
 ## Core Directives & Hard Rules
 1. **Candidate Pool, Not Final Lead List:** Discovered businesses are raw candidates. Every candidate must pass Deduplication and the FIT GATE before being prospected or contacted.
@@ -14,13 +14,13 @@ Discovers real, active commercial business entities matching requested industry 
 3. **Demand-Side Query Expansion:** Always prefer buyer-intent keyword variants:
    - `<category> head office` / `<category> corporate office` (targets corporate decision makers)
    - `<category> online order` / `<category> booking` (targets businesses actively trying digital)
-4. **Mandatory Contact Requirement:** Extract real canonical telephone numbers (`+880...`, `01...`) and official domains.
+4. **Mandatory Contact Requirement:** Extract real canonical telephone numbers (e.g. standard E.164 / local area formats) and official domains.
 
 ## Procedure
 
 ### Step 1: Input Validation & Geographic Targeting
 - Receive `industry`, `location`, `city`, `sub_city`, and `company_limit` (default: 10 target leads $\rightarrow$ scrape 3-5x candidates).
-- Normalize location coordinates (e.g. Uttara ≈ 23.8759, 90.3735; Dhanmondi ≈ 23.7465, 90.3760).
+- Normalize location coordinates (e.g., target city center coordinates or bounding box).
 
 ### Step 2: Live Candidate Scraping
 - Query public Google Maps and local search engine business listings.
@@ -48,7 +48,7 @@ Discovers real, active commercial business entities matching requested industry 
       "industry": "<target_industry>",
       "location": "<target_location>",
       "website": "https://example.com",
-      "phone": "+8801700000000",
+      "phone": "+1234567890",
       "address": "<Physical Street Address, City>",
       "rating": 4.5,
       "review_count": 85,

@@ -45,7 +45,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: ${BACKEND_IMAGE:-ghcr.io/nibiz-soft/leadgenai-backend:latest}
+    image: ${BACKEND_IMAGE:-leadgenai-backend:latest}
     container_name: leadgen_backend
     restart: unless-stopped
     ports:
@@ -91,7 +91,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: ${BACKEND_IMAGE:-ghcr.io/nibiz-soft/leadgenai-backend:latest}
+    image: ${BACKEND_IMAGE:-leadgenai-backend:latest}
     container_name: leadgen_worker
     restart: unless-stopped
     command: ["python", "-m", "app.workers.runner"]
@@ -140,7 +140,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
-    image: ${FRONTEND_IMAGE:-ghcr.io/nibiz-soft/leadgenai-frontend:latest}
+    image: ${FRONTEND_IMAGE:-leadgenai-frontend:latest}
     container_name: leadgen_frontend
     restart: unless-stopped
     ports:

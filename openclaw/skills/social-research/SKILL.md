@@ -38,7 +38,7 @@ Inspects public brand profiles on Facebook and Instagram to detect live buying s
   - If missing, flag as **`NO_WHATSAPP`**.
 
 ### Step 4: Contact Extraction & Cross-Check
-- Extract public contact mobile numbers (`+880...`) and emails from the page Intro/About snippet.
+- Extract public contact mobile numbers and emails from the page Intro/About snippet.
 - Validate that the phone number is a real telephone line and not a Facebook page ID.
 
 ### Step 5: Output Generation & Proof Verification

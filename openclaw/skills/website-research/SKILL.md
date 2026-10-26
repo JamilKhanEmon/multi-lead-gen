@@ -57,7 +57,7 @@ Inspects public website assets using an isolated browser and DOM analyzer to eva
   "has_meta_pixel": false,
   "has_google_analytics": false,
   "broken_links_count": 0,
-  "extracted_phone": "+8801700000000",
+  "extracted_phone": "+1234567890",
   "extracted_email": "info@example.com",
   "evidence_text": "Public website layout breaks on mobile viewports with horizontal scrolling. No direct appointment scheduling or interactive lead capture detected. Proof: https://example.com",
   "checked_live": true
