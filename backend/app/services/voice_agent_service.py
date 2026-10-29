@@ -7,7 +7,7 @@ from datetime import datetime, time, timezone
 from typing import Dict, Any, List, Optional, Tuple
 import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, text
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
@@ -227,9 +227,20 @@ class VoiceAgentService:
     @classmethod
     async def sync_leads_from_card_1(cls, db: AsyncSession) -> int:
         """Pulls verified discovered leads from Card 1 (leads & businesses table) and populates the Voice Call Queue."""
+        # 1. Guarantee schema & columns exist with autocommit
+        try:
+            from app.db.migrate_voice import ensure_voice_agent_schema
+            await ensure_voice_agent_schema(force=True)
+        except Exception as mig_err:
+            logger.warning(f"[VoiceAgentService] ensure_voice_agent_schema notice: {mig_err}")
+
         synced_count = 0
         try:
-            # 1. Fetch leads from leads table (prioritize qualified, but take any discovered lead with phone)
+            # 2. Fetch all existing phones currently in voice_call_queue in a single fast query
+            existing_res = await db.execute(text("SELECT phone FROM voice_call_queue WHERE phone IS NOT NULL AND phone != ''"))
+            existing_phones = {str(row[0]).strip() for row in existing_res.fetchall() if row[0] and str(row[0]).strip()}
+
+            # 3. Fetch leads from leads table (prioritize qualified, but take any discovered lead with phone)
             stmt = (
                 select(Lead)
                 .options(selectinload(Lead.business).selectinload(Business.locations))
@@ -246,18 +257,13 @@ class VoiceAgentService:
                         continue
 
                     phone = biz.phone.strip()
-
-                    # Check if phone already in queue (safe scalar first)
-                    q_stmt = select(VoiceCallQueueItem).where(VoiceCallQueueItem.phone == phone).limit(1)
-                    q_res = await db.execute(q_stmt)
-                    if q_res.scalars().first():
+                    if phone in existing_phones:
                         continue
 
                     meta = biz.metadata_json or {}
                     loc = biz.locations[0] if (biz.locations and len(biz.locations) > 0) else None
                     loc_country = loc.country if loc and loc.country else (meta.get("country") or meta.get("search_country"))
 
-                    # Multi-Signal Waterfall Resolution
                     country, lang = cls.resolve_country_and_language_waterfall(
                         phone=phone,
                         location_country=loc_country,
@@ -282,12 +288,13 @@ class VoiceAgentService:
                         selected_for_call=True,
                     )
                     db.add(queue_item)
+                    existing_phones.add(phone)
                     synced_count += 1
                 except Exception as lead_err:
                     logger.warning(f"[VoiceAgentService] Skipping problematic lead: {lead_err}")
                     continue
 
-            # 2. If no leads synced from leads table, check businesses table directly
+            # 4. If no leads synced from leads table, check businesses table directly
             if synced_count == 0:
                 b_stmt = (
                     select(Business)
@@ -304,10 +311,7 @@ class VoiceAgentService:
                         if not biz.phone or not biz.phone.strip():
                             continue
                         phone = biz.phone.strip()
-
-                        q_stmt = select(VoiceCallQueueItem).where(VoiceCallQueueItem.phone == phone).limit(1)
-                        q_res = await db.execute(q_stmt)
-                        if q_res.scalars().first():
+                        if phone in existing_phones:
                             continue
 
                         meta = biz.metadata_json or {}
@@ -332,6 +336,7 @@ class VoiceAgentService:
                             selected_for_call=True,
                         )
                         db.add(queue_item)
+                        existing_phones.add(phone)
                         synced_count += 1
                     except Exception as biz_err:
                         logger.warning(f"[VoiceAgentService] Skipping problematic business: {biz_err}")

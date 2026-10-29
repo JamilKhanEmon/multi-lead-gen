@@ -500,10 +500,62 @@ async def lifespan(app: FastAPI):
                             await conn.execute(text(f"ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS {col_n} {col_d};"))
                         except Exception:
                             pass
+
+                    queue_cols = [
+                        ("lead_id", "UUID"),
+                        ("contact_person", "VARCHAR(255) DEFAULT 'Decision Maker'"),
+                        ("contact_title", "VARCHAR(150)"),
+                        ("company_name", "VARCHAR(255) DEFAULT ''"),
+                        ("phone", "VARCHAR(50) DEFAULT ''"),
+                        ("country", "VARCHAR(100) DEFAULT ''"),
+                        ("language", "VARCHAR(50) DEFAULT 'English'"),
+                        ("exact_problem", "TEXT DEFAULT ''"),
+                        ("status", "VARCHAR(50) DEFAULT 'READY'"),
+                        ("selected_for_call", "BOOLEAN DEFAULT TRUE"),
+                        ("call_attempts", "INTEGER DEFAULT 0"),
+                        ("meeting_link", "VARCHAR(500)"),
+                        ("meeting_time", "VARCHAR(100)"),
+                        ("last_called_at", "TIMESTAMPTZ"),
+                        ("notes", "TEXT"),
+                    ]
+                    for col_n, col_d in queue_cols:
+                        try:
+                            await conn.execute(text(f"ALTER TABLE voice_call_queue ADD COLUMN IF NOT EXISTS {col_n} {col_d};"))
+                        except Exception:
+                            pass
+
+                    log_cols = [
+                        ("queue_item_id", "UUID"),
+                        ("kb_id", "UUID"),
+                        ("phone", "VARCHAR(50) DEFAULT ''"),
+                        ("company_name", "VARCHAR(255) DEFAULT ''"),
+                        ("contact_person", "VARCHAR(255) DEFAULT ''"),
+                        ("call_duration_seconds", "INTEGER DEFAULT 0"),
+                        ("language_used", "VARCHAR(50) DEFAULT 'Bengali'"),
+                        ("recording_url", "VARCHAR(500)"),
+                        ("transcript_json", "JSONB DEFAULT '[]'::jsonb"),
+                        ("sentiment", "VARCHAR(50) DEFAULT 'HOT_INTERESTED'"),
+                        ("meeting_booked", "BOOLEAN DEFAULT FALSE"),
+                        ("meeting_link", "VARCHAR(500)"),
+                        ("summary", "TEXT"),
+                    ]
+                    for col_n, col_d in log_cols:
+                        try:
+                            await conn.execute(text(f"ALTER TABLE voice_call_logs ADD COLUMN IF NOT EXISTS {col_n} {col_d};"))
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             except Exception as migration_err:
                 logger.warning(f"Migration columns execution notice: {migration_err}")
+
+        # Dedicated AUTOCOMMIT migration for Voice Agent schema
+        try:
+            from app.db.migrate_voice import ensure_voice_agent_schema
+            await ensure_voice_agent_schema(force=True)
+        except Exception as e:
+            logger.warning(f"Voice agent schema autocommit migration notice: {e}")
+
         logger.info("PostgreSQL database tables, contact columns, user permissions, and outreach columns verified.")
 
         try:

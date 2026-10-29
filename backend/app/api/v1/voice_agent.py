@@ -287,6 +287,12 @@ async def list_call_queue(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
+    try:
+        from app.db.migrate_voice import ensure_voice_agent_schema
+        await ensure_voice_agent_schema()
+    except Exception as me:
+        logger.warning(f"[voice_agent] schema ensure notice in list_call_queue: {me}")
+
     query = select(VoiceCallQueueItem)
     if status_filter and status_filter.upper() != "ALL":
         query = query.where(VoiceCallQueueItem.status == status_filter.upper())
@@ -313,6 +319,12 @@ async def add_lead_to_queue(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
+    try:
+        from app.db.migrate_voice import ensure_voice_agent_schema
+        await ensure_voice_agent_schema(force=True)
+    except Exception as me:
+        logger.warning(f"[voice_agent] schema ensure notice in add_lead_to_queue: {me}")
+
     try:
         country = payload.country
         language = payload.language
@@ -419,7 +431,7 @@ async def execute_batch_queue_action(
             await db.commit()
         return {"success": True, "message": "Selected items removed from queue"}
 
-    elif action == "sync_card1":
+    elif action in ["sync_card1", "sync_from_leads"]:
         count = await VoiceAgentService.sync_leads_from_card_1(db)
         return {"success": True, "synced_count": count, "message": f"Synced {count} leads from Card 1"}
 
