@@ -1098,31 +1098,42 @@ async def synthesize_text_audio(
         }
     }
 
+    models_to_try = [clean_model]
+    for alt in ["gemini-2.5-flash-native-audio-latest", "gemini-3.8-live"]:
+        if alt not in models_to_try:
+            models_to_try.append(alt)
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(rest_url, json=rest_payload, headers={"Content-Type": "application/json"})
-            if resp.status_code == 200:
-                data = resp.json()
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    for p in parts:
-                        inline = p.get("inlineData")
-                        if inline and inline.get("data"):
-                            raw_bytes = base64.b64decode(inline["data"])
-                            mime = inline.get("mimeType", "")
-                            if "wav" in mime:
-                                return Response(content=raw_bytes, media_type="audio/wav")
-                            else:
-                                # 24kHz linear PCM -> standard WAV container
-                                wav_bytes = pcm_to_wav(raw_bytes, 24000)
-                                return Response(content=wav_bytes, media_type="audio/wav")
-            else:
-                logger.warning(f"[VoiceAgent TTS] Gemini REST returned status {resp.status_code}: {resp.text[:250]}")
+            for m in models_to_try:
+                m_url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={gemini_key.strip()}"
+                try:
+                    resp = await client.post(m_url, json=rest_payload, headers={"Content-Type": "application/json"})
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            for p in parts:
+                                inline = p.get("inlineData")
+                                if inline and inline.get("data"):
+                                    raw_bytes = base64.b64decode(inline["data"])
+                                    mime = inline.get("mimeType", "")
+                                    if "wav" in mime:
+                                        return Response(content=raw_bytes, media_type="audio/wav")
+                                    else:
+                                        # 24kHz linear PCM -> standard WAV container
+                                        wav_bytes = pcm_to_wav(raw_bytes, 24000)
+                                        return Response(content=wav_bytes, media_type="audio/wav")
+                    else:
+                        logger.warning(f"[VoiceAgent TTS] Model {m} returned {resp.status_code}: {resp.text[:150]}")
+                        # If 503 or 404, loop will try next available model immediately
+                except Exception as req_err:
+                    logger.warning(f"[VoiceAgent TTS] Notice requesting model {m}: {req_err}")
     except Exception as re_err:
         logger.warning(f"[VoiceAgent TTS] Gemini REST synthesis notice: {re_err}")
 
-    # 2. Secondary: High-Fidelity Gemini Live Native Audio via WebSocket Stream
+    # 2. Secondary: High-Fidelity Gemini Live Native Audio via WebSocket Stream (uses dedicated Live model)
     try:
         live_session = GeminiLiveSession(
             api_key=gemini_key,
@@ -1132,7 +1143,7 @@ async def synthesize_text_audio(
                 "Speak ONLY the exact words provided without any preamble or commentary."
             ),
             voice_name=target_voice,
-            model=clean_model,
+            model="models/gemini-3.8-live",
         )
         await live_session.connect()
         await live_session.send_text_chunk(clean_text)
