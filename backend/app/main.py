@@ -464,7 +464,7 @@ async def lifespan(app: FastAPI):
                         ("faq_kb_json", "JSONB DEFAULT '[]'::jsonb"),
                         ("voice_provider", "VARCHAR(50) DEFAULT 'gemini'"),
                         ("gemini_api_key", "VARCHAR(255)"),
-                        ("gemini_voice_name", "VARCHAR(50) DEFAULT 'Aoede'"),
+                        ("gemini_voice_name", "VARCHAR(50) DEFAULT 'Charon'"),
                         ("gemini_model_id", "VARCHAR(100) DEFAULT 'gemini-2.0-flash-exp'"),
                         ("twilio_account_sid", "VARCHAR(255)"),
                         ("twilio_auth_token", "VARCHAR(255)"),

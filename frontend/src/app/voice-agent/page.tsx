@@ -615,14 +615,20 @@ export default function VoiceAgentPage() {
       const isBn = /[\u0980-\u09ff]/.test(utteranceText);
       const voices = window.speechSynthesis.getVoices();
       if (isBn) {
-        const bnVoice = voices.find((v) => v.lang.toLowerCase().includes("bn"));
-        if (bnVoice) utterance.voice = bnVoice;
+        const maleBn = voices.find((v) => v.lang.toLowerCase().includes("bn") && 
+          (v.name.toLowerCase().includes("male") || (!v.name.toLowerCase().includes("female") && !v.name.toLowerCase().includes("zira") && !v.name.toLowerCase().includes("heera"))));
+        if (maleBn) utterance.voice = maleBn;
+        else {
+          const anyBn = voices.find((v) => v.lang.toLowerCase().includes("bn"));
+          if (anyBn) utterance.voice = anyBn;
+        }
       } else {
-        const enVoice = voices.find((v) => v.lang.toLowerCase().startsWith("en"));
-        if (enVoice) utterance.voice = enVoice;
+        const maleEn = voices.find((v) => v.lang.toLowerCase().startsWith("en") && 
+          (v.name.toLowerCase().includes("male") || v.name.toLowerCase().includes("david") || v.name.toLowerCase().includes("guy") || v.name.toLowerCase().includes("george") || v.name.toLowerCase().includes("daniel") || v.name.toLowerCase().includes("mark")));
+        if (maleEn) utterance.voice = maleEn;
       }
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
+      utterance.rate = 0.96;
+      utterance.pitch = 0.82; // Authoritative, deep masculine pitch
       utterance.onstart = () => {
         isAgentSpeakingRef.current = true;
         setIsAgentSpeaking(true);

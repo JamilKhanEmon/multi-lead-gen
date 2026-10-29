@@ -148,12 +148,12 @@ class GeminiLiveSession:
         self,
         api_key: str,
         system_prompt: str,
-        voice_name: str = "Aoede",
+        voice_name: str = "Charon",
         model: Optional[str] = None,
     ):
         self.api_key = api_key.strip()
         self.system_prompt = system_prompt.strip()
-        self.voice_name = voice_name.strip() if voice_name else "Aoede"
+        self.voice_name = voice_name.strip() if voice_name else "Charon"
         
         # Clean and auto-migrate deprecated model names to the active multimodal live model
         target_model = (model or "").strip()

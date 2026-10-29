@@ -108,7 +108,7 @@ class Settings(BaseSettings):
     META_WHATSAPP_PHONE_NUMBER_ID: Optional[str] = Field(default=None, description="Meta WhatsApp Business Cloud API Phone Number ID")
 
     GEMINI_API_KEY: Optional[str] = Field(default=None, description="Google Gemini API Key for Gemini Live Multimodal Voice Agent")
-    GEMINI_LIVE_VOICE: str = Field(default="Aoede", description="Default Gemini Live voice persona: Aoede, Puck, Charon, Fenrir, Kore")
+    GEMINI_LIVE_VOICE: str = Field(default="Charon", description="Default Gemini Live voice persona: Charon, Puck, Fenrir, Aoede, Kore")
 
     TWILIO_ACCOUNT_SID: Optional[str] = Field(default=None, description="Twilio Account SID for voice calling")
     TWILIO_AUTH_TOKEN: Optional[str] = Field(default=None, description="Twilio Auth Token for voice calling")

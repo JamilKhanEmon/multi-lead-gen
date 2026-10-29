@@ -51,6 +51,10 @@ async def ensure_voice_tables_and_seed():
                 primary.gemini_model_id = "gemini-2.0-flash-exp"
                 await session.commit()
                 print("  ✓ Corrected gemini_model_id to valid official 'gemini-2.0-flash-exp'.")
+            if not primary.gemini_voice_name or primary.gemini_voice_name in ["Aoede", "Kore"]:
+                primary.gemini_voice_name = "Charon"
+                await session.commit()
+                print("  ✓ Corrected gemini_voice_name to authoritative male 'Charon'.")
             if len(existing) > 1:
                 await session.execute(delete(VoiceKnowledgeBase).where(VoiceKnowledgeBase.id != primary.id))
                 await session.commit()

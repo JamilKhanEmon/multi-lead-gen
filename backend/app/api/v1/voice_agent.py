@@ -597,7 +597,8 @@ async def twilio_audio_stream_websocket(websocket: WebSocket, queue_item_id: str
         "3. Consultative Listening: If caller has existing software or is busy, respect it politely without forcing meetings."
     )
 
-    voice_name = (kb.gemini_voice_name if kb and kb.gemini_voice_name else "").strip() or "Aoede"
+    raw_voice = (kb.gemini_voice_name if kb and kb.gemini_voice_name else "").strip()
+    voice_name = "Charon" if raw_voice in ["", "Aoede"] else raw_voice
     gemini_session = GeminiLiveSession(
         api_key=gemini_key,
         system_prompt=full_system_prompt,
@@ -809,7 +810,8 @@ async def browser_audio_stream_websocket(websocket: WebSocket, session_id: str):
         "4. CONSULTATIVE LISTENING & OBJECTION HANDLING: Follow the playbook rules strictly. If the client says they already have software/vendor, NEVER force a meeting. Instead, acknowledge warmly and ask an open consultative question about their current system or if they experience any gaps/limitations. If busy, respect their time immediately without pitching."
     )
 
-    voice_name = (kb.gemini_voice_name if kb and kb.gemini_voice_name else "").strip() or "Aoede"
+    raw_bvoice = (kb.gemini_voice_name if kb and kb.gemini_voice_name else "").strip()
+    voice_name = "Charon" if raw_bvoice in ["", "Aoede"] else raw_bvoice
 
     model_id = getattr(kb, "gemini_model_id", None)
 
