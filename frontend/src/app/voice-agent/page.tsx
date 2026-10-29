@@ -1829,22 +1829,32 @@ export default function VoiceAgentPage() {
                         <label className="block text-slate-300 font-semibold text-[11px]">
                           Google Gemini API Key
                         </label>
-                        {kb?.gemini_api_key_configured && (
-                          <span className="text-[10px] text-emerald-400 font-semibold">● Verified</span>
+                        {kb?.gemini_api_key_configured ? (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
+                            ✓ Saved in DB & Verified
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-amber-400 font-semibold">● Not Configured</span>
                         )}
                       </div>
                       <input
                         type="password"
                         name="gemini_api_key_field"
                         autoComplete="new-password"
-                        placeholder="AIzaSy... (Free Google AI Studio Key)"
+                        placeholder={kb?.gemini_api_key_configured ? "•••••••••••••••••••••••• (API Key Saved in Database)" : "AIzaSy... (Free Google AI Studio Key)"}
                         value={kb?.gemini_api_key || ""}
                         onChange={(e) => kb && setKb({ ...kb, gemini_api_key: e.target.value })}
                         className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
                       />
-                      <p className="text-[10px] text-slate-500">
-                        Get free key from <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline">aistudio.google.com</a> (No Credit Card required)
-                      </p>
+                      {kb?.gemini_api_key_configured ? (
+                        <p className="text-[10px] text-emerald-400/90 font-medium flex items-center gap-1">
+                          ✓ আপনার API Key ডেটাবেজে সুরক্ষিতভাবে সেভ আছে। পরিবর্তন করতে চাইলে নতুন কি টাইপ করুন।
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-slate-500">
+                          Get free key from <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline">aistudio.google.com</a> (No Credit Card required)
+                        </p>
+                      )}
                     </div>
 
                     {/* Gemini Voice Persona */}
