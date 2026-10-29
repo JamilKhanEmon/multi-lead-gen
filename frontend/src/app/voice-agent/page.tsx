@@ -2004,7 +2004,7 @@ export default function VoiceAgentPage() {
                       >
                         {dynamicGeminiModels.map((m) => (
                           <option key={m.id} value={m.id}>
-                            {m.supports_live ? "⚡ " : "📄 "} {m.name}
+                            {m.name}
                           </option>
                         ))}
                       </select>

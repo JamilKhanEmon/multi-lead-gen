@@ -251,10 +251,18 @@ async def list_available_gemini_models(
     kb = res.scalars().first()
 
     effective_key = (api_key or (kb.gemini_api_key if kb else None) or settings.GEMINI_API_KEY or "").strip()
+    # Non-conversational models to strictly filter out from Voice Agent settings
+    EXCLUDED_PATTERNS = [
+        "image", "imagen", "veo", "video", "embedding", "embed",
+        "aqa", "learnlm", "vision", "moderation", "classification",
+        "robotics", "text-embedding", "gemini-1.0", "gemma"
+    ]
+
     fallback_models = [
-        {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (Google Official - Ultra Low Latency)", "supports_live": True},
-        {"id": "gemini-3.8-live", "name": "Gemini 3.8 Live (Native Audio Streaming)", "supports_live": True},
-        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "supports_live": False},
+        {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash [🚀 Ultra-Fast Voice Sales]", "supports_live": True},
+        {"id": "gemini-3.8-live", "name": "Gemini 3.8 Live [⚡ Native Audio Streaming]", "supports_live": True},
+        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash [⚡ Low Latency]", "supports_live": True},
+        {"id": "gemini-3.8-pro", "name": "Gemini 3.8 Pro [🧠 Deep Reasoning]", "supports_live": False},
     ]
 
     if not effective_key:
@@ -270,18 +278,55 @@ async def list_available_gemini_models(
                 formatted = []
                 for m in raw_models:
                     model_id = m.get("name", "").replace("models/", "").strip()
+                    m_lower = model_id.lower()
+
+                    # 1. Must be a Gemini conversational model
+                    if not m_lower.startswith("gemini"):
+                        continue
+
+                    # 2. Exclude image generation (Imagen), video (Veo), embeddings, and non-conversational tools
+                    if any(bad in m_lower for bad in EXCLUDED_PATTERNS):
+                        continue
+
+                    # 3. Must support generation or real-time streaming
                     methods = m.get("supportedGenerationMethods", [])
-                    if "generateContent" in methods or "bidiGenerateContent" in methods:
-                        display = m.get("displayName") or model_id
-                        supports_live = "bidiGenerateContent" in methods
-                        formatted.append({
-                            "id": model_id,
-                            "name": f"{display} ({model_id})",
-                            "supports_live": supports_live,
-                        })
+                    if not ("generateContent" in methods or "bidiGenerateContent" in methods):
+                        continue
+
+                    display = m.get("displayName") or model_id
+                    supports_live = "bidiGenerateContent" in methods or "live" in m_lower or "native-audio" in m_lower
+
+                    # Smart category tagging
+                    if supports_live:
+                        badge = "[⚡ Real-Time Live Voice]"
+                    elif "flash" in m_lower:
+                        badge = "[🚀 Ultra-Fast Conversational]"
+                    elif "pro" in m_lower:
+                        badge = "[🧠 Deep Reasoning]"
+                    else:
+                        badge = "[Conversational]"
+
+                    formatted.append({
+                        "id": model_id,
+                        "name": f"{display} {badge}",
+                        "supports_live": supports_live,
+                    })
+
                 if formatted:
-                    # Sort prioritizing flash and live models
-                    formatted.sort(key=lambda x: (not x["supports_live"], "flash" not in x["id"].lower(), x["id"]))
+                    # Smart priority sorting: Flash & Live first (best for voice), then Pro, then others
+                    def sort_priority(item):
+                        mid = item["id"].lower()
+                        if "3.8-flash" in mid:
+                            return (0, mid)
+                        elif "flash" in mid:
+                            return (1, mid)
+                        elif "live" in mid or item["supports_live"]:
+                            return (2, mid)
+                        elif "pro" in mid:
+                            return (3, mid)
+                        return (4, mid)
+
+                    formatted.sort(key=sort_priority)
                     return {"success": True, "models": formatted, "from_google": True}
             else:
                 logger.warning(f"[Gemini Models] Google API response {resp.status_code}: {resp.text[:200]}")
