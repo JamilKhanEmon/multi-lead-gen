@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.logging import logger
 
 GEMINI_LIVE_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-DEFAULT_GEMINI_LIVE_MODEL = "models/gemini-2.0-flash"
+DEFAULT_GEMINI_LIVE_MODEL = "models/gemini-3.8-live"
 
 AVAILABLE_GEMINI_VOICES = [
     {"id": "Aoede", "name": "Aoede (Warm, Friendly Female)", "gender": "Female", "description": "Highly engaging, consultative B2B specialist"},

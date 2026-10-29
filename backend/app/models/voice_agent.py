@@ -59,7 +59,7 @@ class VoiceKnowledgeBase(Base, UUIDMixin, TimestampMixin):
     voice_provider: Mapped[str] = mapped_column(String(50), default="gemini", nullable=False)
     gemini_api_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     gemini_voice_name: Mapped[str] = mapped_column(String(50), default="Charon", nullable=False) # Charon, Puck, Fenrir, Aoede, Kore
-    gemini_model_id: Mapped[str] = mapped_column(String(100), default="gemini-2.0-flash-exp", nullable=False)
+    gemini_model_id: Mapped[str] = mapped_column(String(100), default="gemini-3.8-flash", nullable=False)
 
     # Twilio Calling Credentials
     twilio_account_sid: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

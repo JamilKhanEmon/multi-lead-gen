@@ -47,10 +47,10 @@ async def ensure_voice_tables_and_seed():
                 primary.core_offer = ""
                 await session.commit()
                 print("  ✓ Cleared accidental browser autofill email from core_offer.")
-            if not primary.gemini_model_id or "2.5" in primary.gemini_model_id or "exp" in primary.gemini_model_id:
-                primary.gemini_model_id = "gemini-2.0-flash"
+            if not primary.gemini_model_id or "2." in primary.gemini_model_id or "exp" in primary.gemini_model_id:
+                primary.gemini_model_id = "gemini-3.8-flash"
                 await session.commit()
-                print("  ✓ Corrected gemini_model_id to valid official 'gemini-2.0-flash'.")
+                print("  ✓ Corrected gemini_model_id to active Google official 'gemini-3.8-flash'.")
             if not primary.gemini_voice_name or primary.gemini_voice_name in ["Aoede", "Kore", ""]:
                 primary.gemini_voice_name = "Charon"
                 await session.commit()

@@ -1007,9 +1007,9 @@ async def synthesize_text_audio(
         )
 
     # 1. Primary: Direct Google Gemini 2.0 REST Audio Synthesis (Ultra-low latency, pure male Charon voice)
-    model_name = getattr(kb, "gemini_model_id", None) or "gemini-2.0-flash"
-    if not model_name or "2.5" in model_name or "exp" in model_name:
-        model_name = "gemini-2.0-flash"
+    model_name = getattr(kb, "gemini_model_id", None) or "gemini-3.8-flash"
+    if not model_name or "2." in model_name or "exp" in model_name:
+        model_name = "gemini-3.8-flash"
     clean_model = model_name.replace("models/", "").strip()
 
     persona = (getattr(kb, "agent_persona_name", "") or "Consultative Representative").strip()
