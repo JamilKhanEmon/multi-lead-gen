@@ -659,7 +659,7 @@ export default function VoiceAgentPage() {
       };
 
       if (isBn) {
-        // Only select Bengali voice if it is guaranteed to be male
+        // Select male Bengali voice if available, or fallback to any Bengali voice with low masculine pitch
         const maleBn = voices.find(
           (v) =>
             v.lang.toLowerCase().includes("bn") &&
@@ -668,13 +668,12 @@ export default function VoiceAgentPage() {
               v.name.toLowerCase().includes("pradeep") ||
               v.name.toLowerCase().includes("bashkar"))
         );
+        const anyBn = voices.find((v) => v.lang.toLowerCase().includes("bn"));
         if (maleBn) {
           utterance.voice = maleBn;
-        } else {
-          // STRICT RULE: No male Bengali voice exists in Apple macOS / Google Chrome offline TTS.
-          // NEVER EVER fallback to female Oparna. Suppress to guarantee persona integrity.
-          console.warn("[VoiceAgent] Offline OS has no male Bengali voice. Suppressing fallback to prevent female voice leak.");
-          return;
+        } else if (anyBn) {
+          utterance.voice = anyBn;
+          utterance.pitch = 0.72; // Deep authoritative pitch to ensure masculine timbre
         }
       } else {
         const maleEn = voices.find(
@@ -691,7 +690,7 @@ export default function VoiceAgentPage() {
         if (maleEn) utterance.voice = maleEn;
       }
       utterance.rate = 0.96;
-      utterance.pitch = 0.82; // Authoritative, deep masculine pitch
+      if (!utterance.pitch) utterance.pitch = 0.80; // Authoritative, deep masculine pitch
       utterance.onstart = () => {
         isAgentSpeakingRef.current = true;
         setIsAgentSpeaking(true);
@@ -749,9 +748,16 @@ export default function VoiceAgentPage() {
             audio.onerror = () => {
               setIsAgentSpeaking(false);
               URL.revokeObjectURL(audioUrl);
+              speakBrowserFallback(text);
             };
-            await audio.play();
-            return;
+            try {
+              await audio.play();
+              return;
+            } catch (playErr) {
+              console.warn("Audio play blocked, using speech fallback:", playErr);
+              speakBrowserFallback(text);
+              return;
+            }
           }
         } else {
           const errData = await resp.json().catch(() => ({}));
@@ -759,12 +765,18 @@ export default function VoiceAgentPage() {
           if (resp.status === 400 && errMsg.includes("Gemini API Key")) {
             showToast("⚠️ Google Gemini API Key required! Please enter your key in Settings tab.", "error");
           }
+          // Fallback so agent never goes silent
+          speakBrowserFallback(text);
+          return;
         }
       } catch (err) {
-        console.warn("Backend audio notice:", err);
+        console.warn("Backend audio notice, falling back to browser speech:", err);
+        speakBrowserFallback(text);
+        return;
       }
     } catch (e) {
       console.warn("Speech playback notice:", e);
+      speakBrowserFallback(text);
     }
   };
 

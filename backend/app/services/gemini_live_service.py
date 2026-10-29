@@ -157,7 +157,7 @@ class GeminiLiveSession:
         
         # Clean and auto-migrate deprecated model names to the active multimodal live model
         target_model = (model or "").strip()
-        if not target_model or "2.5" in target_model or "native-audio" in target_model or "exp" in target_model:
+        if not target_model:
             self.model = DEFAULT_GEMINI_LIVE_MODEL
         elif not target_model.startswith("models/"):
             self.model = f"models/{target_model}"
@@ -169,40 +169,59 @@ class GeminiLiveSession:
         self.transcript_history: List[Dict[str, str]] = []
 
     async def connect(self):
-        """Establish WebSocket connection with Google Gemini Live API and perform initial handshake."""
-        ws_url = f"{GEMINI_LIVE_WS_URL}?key={self.api_key}"
-        self.ws = await websockets.connect(
-            ws_url,
-            additional_headers={"Content-Type": "application/json"},
-            ping_interval=20,
-            ping_timeout=20,
-        )
-        self.is_connected = True
+        """Establish WebSocket connection with Google Gemini Live API with automatic fallback across verified models."""
+        candidate_models = []
+        if self.model:
+            candidate_models.append(self.model)
+        for cand in [
+            "models/gemini-2.5-flash-native-audio-latest",
+            "models/gemini-2.0-flash-exp",
+            "models/gemini-2.5-flash",
+            "models/gemini-3.8-live",
+        ]:
+            if cand not in candidate_models:
+                candidate_models.append(cand)
 
-        # Initial Setup message
-        setup_payload = {
-            "setup": {
-                "model": self.model,
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {
-                                "voiceName": self.voice_name
+        last_err = None
+        for m in candidate_models:
+            try:
+                ws_url = f"{GEMINI_LIVE_WS_URL}?key={self.api_key}"
+                ws = await websockets.connect(
+                    ws_url,
+                    additional_headers={"Content-Type": "application/json"},
+                    ping_interval=20,
+                    ping_timeout=20,
+                )
+                setup_payload = {
+                    "setup": {
+                        "model": m,
+                        "generationConfig": {
+                            "responseModalities": ["AUDIO"],
+                            "speechConfig": {
+                                "voiceConfig": {
+                                    "prebuiltVoiceConfig": {
+                                        "voiceName": self.voice_name
+                                    }
+                                }
                             }
+                        },
+                        "systemInstruction": {
+                            "parts": [{"text": self.system_prompt}]
                         }
                     }
-                },
-                "systemInstruction": {
-                    "parts": [{"text": self.system_prompt}]
                 }
-            }
-        }
-        await self.ws.send(json.dumps(setup_payload))
-        
-        # Await setup confirmation response
-        raw_ack = await self.ws.recv()
-        logger.info(f"[GeminiLive] Connected and Handshake Completed: {raw_ack[:120]}")
+                await ws.send(json.dumps(setup_payload))
+                raw_ack = await ws.recv()
+                self.ws = ws
+                self.is_connected = True
+                self.model = m
+                logger.info(f"[GeminiLive] Connected with model {m} and Handshake Completed: {raw_ack[:120]}")
+                return
+            except Exception as e:
+                logger.warning(f"[GeminiLive] Handshake failed with model {m}: {e}")
+                last_err = e
+
+        raise last_err or RuntimeError("Unable to connect to Google Gemini Live with any candidate model")
 
     async def send_audio_chunk(self, mulaw_8k_chunk: bytes):
         """Convert Twilio 8kHz mu-law audio to 16kHz PCM and stream to Gemini."""

@@ -1098,10 +1098,22 @@ async def synthesize_text_audio(
         }
     }
 
-    models_to_try = [clean_model]
-    for alt in ["gemini-2.5-flash-native-audio-latest", "gemini-3.8-live"]:
-        if alt not in models_to_try:
-            models_to_try.append(alt)
+    # Dedicated Google Gemini TTS models that support responseModalities: ["AUDIO"]
+    models_to_try = []
+    if clean_model:
+        if clean_model.endswith("-tts"):
+            models_to_try.append(clean_model)
+        else:
+            models_to_try.append(f"{clean_model}-tts")
+            models_to_try.append(clean_model)
+    for m_cand in [
+        "gemini-3.8-flash-tts",
+        "gemini-2.5-flash-tts",
+        "gemini-3.8-flash-lite-tts",
+        "gemini-2.0-flash-exp",
+    ]:
+        if m_cand not in models_to_try:
+            models_to_try.append(m_cand)
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -1133,7 +1145,7 @@ async def synthesize_text_audio(
     except Exception as re_err:
         logger.warning(f"[VoiceAgent TTS] Gemini REST synthesis notice: {re_err}")
 
-    # 2. Secondary: High-Fidelity Gemini Live Native Audio via WebSocket Stream (uses dedicated Live model)
+    # 2. Secondary: High-Fidelity Gemini Live Native Audio via WebSocket Stream (auto-resolves active live model)
     try:
         live_session = GeminiLiveSession(
             api_key=gemini_key,
@@ -1143,7 +1155,7 @@ async def synthesize_text_audio(
                 "Speak ONLY the exact words provided without any preamble or commentary."
             ),
             voice_name=target_voice,
-            model="models/gemini-3.8-live",
+            model=None,
         )
         await live_session.connect()
         await live_session.send_text_chunk(clean_text)
