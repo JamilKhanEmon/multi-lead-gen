@@ -607,6 +607,41 @@ export default function VoiceAgentPage() {
     } catch (e) {}
   };
 
+  const speakBrowserFallback = (utteranceText: string) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(utteranceText);
+      const isBn = /[\u0980-\u09ff]/.test(utteranceText);
+      const voices = window.speechSynthesis.getVoices();
+      if (isBn) {
+        const bnVoice = voices.find((v) => v.lang.toLowerCase().includes("bn"));
+        if (bnVoice) utterance.voice = bnVoice;
+      } else {
+        const enVoice = voices.find((v) => v.lang.toLowerCase().startsWith("en"));
+        if (enVoice) utterance.voice = enVoice;
+      }
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.onstart = () => {
+        isAgentSpeakingRef.current = true;
+        setIsAgentSpeaking(true);
+      };
+      utterance.onend = () => {
+        isAgentSpeakingRef.current = false;
+        setIsAgentSpeaking(false);
+      };
+      utterance.onerror = () => {
+        isAgentSpeakingRef.current = false;
+        setIsAgentSpeaking(false);
+      };
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn("Browser speech fallback notice:", e);
+      setIsAgentSpeaking(false);
+    }
+  };
+
   const playAgentResponse = async (text: string) => {
     if (!text || typeof window === "undefined") return;
     // If Gemini Live native PCM audio is currently playing, do not overlay fallback speech
@@ -645,22 +680,21 @@ export default function VoiceAgentPage() {
             audio.onerror = () => {
               setIsAgentSpeaking(false);
               URL.revokeObjectURL(audioUrl);
+              speakBrowserFallback(text);
             };
             await audio.play();
             return;
           }
-        } else {
-          const errData = await resp.json().catch(() => null);
-          console.warn("Audio synthesis error from backend:", errData);
-          showToast(errData?.detail || "Voice audio synthesis unavailable. Please check Gemini API Key.", "error");
         }
+        // Fallback to browser SpeechSynthesis if backend audio is pending/unavailable
+        speakBrowserFallback(text);
       } catch (err) {
-        console.warn("Backend audio notice:", err);
+        console.warn("Backend audio notice, falling back to browser speech:", err);
+        speakBrowserFallback(text);
       }
     } catch (e) {
       console.warn("Speech playback notice:", e);
-    } finally {
-      setIsAgentSpeaking(false);
+      speakBrowserFallback(text);
     }
   };
 
