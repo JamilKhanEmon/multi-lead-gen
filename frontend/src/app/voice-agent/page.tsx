@@ -741,12 +741,15 @@ export default function VoiceAgentPage() {
             const audioUrl = URL.createObjectURL(blob);
             const audio = new Audio(audioUrl);
             setIsAgentSpeaking(true);
+            isAgentSpeakingRef.current = true;
             audio.onended = () => {
               setIsAgentSpeaking(false);
+              isAgentSpeakingRef.current = false;
               URL.revokeObjectURL(audioUrl);
             };
             audio.onerror = () => {
               setIsAgentSpeaking(false);
+              isAgentSpeakingRef.current = false;
               URL.revokeObjectURL(audioUrl);
               speakBrowserFallback(text);
             };
@@ -1093,23 +1096,8 @@ export default function VoiceAgentPage() {
             const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
             setSimHistory([{ speaker: "agent", text: opening, time: nowTime }]);
             
-            // Check prospect language & country to prevent English leak on Turn 1
-            const leadLang = (activeLead.language || "bengali").toLowerCase();
-            const leadCountry = (activeLead.country || "bangladesh").toLowerCase();
-            const isBnLead = leadLang.includes("bengal") || leadCountry.includes("bangladesh");
-
-            // CRITICAL: Handshake prompt MUST match prospect language and use dynamic persona from database.
-            const personaName = (kb?.agent_persona_name || "").trim() || "Sales Representative";
-            const handshakeText = isBnLead
-              ? `[কল কানেক্ট হয়েছে। ক্লায়েন্ট কল রিসিভ করেছেন। আপনি ${personaName} হিসেবে সম্পূর্ণ খাঁটি ও মিষ্ট বাংলায় অত্যন্ত ভদ্রভাবে এই প্রথম সম্ভাষণটি মুখে বলুন: "${opening}"]`
-              : `[Call answered. Deliver this opening greeting aloud now: "${opening}"]`;
-
-            socket.send(JSON.stringify({
-              type: "text",
-              text: handshakeText,
-            }));
-
-            // Automatically open hands-free continuous microphone with low latency VAD
+            // Deliver opening greeting clearly and open continuous mic for the prospect
+            playAgentResponse(opening);
             startContinuousMic(activeLead);
             showToast(`📞 Call Connected! Microphone is LIVE — Speak naturally.`, "success");
           } else if (msg.type === "audio") {

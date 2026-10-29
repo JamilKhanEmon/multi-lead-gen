@@ -1125,12 +1125,7 @@ async def synthesize_text_audio(
             {
                 "parts": [
                     {
-                        "text": (
-                            f"You are {persona}{company_clause}, an authoritative, professional, and consultative sales executive. "
-                            "Read the following exact spoken words aloud in your natural, warm, confident consultative voice "
-                            "with natural human conversational pauses. Speak ONLY these exact words without adding any preamble, commentary, or robotic phrases: "
-                            f"{clean_text}"
-                        )
+                        "text": clean_text
                     }
                 ]
             }

@@ -1241,54 +1241,54 @@ class VoiceAgentService:
         # 1. Primary Engine: Google Gemini 2.0 Flash (REST API - Free, 200ms latency, Bengali/English/Banglish)
         effective_gemini_key = gemini_api_key or settings.GEMINI_API_KEY
         if effective_gemini_key:
-            try:
-                # Use ultra-fast, active Google Gemini flash-lite for REST dialogue turns
-                model_name = "gemini-flash-lite-latest"
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={effective_gemini_key}"
-                
-                contents = []
-                if history:
-                    for turn in history[-6:]:
-                        spk = turn.get("speaker", "").lower()
-                        role = "model" if spk in ["agent", "ai"] else "user"
-                        txt = (turn.get("text") or "").strip()
-                        if txt:
-                            contents.append({"role": role, "parts": [{"text": txt}]})
-                contents.append({"role": "user", "parts": [{"text": user_text}]})
-                
-                body = {
-                    "system_instruction": {
-                        "parts": [{"text": system_prompt}]
-                    },
-                    "contents": contents,
-                    "generationConfig": {
-                        "temperature": 0.4,
-                        "maxOutputTokens": 90,
-                    }
+            models_to_try = []
+            if gemini_model_id:
+                clean_id = gemini_model_id.replace("models/", "").strip()
+                if clean_id and "exp" not in clean_id and "lite" not in clean_id:
+                    models_to_try.append(clean_id)
+            for m in ["gemini-3.8-flash", "gemini-2.5-flash"]:
+                if m not in models_to_try:
+                    models_to_try.append(m)
+
+            contents = []
+            if history:
+                for turn in history[-6:]:
+                    spk = turn.get("speaker", "").lower()
+                    role = "model" if spk in ["agent", "ai"] else "user"
+                    txt = (turn.get("text") or "").strip()
+                    if txt:
+                        contents.append({"role": role, "parts": [{"text": txt}]})
+            contents.append({"role": "user", "parts": [{"text": user_text}]})
+
+            body = {
+                "system_instruction": {
+                    "parts": [{"text": system_prompt}]
+                },
+                "contents": contents,
+                "generationConfig": {
+                    "temperature": 0.4,
+                    "maxOutputTokens": 90,
                 }
+            }
+
+            try:
                 async with httpx.AsyncClient(timeout=12.0) as http_client:
-                    r = await http_client.post(url, json=body)
-                    if r.status_code == 200:
-                        data = r.json()
-                        usage = data.get("usageMetadata", {})
-                        if usage:
-                            logger.info(
-                                f"[Google Gemini Usage] Tokens Used - "
-                                f"Prompt: {usage.get('promptTokenCount', 0)}, "
-                                f"Output: {usage.get('candidatesTokenCount', 0)}, "
-                                f"Total: {usage.get('totalTokenCount', 0)}"
-                            )
-                        cand = data.get("candidates", [])
-                        if cand:
-                            parts = cand[0].get("content", {}).get("parts", [])
-                            if parts and "text" in parts[0]:
-                                reply = parts[0]["text"].strip()
-                                cleaned = re.sub(r'^["\']|["\']$', '', reply).strip()
-                                cleaned = re.sub(r'^(AI Agent|Agent|Assistant):\s*', '', cleaned, flags=re.IGNORECASE).strip()
-                                if cleaned and len(cleaned.split()) >= 2:
-                                    return cleaned
-                    else:
-                        logger.warning(f"[VoiceAgentService] Google Gemini HTTP {r.status_code}: {r.text[:200]}")
+                    for model_name in models_to_try:
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={effective_gemini_key}"
+                        r = await http_client.post(url, json=body)
+                        if r.status_code == 200:
+                            data = r.json()
+                            cand = data.get("candidates", [])
+                            if cand:
+                                parts = cand[0].get("content", {}).get("parts", [])
+                                if parts and "text" in parts[0]:
+                                    reply = parts[0]["text"].strip()
+                                    cleaned = re.sub(r'^["\']|["\']$', '', reply).strip()
+                                    cleaned = re.sub(r'^(AI Agent|Agent|Assistant):\s*', '', cleaned, flags=re.IGNORECASE).strip()
+                                    if cleaned and len(cleaned.split()) >= 2:
+                                        return cleaned
+                        else:
+                            logger.warning(f"[VoiceAgentService] Model {model_name} HTTP {r.status_code}: {r.text[:150]}")
             except Exception as e:
                 logger.error(f"[VoiceAgentService] Google Gemini dialogue inference error: {type(e).__name__}: {e}")
 
