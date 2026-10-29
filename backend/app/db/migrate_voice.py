@@ -35,7 +35,7 @@ VOICE_MIGRATION_SQLS = [
     "ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS voice_provider VARCHAR(50) DEFAULT 'gemini';",
     "ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS gemini_api_key VARCHAR(255);",
     "ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS gemini_voice_name VARCHAR(50) DEFAULT 'Charon';",
-    "ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS gemini_model_id VARCHAR(100) DEFAULT 'gemini-2.5-flash-native-audio-latest';",
+    "ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS gemini_model_id VARCHAR(100) DEFAULT 'gemini-2.0-flash-exp';",
     "ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS twilio_account_sid VARCHAR(255);",
     "ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS twilio_auth_token VARCHAR(255);",
     "ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS twilio_from_phone VARCHAR(50);",

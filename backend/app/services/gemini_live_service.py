@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.logging import logger
 
 GEMINI_LIVE_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-DEFAULT_GEMINI_LIVE_MODEL = "models/gemini-2.5-flash-native-audio-latest"
+DEFAULT_GEMINI_LIVE_MODEL = "models/gemini-2.0-flash-exp"
 
 AVAILABLE_GEMINI_VOICES = [
     {"id": "Aoede", "name": "Aoede (Warm, Friendly Female)", "gender": "Female", "description": "Highly engaging, consultative B2B specialist"},
@@ -157,7 +157,7 @@ class GeminiLiveSession:
         
         # Clean and auto-migrate deprecated model names to the active multimodal live model
         target_model = (model or "").strip()
-        if not target_model or any(deprecated in target_model for deprecated in ["2.0-flash-exp", "2.0-flash-realtime-exp", "2.0-flash"]):
+        if not target_model or "2.5" in target_model or "native-audio" in target_model:
             self.model = DEFAULT_GEMINI_LIVE_MODEL
         elif not target_model.startswith("models/"):
             self.model = f"models/{target_model}"

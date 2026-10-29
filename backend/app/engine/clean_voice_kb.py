@@ -47,6 +47,10 @@ async def ensure_voice_tables_and_seed():
                 primary.core_offer = ""
                 await session.commit()
                 print("  ✓ Cleared accidental browser autofill email from core_offer.")
+            if not primary.gemini_model_id or "2.5" in primary.gemini_model_id:
+                primary.gemini_model_id = "gemini-2.0-flash-exp"
+                await session.commit()
+                print("  ✓ Corrected gemini_model_id to valid official 'gemini-2.0-flash-exp'.")
             if len(existing) > 1:
                 await session.execute(delete(VoiceKnowledgeBase).where(VoiceKnowledgeBase.id != primary.id))
                 await session.commit()

@@ -98,6 +98,9 @@ async def save_or_update_knowledge_base(
 
     # Apply all values from Admin Studio directly to the database
     for field, val in payload.model_dump(exclude_unset=True).items():
+        if field in ["gemini_api_key", "twilio_auth_token", "whatsapp_access_token", "calendly_api_key", "elevenlabs_api_key"]:
+            if not val or not str(val).strip():
+                continue  # Never overwrite saved keys with empty strings
         setattr(kb, field, val)
 
     await db.commit()
