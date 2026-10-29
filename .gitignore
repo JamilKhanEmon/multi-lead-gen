@@ -42,6 +42,7 @@ storage/backups/*
 node_modules/
 .next/
 out/
+*.tsbuildinfo
 
 # Testing & Logs
 .pytest_cache/

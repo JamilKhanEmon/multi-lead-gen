@@ -105,8 +105,15 @@ class Settings(BaseSettings):
     META_ACCESS_TOKEN: Optional[str] = Field(default=None, description="System User Access Token with ads_management")
     META_AD_ACCOUNT_ID: Optional[str] = Field(default=None, description="Meta Ad Account ID e.g. act_123456789")
     META_PAGE_ID: Optional[str] = Field(default=None, description="Facebook Business Page ID")
+    META_WHATSAPP_PHONE_NUMBER_ID: Optional[str] = Field(default=None, description="Meta WhatsApp Business Cloud API Phone Number ID")
 
-    ELEVENLABS_API_KEY: Optional[str] = Field(default=None, description="ElevenLabs API Key for Voice Agent & Cloning")
+    GEMINI_API_KEY: Optional[str] = Field(default=None, description="Google Gemini API Key for Gemini Live Multimodal Voice Agent")
+    GEMINI_LIVE_VOICE: str = Field(default="Aoede", description="Default Gemini Live voice persona: Aoede, Puck, Charon, Fenrir, Kore")
+
+    TWILIO_ACCOUNT_SID: Optional[str] = Field(default=None, description="Twilio Account SID for voice calling")
+    TWILIO_AUTH_TOKEN: Optional[str] = Field(default=None, description="Twilio Auth Token for voice calling")
+    TWILIO_FROM_PHONE: Optional[str] = Field(default=None, description="Twilio Caller Phone Number (+1...)")
+    TWILIO_WEBHOOK_BASE_URL: Optional[str] = Field(default=None, description="Public URL (e.g. ngrok or production domain) for Twilio audio stream callbacks")
 
     SMTP_HOST: Optional[str] = Field(default=None, description="SMTP Server Host (e.g., smtp.gmail.com)")
     SMTP_PORT: int = Field(default=587, description="SMTP Port (587 for TLS, 465 for SSL)")

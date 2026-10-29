@@ -19,12 +19,19 @@ class VoiceKnowledgeBaseCreate(BaseModel):
     objections_json: List[Dict[str, str]] = Field(default_factory=list)
     script_questions_json: List[Dict[str, Any]] = Field(default_factory=list)
     faq_kb_json: List[Dict[str, Any]] = Field(default_factory=list)
-    voice_provider: str = "elevenlabs"
+    voice_provider: str = "gemini"
+    gemini_api_key: Optional[str] = None
+    gemini_voice_name: str = "Aoede"
+    gemini_model_id: str = "gemini-2.5-flash-native-audio-latest"
+    twilio_account_sid: Optional[str] = None
+    twilio_auth_token: Optional[str] = None
+    twilio_from_phone: Optional[str] = None
+    twilio_webhook_base_url: Optional[str] = None
     elevenlabs_api_key: Optional[str] = None
-    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
-    elevenlabs_model_id: str = "eleven_multilingual_v2"
+    elevenlabs_voice_id: Optional[str] = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_model_id: Optional[str] = "eleven_multilingual_v2"
     elevenlabs_agent_id: Optional[str] = None
-    elevenlabs_llm: str = "gemini-1.5-flash"
+    elevenlabs_llm: Optional[str] = "gemini-2.0-flash-exp"
     cloned_voice_id: Optional[str] = None
     cloned_voice_name: Optional[str] = None
     auto_call_enabled: bool = False
@@ -38,6 +45,11 @@ class VoiceKnowledgeBaseCreate(BaseModel):
     whatsapp_prompt_question: Optional[str] = None
     email_prompt_question: Optional[str] = None
     meeting_confirmation_speech: Optional[str] = None
+    post_call_whatsapp_template: Optional[str] = None
+    post_call_email_subject: Optional[str] = None
+    post_call_email_template: Optional[str] = None
+    whatsapp_phone_number_id: Optional[str] = None
+    whatsapp_access_token: Optional[str] = None
 
 class VoiceKnowledgeBaseUpdate(BaseModel):
     name: Optional[str] = None
@@ -58,6 +70,13 @@ class VoiceKnowledgeBaseUpdate(BaseModel):
     script_questions_json: Optional[List[Dict[str, Any]]] = None
     faq_kb_json: Optional[List[Dict[str, Any]]] = None
     voice_provider: Optional[str] = None
+    gemini_api_key: Optional[str] = None
+    gemini_voice_name: Optional[str] = None
+    gemini_model_id: Optional[str] = None
+    twilio_account_sid: Optional[str] = None
+    twilio_auth_token: Optional[str] = None
+    twilio_from_phone: Optional[str] = None
+    twilio_webhook_base_url: Optional[str] = None
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_voice_id: Optional[str] = None
     elevenlabs_model_id: Optional[str] = None
@@ -77,6 +96,11 @@ class VoiceKnowledgeBaseUpdate(BaseModel):
     whatsapp_prompt_question: Optional[str] = None
     email_prompt_question: Optional[str] = None
     meeting_confirmation_speech: Optional[str] = None
+    post_call_whatsapp_template: Optional[str] = None
+    post_call_email_subject: Optional[str] = None
+    post_call_email_template: Optional[str] = None
+    whatsapp_phone_number_id: Optional[str] = None
+    whatsapp_access_token: Optional[str] = None
 
 class VoiceKnowledgeBaseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -99,12 +123,19 @@ class VoiceKnowledgeBaseResponse(BaseModel):
     objections_json: List[Dict[str, str]] = Field(default_factory=list)
     script_questions_json: List[Dict[str, Any]] = Field(default_factory=list)
     faq_kb_json: List[Dict[str, Any]] = Field(default_factory=list)
-    voice_provider: str = "elevenlabs"
+    voice_provider: str = "gemini"
+    gemini_api_key_configured: bool = False
+    gemini_voice_name: str = "Aoede"
+    gemini_model_id: str = "gemini-2.5-flash-native-audio-latest"
+    twilio_configured: bool = False
+    twilio_account_sid: Optional[str] = ""
+    twilio_from_phone: Optional[str] = ""
+    twilio_webhook_base_url: Optional[str] = ""
     elevenlabs_api_key_configured: bool = False
-    elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"
-    elevenlabs_model_id: str = "eleven_multilingual_v2"
+    elevenlabs_voice_id: Optional[str] = "21m00Tcm4TlvDq8ikWAM"
+    elevenlabs_model_id: Optional[str] = "eleven_multilingual_v2"
     elevenlabs_agent_id: Optional[str] = None
-    elevenlabs_llm: str = "gemini-1.5-flash"
+    elevenlabs_llm: Optional[str] = "gemini-2.0-flash-exp"
     cloned_voice_id: Optional[str] = None
     cloned_voice_name: Optional[str] = None
     cloned_voice_sample_url: Optional[str] = None
@@ -119,6 +150,16 @@ class VoiceKnowledgeBaseResponse(BaseModel):
     whatsapp_prompt_question: Optional[str] = None
     email_prompt_question: Optional[str] = None
     meeting_confirmation_speech: Optional[str] = None
+    post_call_whatsapp_template: Optional[str] = None
+    post_call_email_subject: Optional[str] = None
+    post_call_email_template: Optional[str] = None
+    whatsapp_phone_number_id: Optional[str] = None
+    whatsapp_access_token: Optional[str] = None
+    whatsapp_configured: bool = False
+    active_smtp_sender: Optional[str] = None
+    active_smtp_name: Optional[str] = None
+    active_smtp_host: Optional[str] = None
+    total_smtp_inboxes: Optional[int] = 0
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -176,6 +217,7 @@ class BatchQueueActionRequest(BaseModel):
 
 class VoiceDialogueTurnRequest(BaseModel):
     queue_item_id: Optional[str] = None
+    session_id: Optional[str] = None
     kb_id: Optional[str] = None
     user_speech_text: str
     conversation_history: List[Dict[str, str]] = Field(default_factory=list)
@@ -183,6 +225,8 @@ class VoiceDialogueTurnRequest(BaseModel):
     company_name: Optional[str] = None
     exact_problem: Optional[str] = None
     language: Optional[str] = None
+    client_email: Optional[str] = None
+    phone: Optional[str] = None
 
 class VoiceDialogueTurnResponse(BaseModel):
     agent_reply_text: str
@@ -190,9 +234,12 @@ class VoiceDialogueTurnResponse(BaseModel):
     meeting_link: Optional[str] = None
     meeting_time: Optional[str] = None
     detected_intent: str = "general_query"
+    conversation_stage: Optional[str] = "GREETING"
+    session_id: Optional[str] = None
     language: str = "Bengali"
     audio_base64: Optional[str] = None
     audio_url: Optional[str] = None
+    should_hangup: bool = False
 
 class VoiceCallLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

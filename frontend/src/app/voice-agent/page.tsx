@@ -28,6 +28,7 @@ import {
   Volume2,
   Copy,
   ChevronRight,
+  ChevronDown,
   ShieldCheck,
   Zap,
   Loader2,
@@ -48,6 +49,11 @@ import {
   ListPlus,
   Tag,
   SlidersHorizontal,
+  Eye,
+  EyeOff,
+  Send,
+  Mail,
+  RotateCcw,
 } from "lucide-react";
 import {
   fetchVoiceKB,
@@ -65,10 +71,9 @@ import {
   cloneUserVoice,
   fetchAvailableVoices,
   synthesizeTTSAudio,
-  syncElevenLabsAgent,
-  deleteElevenLabsAgent,
-  fetchElevenLabsAccountStatus,
-  ElevenLabsAccountStatus,
+  triggerOutboundCall,
+  testWhatsAppConnection,
+  testEmailConnection,
   VoiceKnowledgeBase,
   VoiceCallQueueItem,
   VoiceCallLog,
@@ -80,20 +85,24 @@ import {
 const DEFAULT_TEST_PROSPECT: VoiceCallQueueItem = {
   id: "00000000-0000-0000-0000-000000000001",
   lead_id: "demo-test-1",
-  contact_person: "Mr. Farhan Ahmed",
-  company_name: "Apex Global Solutions",
-  phone: "+8801711223344",
+  contact_person: "Decision Maker",
+  company_name: "Prospect Business",
+  phone: "",
+  email: "",
   country: "Bangladesh",
-  language: "English",
-  exact_problem: "website visitor conversion drop-offs and low buyer inquiries",
+  language: "Bengali",
+  exact_problem: "",
   status: "READY",
   selected_for_call: false,
   call_attempts: 0,
   created_at: new Date().toISOString(),
 };
 
+const DEFAULT_FIRST_MESSAGE = "";
+const DEFAULT_SENIOR_PLAYBOOK = "";
+
 export default function VoiceAgentPage() {
-  const [activeTab, setActiveTab] = useState<"sheet" | "studio" | "prompt" | "simulator" | "logs">("sheet");
+  const [activeTab, setActiveTab] = useState<"sheet" | "prompt" | "simulator" | "logs">("sheet");
 
   const [kb, setKb] = useState<VoiceKnowledgeBase | null>(null);
   const [queue, setQueue] = useState<VoiceCallQueueItem[]>([]);
@@ -107,11 +116,8 @@ export default function VoiceAgentPage() {
   const [loading, setLoading] = useState(true);
   const [savingKb, setSavingKb] = useState(false);
   const [syncingLeads, setSyncingLeads] = useState(false);
-  const [isSyncingAgent, setIsSyncingAgent] = useState(false);
-  const [elAccount, setElAccount] = useState<ElevenLabsAccountStatus | null>(null);
-  const [loadingElAccount, setLoadingElAccount] = useState(false);
-  const [deletingAgentId, setDeletingAgentId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [callingItemId, setCallingItemId] = useState<string | null>(null);
 
   // Ready for Call Filters
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -129,16 +135,101 @@ export default function VoiceAgentPage() {
     exact_problem: "",
   });
 
-  // Admin Script & Dynamic KB Modals / State
-  const [showAddStepModal, setShowAddStepModal] = useState(false);
-  const [newStepPurpose, setNewStepPurpose] = useState("Qualifying Question");
-  const [newStepQuestion, setNewStepQuestion] = useState("");
 
-  const [showAddFaqModal, setShowAddFaqModal] = useState(false);
-  const [newFaqCategory, setNewFaqCategory] = useState("Pricing");
-  const [newFaqQuestion, setNewFaqQuestion] = useState("");
-  const [newFaqTriggers, setNewFaqTriggers] = useState("");
-  const [newFaqAnswer, setNewFaqAnswer] = useState("");
+  // WhatsApp Gateway Credentials & Test State
+  const [showWaToken, setShowWaToken] = useState(false);
+  const [testWaPhone, setTestWaPhone] = useState("");
+  const [testWaLoading, setTestWaLoading] = useState(false);
+  const [testWaFeedback, setTestWaFeedback] = useState<{ success: boolean; msg: string } | null>(null);
+
+  const handleTestWhatsApp = async () => {
+    if (!testWaPhone.trim()) {
+      showToast("Please enter a destination phone number (e.g., 017xxxxxxxx).", "error");
+      return;
+    }
+    const phoneId = (kb?.whatsapp_phone_number_id || "").trim();
+    const token = (kb?.whatsapp_access_token || "").trim();
+    if (!phoneId) {
+      showToast("Please enter your WhatsApp Phone Number ID first.", "error");
+      return;
+    }
+    if (!token && !kb?.whatsapp_configured) {
+      showToast("Please enter your Meta WhatsApp Access Token first.", "error");
+      return;
+    }
+
+    try {
+      setTestWaLoading(true);
+      setTestWaFeedback(null);
+      const res = await testWhatsAppConnection({
+        phone_number_id: phoneId,
+        access_token: token,
+        target_phone: testWaPhone.trim(),
+      });
+      setTestWaFeedback({
+        success: true,
+        msg: `✅ WhatsApp message sent! Message ID: ${res.message_id || "Delivered"}`,
+      });
+      showToast("WhatsApp test message delivered!", "success");
+    } catch (err: any) {
+      setTestWaFeedback({
+        success: false,
+        msg: `❌ Delivery failed: ${err.message}`,
+      });
+      showToast(err.message || "WhatsApp dispatch failed", "error");
+    } finally {
+      setTestWaLoading(false);
+    }
+  };
+
+  // Email Gateway Test State
+  const [testEmailTo, setTestEmailTo] = useState("");
+  const [testEmailCompany, setTestEmailCompany] = useState("");
+  const [testEmailLoading, setTestEmailLoading] = useState(false);
+  const [testEmailFeedback, setTestEmailFeedback] = useState<{ success: boolean; msg: string } | null>(null);
+
+  const handleTestEmail = async () => {
+    if (!testEmailTo.trim() || !testEmailTo.includes("@")) {
+      showToast("Please enter a valid destination email address.", "error");
+      return;
+    }
+
+    try {
+      setTestEmailLoading(true);
+      setTestEmailFeedback(null);
+      const recipientUsername = testEmailTo.trim().split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      const companyFromDomain =
+        testEmailTo.includes("@") && !/@(gmail|yahoo|hotmail|outlook)\./i.test(testEmailTo)
+          ? testEmailTo.split("@")[1].split(".")[0].toUpperCase()
+          : "Enterprise Solutions";
+      const resolvedCompany = testEmailCompany.trim() || companyFromDomain;
+
+      const res = await testEmailConnection({
+        target_email: testEmailTo.trim(),
+        subject: kb?.post_call_email_subject || "Discovery Session: {{my_company}} & {{company_name}}",
+        body: kb?.post_call_email_template,
+        client_name: recipientUsername || "Valued Partner",
+        company_name: resolvedCompany,
+        my_company: kb?.company_name || kb?.active_smtp_name || "",
+        agent_persona_name: kb?.agent_persona_name || "",
+      });
+      setTestEmailFeedback({
+        success: res.success,
+        msg: res.success
+          ? `✅ Email sent! Sender: ${res.sender_email || "Active Gateway"} | Status: ${res.note}`
+          : `⚠️ Notice: ${res.note}`,
+      });
+      showToast(res.success ? "Test email dispatched successfully!" : res.note, res.success ? "success" : "error");
+    } catch (err: any) {
+      setTestEmailFeedback({
+        success: false,
+        msg: `❌ Email delivery failed: ${err.message}`,
+      });
+      showToast(err.message || "Email dispatch failed", "error");
+    } finally {
+      setTestEmailLoading(false);
+    }
+  };
 
   // Voice Studio Cloning State
   const [voiceNameInput, setVoiceNameInput] = useState("My Cloned Sales Voice");
@@ -159,18 +250,32 @@ export default function VoiceAgentPage() {
   const [selectedSimLead, setSelectedSimLead] = useState<VoiceCallQueueItem | null>(DEFAULT_TEST_PROSPECT);
   const [simActive, setSimActive] = useState(false);
   const [simConnecting, setSimConnecting] = useState(false);
-  const [simHistory, setSimHistory] = useState<Array<{ speaker: "agent" | "lead"; text: string; time: string }>>([]);
+  const [simHistory, setSimHistory] = useState<Array<{ speaker: "agent" | "lead" | "system"; text: string; time: string }>>([]);
   const [simUserInput, setSimUserInput] = useState("");
   const [simBookedLink, setSimBookedLink] = useState<string | null>(null);
   const [simBookedTime, setSimBookedTime] = useState<string | null>(null);
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
   const [isRecordingMic, setIsRecordingMic] = useState(false);
   const [isProcessingTurn, setIsProcessingTurn] = useState(false);
+  const isAgentSpeakingRef = useRef(false);
+  const simActiveRef = useRef(false);
+  const isMicMutedRef = useRef(false);
   const recognitionRef = useRef<any>(null);
+
+  // Google Gemini Live Real-time Streaming Web Audio Refs
+  const simWebSocketRef = useRef<WebSocket | null>(null);
+  const simAudioContextRef = useRef<AudioContext | null>(null);
+  const simMediaStreamRef = useRef<MediaStream | null>(null);
+  const simProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const simNextPlayTimeRef = useRef<number>(0);
+  const simAudioSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  const simSessionIdRef = useRef<string>("");
+  const simLiveAgentTextRef = useRef<string>("");
 
   const loadData = async () => {
     try {
@@ -192,66 +297,11 @@ export default function VoiceAgentPage() {
       } else {
         setSelectedSimLead((prev) => prev || DEFAULT_TEST_PROSPECT);
       }
-      if (kbData?.elevenlabs_api_key_configured || kbData?.elevenlabs_api_key) {
-        fetchElevenLabsAccountStatus(kbData.elevenlabs_api_key)
-          .then((st) => {
-            if (st.is_connected) {
-              setElAccount(st);
-              if (st.voices && st.voices.length > 0) setVoices(st.voices);
-            }
-          })
-          .catch(() => {});
-      }
     } catch (err: any) {
       console.error("Failed to load Voice Agent data:", err);
       showToast("Error loading Voice Agent data", "error");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleFetchElevenLabsAccount = async (apiKeyOverride?: string) => {
-    setLoadingElAccount(true);
-    try {
-      const targetKey = apiKeyOverride !== undefined ? apiKeyOverride : kb?.elevenlabs_api_key;
-      const res = await fetchElevenLabsAccountStatus(targetKey);
-      setElAccount(res);
-      if (res.is_connected) {
-        if (res.voices && res.voices.length > 0) {
-          setVoices(res.voices);
-        }
-        showToast("Live ElevenLabs Account & Models connected!", "success");
-      } else if (res.error) {
-        showToast(res.error, "error");
-      }
-    } catch {
-      showToast("Failed to fetch live ElevenLabs account details", "error");
-    } finally {
-      setLoadingElAccount(false);
-    }
-  };
-
-  const handleDeleteElevenLabsAgent = async (agentId: string, agentName?: string) => {
-    if (
-      !confirm(
-        `Are you sure you want to permanently delete agent "${agentName || agentId}" (${agentId}) from your ElevenLabs account?`
-      )
-    ) {
-      return;
-    }
-    setDeletingAgentId(agentId);
-    try {
-      await deleteElevenLabsAgent(agentId);
-      showToast(`Agent "${agentName || agentId}" deleted successfully from ElevenLabs!`, "success");
-      if (kb?.elevenlabs_agent_id === agentId) {
-        setKb({ ...kb, elevenlabs_agent_id: "" });
-        await saveVoiceKB({ elevenlabs_agent_id: "" });
-      }
-      await handleFetchElevenLabsAccount();
-    } catch (err: any) {
-      showToast(err.message || "Failed to delete agent from ElevenLabs", "error");
-    } finally {
-      setDeletingAgentId(null);
     }
   };
 
@@ -262,6 +312,21 @@ export default function VoiceAgentPage() {
   const showToast = (text: string, type: "success" | "error" = "success") => {
     setToastMsg({ text, type });
     setTimeout(() => setToastMsg(null), 4000);
+  };
+
+  const handleDialTwilio = async (item: VoiceCallQueueItem) => {
+    if (!confirm(`Place real outbound telephone call to ${item.contact_person} (${item.phone}) via Twilio + Google Gemini Live?`)) return;
+    setCallingItemId(item.id);
+    try {
+      const res = await triggerOutboundCall(item.id);
+      showToast(`Call placed to ${item.phone}! ${res.message || "Active"}`, "success");
+      const updated = await fetchCallQueue();
+      setQueue(updated);
+    } catch (err: any) {
+      showToast(err.message || "Failed to dispatch Twilio call", "error");
+    } finally {
+      setCallingItemId(null);
+    }
   };
 
   // Sync Card 1 leads handler
@@ -392,7 +457,7 @@ export default function VoiceAgentPage() {
       setUploadedFile(null);
       await loadData();
     } catch (err: any) {
-      showToast(err.message || "Voice cloning failed. Check your ElevenLabs API Key.", "error");
+      showToast(err.message || "Voice sample registration failed.", "error");
     } finally {
       setCloningLoading(false);
     }
@@ -418,147 +483,371 @@ export default function VoiceAgentPage() {
     }
   };
 
-  // Speak agent text (ElevenLabs audio playback or fallback)
-  const playAgentResponse = async (text: string, base64Audio?: string) => {
-    setIsAgentSpeaking(true);
-    if (base64Audio) {
-      try {
-        const audio = new Audio(`data:audio/mpeg;base64,${base64Audio}`);
-        audio.onended = () => setIsAgentSpeaking(false);
-        audio.onerror = () => setIsAgentSpeaking(false);
-        await audio.play();
-        return;
-      } catch (err) {
-        console.warn("Audio element playback error, falling back:", err);
-      }
-    }
-
-    // Try backend ElevenLabs TTS synthesis
+  // Direct Real-time PCM Audio Playback from Google Gemini Live (24kHz Mono)
+  const playPcmChunk = (base64Pcm: string) => {
     try {
-      const blob = await synthesizeTTSAudio(text, kb?.elevenlabs_voice_id || undefined);
-      if (blob && blob.size > 0) {
-        const audioUrl = URL.createObjectURL(blob);
-        const audio = new Audio(audioUrl);
-        audio.onended = () => {
-          setIsAgentSpeaking(false);
-          URL.revokeObjectURL(audioUrl);
-        };
-        audio.onerror = () => {
-          setIsAgentSpeaking(false);
-          URL.revokeObjectURL(audioUrl);
-        };
-        await audio.play();
-        return;
+      if (!simAudioContextRef.current) {
+        simAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
-    } catch (err) {
-      console.warn("Backend TTS synthesis error, falling back to speech synthesis:", err);
-    }
+      const ctx = simAudioContextRef.current;
+      if (ctx.state === "suspended") {
+        ctx.resume();
+      }
 
-    // Fallback: Browser WebSpeech
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
+      // Cancel any browser speech synthesis to ensure zero voice collision / overlapping
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+
+      const binary = atob(base64Pcm);
+      const sampleCount = Math.floor(binary.length / 2);
+      if (sampleCount === 0) return;
+      const float32 = new Float32Array(sampleCount);
+      for (let i = 0; i < sampleCount; i++) {
+        const byte1 = binary.charCodeAt(i * 2);
+        const byte2 = binary.charCodeAt(i * 2 + 1);
+        let val = (byte2 << 8) | byte1;
+        if (val >= 32768) val -= 65536;
+        float32[i] = val / 32768.0;
+      }
+
+      const buffer = ctx.createBuffer(1, float32.length, 24000);
+      buffer.getChannelData(0).set(float32);
+
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      // Seamless gapless sequential playback: each chunk starts right when previous finishes
+      const start = simNextPlayTimeRef.current < now ? now : simNextPlayTimeRef.current;
+      source.start(start);
+      simNextPlayTimeRef.current = start + buffer.duration;
+
+      simAudioSourcesRef.current.push(source);
+      isAgentSpeakingRef.current = true;
+      setIsAgentSpeaking(true);
+      source.onended = () => {
+        simAudioSourcesRef.current = simAudioSourcesRef.current.filter((s) => s !== source);
+        if (simAudioSourcesRef.current.length === 0) {
+          isAgentSpeakingRef.current = false;
+          setIsAgentSpeaking(false);
+        }
+      };
+    } catch (e) {
+      console.warn("PCM play error:", e);
+    }
+  };
+
+  const stopPcmPlayback = () => {
+    try {
+      simAudioSourcesRef.current.forEach((src) => {
+        try {
+          src.stop();
+        } catch (e) {}
+      });
+      simAudioSourcesRef.current = [];
+      if (simAudioContextRef.current) {
+        simNextPlayTimeRef.current = simAudioContextRef.current.currentTime;
+      }
+      isAgentSpeakingRef.current = false;
+      setIsAgentSpeaking(false);
+    } catch (e) {}
+  };
+
+  const playAgentResponse = async (text: string) => {
+    if (!text || typeof window === "undefined") return;
+    // If Gemini Live native PCM audio is currently playing, do not overlay fallback speech
+    if (simAudioSourcesRef.current && simAudioSourcesRef.current.length > 0) return;
+    try {
+      window.speechSynthesis?.cancel();
+
+      // Check if user selected a male Gemini voice persona (Puck, Charon, Fenrir) or Male persona
+      const isMaleVoice =
+        ["Puck", "Charon", "Fenrir"].includes(kb?.gemini_voice_name || "") ||
+        /karim|alex|rahim|tanvir|hasan|male|john|david/i.test(kb?.agent_persona_name || "");
+
+      // 1. Primary: High-fidelity natural male voice via backend
+      try {
+        const formData = new FormData();
+        formData.append("text", text);
+        if (isMaleVoice) {
+          formData.append("voice_id", "pNInz6obpgDQGcFmaJgB"); // Adam (Deep, Natural Male)
+        }
+        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        const headers: Record<string, string> = {};
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const resp = await fetch("http://127.0.0.1:8000/api/v1/voice-agent/tts", {
+          method: "POST",
+          headers,
+          body: formData,
+        });
+        if (resp.ok) {
+          const blob = await resp.blob();
+          if (blob.size > 1000) {
+            const audioUrl = URL.createObjectURL(blob);
+            const audio = new Audio(audioUrl);
+            setIsAgentSpeaking(true);
+            audio.onended = () => {
+              setIsAgentSpeaking(false);
+              URL.revokeObjectURL(audioUrl);
+            };
+            audio.onerror = () => {
+              setIsAgentSpeaking(false);
+              URL.revokeObjectURL(audioUrl);
+            };
+            await audio.play();
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("Backend audio notice, falling back:", err);
+      }
+
+      // 2. Emergency fallback via Web Speech API with pitch-down for male persona
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
+      const isBn = /[\u0980-\u09FF]/.test(text);
+
+      const voices = window.speechSynthesis?.getVoices() || [];
+
+      if (isBn) {
+        const bnVoice = voices.find((v) => v.lang.startsWith("bn") || v.name.toLowerCase().includes("bangla"));
+        if (bnVoice) utterance.voice = bnVoice;
+        utterance.lang = "bn-BD";
+        // macOS only ships Lekha (Female) for Bengali. Shift pitch downward heavily so it sounds masculine
+        utterance.pitch = isMaleVoice ? 0.52 : 1.0;
+        utterance.rate = 0.85;
+      } else {
+        if (isMaleVoice) {
+          const maleVoice = voices.find(
+            (v) =>
+              v.lang.startsWith("en") &&
+              (v.name.includes("David") ||
+                v.name.includes("Alex") ||
+                v.name.includes("Daniel") ||
+                v.name.includes("Guy") ||
+                v.name.includes("George") ||
+                v.name.includes("Male") ||
+                v.name.includes("Fred") ||
+                v.name.includes("Oliver"))
+          );
+          if (maleVoice) utterance.voice = maleVoice;
+          utterance.pitch = 0.8;
+          utterance.rate = 0.92;
+        } else {
+          const femaleVoice = voices.find(
+            (v) =>
+              v.lang.startsWith("en") &&
+              (v.name.includes("Samantha") || v.name.includes("Victoria") || v.name.includes("Female") || v.name.includes("Karen"))
+          );
+          if (femaleVoice) utterance.voice = femaleVoice;
+          utterance.pitch = 1.0;
+          utterance.rate = 0.95;
+        }
+        utterance.lang = "en-US";
+      }
+
+      utterance.onstart = () => setIsAgentSpeaking(true);
       utterance.onend = () => setIsAgentSpeaking(false);
       utterance.onerror = () => setIsAgentSpeaking(false);
-      window.speechSynthesis.speak(utterance);
-    } else {
+
+      window.speechSynthesis?.speak(utterance);
+    } catch (e) {
+      console.warn("Speech playback notice:", e);
       setIsAgentSpeaking(false);
     }
   };
 
-  // Toggle Live Microphone Listening (Roleplay as Client)
-  const toggleMicListening = () => {
-    if (isRecordingMic) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (e) {}
-      }
-      setIsRecordingMic(false);
-      return;
-    }
+  // Browser Speech Recognition for Hands-Free Live Voice Call (Chrome, Safari, Edge)
+  const speechRecognitionRef = useRef<any>(null);
+  const speechSilenceTimerRef = useRef<any>(null);
+  const speechBufferRef = useRef<string>("");
+  const activeLeadRef = useRef<VoiceCallQueueItem>(DEFAULT_TEST_PROSPECT);
 
+  const startContinuousMic = (targetLead?: VoiceCallQueueItem) => {
     if (typeof window === "undefined") return;
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      showToast(
-        "Speech Recognition is not supported by your browser. Please use Chrome, Edge, or Safari.",
-        "error"
-      );
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      console.warn("Speech recognition not supported in this browser");
       return;
     }
+
+    if (targetLead) {
+      activeLeadRef.current = targetLead;
+    } else if (selectedSimLead) {
+      activeLeadRef.current = selectedSimLead;
+    }
+
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch (e) {}
+      speechRecognitionRef.current = null;
+    }
+    if (speechSilenceTimerRef.current) {
+      clearTimeout(speechSilenceTimerRef.current);
+      speechSilenceTimerRef.current = null;
+    }
+    speechBufferRef.current = "";
 
     try {
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
-      recognition.continuous = false;
-      recognition.interimResults = true;
+      const rec = new SpeechRec();
+      rec.continuous = true;
+      // CRITICAL: interimResults = true provides sub-100ms real-time audio transcript streaming.
+      // With interimResults = false, Chrome/Safari enforces a 2.5s - 3.5s silence delay before emitting text.
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
 
-      const isBn = selectedSimLead?.language?.toLowerCase() === "bengali";
-      recognition.lang = isBn ? "bn-BD" : "en-US";
+      const leadCountry = (activeLeadRef.current?.country || "bangladesh").toLowerCase();
+      const leadLang = (activeLeadRef.current?.language || "bengali").toLowerCase();
+      const isBn = leadLang.includes("bengal") || leadCountry.includes("bangladesh");
+      rec.lang = isBn ? "bn-BD" : "en-US";
 
-      recognition.onstart = () => {
+      rec.onstart = () => {
         setIsRecordingMic(true);
       };
 
-      recognition.onresult = (event: any) => {
-        let interim = "";
-        let finalTranscript = "";
-        for (let i = 0; i < event.results.length; i++) {
-          const item = event.results[i];
-          if (item.isFinal) {
-            finalTranscript += item[0].transcript;
-          } else {
-            interim += item[0].transcript;
+      const dispatchSpeech = () => {
+        const text = speechBufferRef.current.trim();
+        speechBufferRef.current = "";
+        if (!text) return;
+        // Echo prevention: if agent is currently speaking, drop user buffer
+        if (isAgentSpeakingRef.current || isMicMutedRef.current) return;
+        handleSimTurn(text);
+      };
+
+      rec.onresult = (evt: any) => {
+        // Acoustic Feedback & Echo Prevention:
+        // When AI agent is currently speaking through laptop speakers, ignore mic input!
+        if (isAgentSpeakingRef.current || isMicMutedRef.current) {
+          speechBufferRef.current = "";
+          if (speechSilenceTimerRef.current) {
+            clearTimeout(speechSilenceTimerRef.current);
+            speechSilenceTimerRef.current = null;
+          }
+          return;
+        }
+
+        let accumulated = "";
+        let isFinalBatch = false;
+        for (let i = evt.resultIndex; i < evt.results.length; ++i) {
+          const item = evt.results[i];
+          if (item && item[0]) {
+            accumulated += item[0].transcript;
+            if (item.isFinal) {
+              isFinalBatch = true;
+            }
           }
         }
-        const textToSet = finalTranscript || interim;
-        setSimUserInput(textToSet);
 
-        if (finalTranscript.trim()) {
+        const trimmed = accumulated.trim();
+        if (trimmed) {
+          speechBufferRef.current = trimmed;
+          if (speechSilenceTimerRef.current) {
+            clearTimeout(speechSilenceTimerRef.current);
+          }
+          // Real-time Voice Activity Detection (VAD):
+          // If browser marked a final phrase, dispatch in 200ms; otherwise, after 550ms of silence,
+          // instantly send speech to Gemini Live WebSocket. Shaves 2.5+ seconds off call latency!
+          const silenceDelay = isFinalBatch ? 200 : 550;
+          speechSilenceTimerRef.current = setTimeout(() => {
+            dispatchSpeech();
+          }, silenceDelay);
+        }
+      };
+
+      rec.onerror = (err: any) => {
+        console.warn("[Mic] Speech recognition notice:", err.error);
+        if (err.error !== "no-speech" && err.error !== "aborted") {
           setIsRecordingMic(false);
-          handleSimTurn(finalTranscript.trim());
         }
       };
 
-      recognition.onerror = (event: any) => {
-        console.warn("Speech recognition error:", event.error);
-        setIsRecordingMic(false);
-        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-          showToast("Microphone access was denied. Please allow microphone permissions in your browser.", "error");
+      rec.onend = () => {
+        if (speechSilenceTimerRef.current) {
+          clearTimeout(speechSilenceTimerRef.current);
+          speechSilenceTimerRef.current = null;
+        }
+        // Hands-free continuous call: if call is still active and not muted, keep listening
+        if (simActiveRef.current && !isMicMutedRef.current) {
+          try {
+            rec.start();
+            setIsRecordingMic(true);
+          } catch (e) {}
+        } else {
+          setIsRecordingMic(false);
         }
       };
 
-      recognition.onend = () => {
-        setIsRecordingMic(false);
-      };
-
-      recognition.start();
+      rec.start();
+      speechRecognitionRef.current = rec;
+      setIsRecordingMic(true);
     } catch (err) {
-      console.error("Speech recognition startup error:", err);
+      console.warn("Mic start notice:", err);
       setIsRecordingMic(false);
-      showToast("Could not start microphone listening", "error");
     }
   };
 
-  // Simulator Turn Handler
-  const handleSimTurn = async (userText: string) => {
-    if (!userText.trim() || isProcessingTurn) return;
-    setIsProcessingTurn(true);
+  const stopContinuousMic = () => {
+    if (speechSilenceTimerRef.current) {
+      clearTimeout(speechSilenceTimerRef.current);
+      speechSilenceTimerRef.current = null;
+    }
+    speechBufferRef.current = "";
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch (e) {}
+      speechRecognitionRef.current = null;
+    }
+    setIsRecordingMic(false);
+  };
 
+  const toggleMicListening = () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    isMicMutedRef.current = nextMuted;
+    if (nextMuted) {
+      stopContinuousMic();
+      showToast("🔇 Microphone Muted", "success");
+    } else {
+      startContinuousMic();
+      showToast("🎙️ Microphone Live — Speak Freely", "success");
+    }
+  };
+
+  // Simulator Turn Handler (100% Google Gemini Live Native Voice)
+  const handleSimTurn = async (userText: string) => {
+    if (!userText.trim()) return;
     const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const updatedHistory = [...simHistory, { speaker: "lead" as const, text: userText, time: nowTime }];
     setSimHistory(updatedHistory);
     setSimUserInput("");
+    setIsProcessingTurn(true);
 
     const activeLead = selectedSimLead || DEFAULT_TEST_PROSPECT;
+    const isLiveWsActive = simWebSocketRef.current && simWebSocketRef.current.readyState === WebSocket.OPEN;
+
+    // Direct Real-time Stream to Gemini Live Native Audio (<300ms, zero lag, zero repetition!)
+    if (isLiveWsActive) {
+      try {
+        simWebSocketRef.current?.send(JSON.stringify({
+          type: "text",
+          text: userText,
+        }));
+      } catch (err) {
+        console.warn("[SimWS] Failed to send turn over WebSocket:", err);
+      }
+      setIsProcessingTurn(false);
+      return;
+    }
+
+    // Fallback only if WebSocket is disconnected
     try {
       const payload = {
         queue_item_id: activeLead.id.startsWith("00000000") ? undefined : activeLead.id,
+        session_id: simSessionIdRef.current || `sim_session_${activeLead.id}_${Date.now()}`,
         user_speech_text: userText,
         conversation_history: updatedHistory.map((h) => ({
           speaker: h.speaker === "agent" ? "agent" : "user",
@@ -567,85 +856,259 @@ export default function VoiceAgentPage() {
         client_name: activeLead.contact_person,
         company_name: activeLead.company_name,
         exact_problem: activeLead.exact_problem,
-        language: activeLead.language || "English",
+        language: activeLead.language || "Bengali",
+        client_email: activeLead.email || "",
+        phone: activeLead.phone || "",
       };
 
       const res = await sendVoiceDialogueTurn(payload);
       const agentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
+      
       setSimHistory((prev) => [
         ...prev,
         { speaker: "agent", text: res.agent_reply_text, time: agentTime },
       ]);
 
+      playAgentResponse(res.agent_reply_text);
+
       if (res.meeting_booked && res.meeting_link) {
         setSimBookedLink(res.meeting_link);
-        setSimBookedTime(res.meeting_time || "Tomorrow at 11:00 AM");
+        setSimBookedTime(res.meeting_time || null);
+        showToast("🎉 Appointment Secured! Calendly Link Sent.", "success");
       }
-
-      await playAgentResponse(res.agent_reply_text, res.audio_base64 || undefined);
+      if (res.should_hangup) {
+        setTimeout(() => {
+          handleEndSimCall();
+        }, 4000);
+      }
     } catch (err: any) {
-      showToast("Error processing speech turn", "error");
+      console.error("[SimTurn] Error processing turn:", err);
+      showToast(err.message || "Failed to process dialogue turn", "error");
     } finally {
       setIsProcessingTurn(false);
     }
   };
 
-  // Start Call Simulation
-  const handleStartSimCall = () => {
+  // Start Call Simulation (100% Google Gemini AI Sales Call)
+  const handleStartSimCall = async () => {
     const activeLead = selectedSimLead || DEFAULT_TEST_PROSPECT;
     if (!selectedSimLead) {
       setSelectedSimLead(activeLead);
     }
     setSimActive(true);
+    simActiveRef.current = true;
+    isMicMutedRef.current = false;
+    setIsMuted(false);
     setSimConnecting(true);
     setSimHistory([]);
     setCallDuration(0);
     setSimBookedLink(null);
     setSimBookedTime(null);
 
-    setTimeout(() => {
+    // Call duration timer
+    if (callTimerRef.current) clearInterval(callTimerRef.current);
+    callTimerRef.current = setInterval(() => {
+      setCallDuration((prev) => {
+        if (prev >= 300) {
+          handleEndSimCall();
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 1000);
+
+    const company = kb?.company_name || "Our Enterprise";
+    const persona = kb?.agent_persona_name || "Representative";
+    const prospectName = activeLead.contact_person || "Sir";
+    const clientCompany = activeLead.company_name || "your business";
+
+    let rawOpening = (kb?.first_message || "").trim();
+    if (!rawOpening) {
+      const isBn = (activeLead.language || "bengali").toLowerCase() === "bengali";
+      rawOpening = isBn
+        ? `আসসালামু আলাইকুম স্যার। আমি {{agent_persona_name}} বলছি, {{my_company}} থেকে। কেমন আছেন স্যার?`
+        : `Hello {{client_name}}, this is {{agent_persona_name}} from {{my_company}}. How are you today?`;
+    }
+
+    const opening = rawOpening
+      .replace(/\{\{agent_persona_name\}\}/g, persona)
+      .replace(/\{\{my_company\}\}/g, company)
+      .replace(/\{\{client_name\}\}/g, prospectName)
+      .replace(/\{\{company_name\}\}/g, clientCompany);
+
+    // Connect to Google Gemini Live native audio streaming WebSocket with a unique session ID and dynamic prospect data
+    const simSessionId = `sim_${activeLead.id || "live"}_${Date.now()}`;
+    simSessionIdRef.current = simSessionId;
+    simLiveAgentTextRef.current = "";
+
+    const params = new URLSearchParams();
+    if (activeLead.contact_person) params.set("name", activeLead.contact_person);
+    if (activeLead.company_name) params.set("company", activeLead.company_name);
+    if (activeLead.phone) params.set("phone", activeLead.phone);
+    if (activeLead.email) params.set("email", activeLead.email);
+    params.set("language", activeLead.language || "Bengali");
+    params.set("country", activeLead.country || "Bangladesh");
+    if (activeLead.id && !activeLead.id.startsWith("00000000")) params.set("queue_item_id", activeLead.id);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const wsUrl = `ws://127.0.0.1:8000/api/v1/voice-agent/browser/stream/${simSessionId}${qs}`;
+
+    try {
+      const socket = new WebSocket(wsUrl);
+      simWebSocketRef.current = socket;
+
+      socket.onopen = () => {
+        console.log("[SimWS] Connected to Gemini Live stream");
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "ready") {
+            setSimConnecting(false);
+            const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            setSimHistory([{ speaker: "agent", text: opening, time: nowTime }]);
+            
+            // Check prospect language & country to prevent English leak on Turn 1
+            const leadLang = (activeLead.language || "bengali").toLowerCase();
+            const leadCountry = (activeLead.country || "bangladesh").toLowerCase();
+            const isBnLead = leadLang.includes("bengal") || leadCountry.includes("bangladesh");
+
+            // CRITICAL: Handshake prompt MUST match prospect language and use dynamic persona from database.
+            const personaName = (kb?.agent_persona_name || "").trim() || "Sales Representative";
+            const handshakeText = isBnLead
+              ? `[কল কানেক্ট হয়েছে। ক্লায়েন্ট কল রিসিভ করেছেন। আপনি ${personaName} হিসেবে সম্পূর্ণ খাঁটি ও মিষ্ট বাংলায় অত্যন্ত ভদ্রভাবে এই প্রথম সম্ভাষণটি মুখে বলুন: "${opening}"]`
+              : `[Call answered. Deliver this opening greeting aloud now: "${opening}"]`;
+
+            socket.send(JSON.stringify({
+              type: "text",
+              text: handshakeText,
+            }));
+
+            // Automatically open hands-free continuous microphone with low latency VAD
+            startContinuousMic(activeLead);
+            showToast(`📞 Call Connected! Microphone is LIVE — Speak naturally.`, "success");
+          } else if (msg.type === "audio") {
+            if (msg.data) {
+              playPcmChunk(msg.data);
+            }
+          } else if (msg.type === "text") {
+            const piece = msg.text || "";
+            if (piece) {
+              simLiveAgentTextRef.current += piece;
+              const cleanText = simLiveAgentTextRef.current.trim();
+              const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+              setSimHistory((prev) => {
+                const last = prev[prev.length - 1];
+                if (last && last.speaker === "agent" && (last as any).isLiveStreaming) {
+                  return [
+                    ...prev.slice(0, -1),
+                    { speaker: "agent", text: cleanText, time: last.time, isLiveStreaming: true } as any
+                  ];
+                } else {
+                  return [
+                    ...prev,
+                    { speaker: "agent", text: cleanText, time: nowTime, isLiveStreaming: true } as any
+                  ];
+                }
+              });
+            }
+          } else if (msg.type === "interrupted") {
+            stopPcmPlayback();
+            simLiveAgentTextRef.current = "";
+          } else if (msg.type === "turn_complete") {
+            setIsProcessingTurn(false);
+            const finalText = simLiveAgentTextRef.current.trim();
+            if (finalText) {
+              setSimHistory((prev) => {
+                const last = prev[prev.length - 1];
+                if (last && last.speaker === "agent" && (last as any).isLiveStreaming) {
+                  return [
+                    ...prev.slice(0, -1),
+                    { speaker: "agent", text: finalText, time: last.time }
+                  ];
+                }
+                return prev;
+              });
+
+              // Check if meeting link was dispatched
+              if (/calendly|meeting|booking|বুকিং|লিংক/i.test(finalText) && /sent|পাঠিয়ে|পাঠানো|দিচ্ছি/i.test(finalText)) {
+                const link = kb?.calendly_url || "https://calendly.com";
+                setSimBookedLink(link);
+                setSimBookedTime("Self-selected via link");
+                showToast("🎉 Appointment Secured! Calendly Link Sent.", "success");
+              }
+
+              // Check if call should conclude
+              if (/ভালো থাকবেন|কথা হবে|goodbye|have a (great|wonderful) day|talk to you soon/i.test(finalText)) {
+                setTimeout(() => {
+                  handleEndSimCall();
+                }, 4000);
+              }
+            }
+            simLiveAgentTextRef.current = "";
+          }
+        } catch (e) {
+          console.warn("[SimWS] Error parsing message:", e);
+        }
+      };
+
+      socket.onerror = (err) => {
+        console.warn("[SimWS] WebSocket error, falling back to REST:", err);
+        setSimConnecting(false);
+        const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        setSimHistory([{ speaker: "agent", text: opening, time: nowTime }]);
+        playAgentResponse(opening);
+        showToast(`✨ Call Connected! Speaking with AI Sales Agent (${persona}).`, "success");
+      };
+
+      socket.onclose = () => {
+        console.log("[SimWS] WebSocket closed");
+      };
+    } catch (e) {
+      console.warn("[SimWS] WebSocket launch error:", e);
       setSimConnecting(false);
-      const clientName = activeLead.contact_person || "Sir";
-      const problem = activeLead.exact_problem || "website conversion bottlenecks";
-
-      // Use admin defined Step 1 from script_questions_json if configured
-      const step1 = (kb?.script_questions_json || []).find((s) => s.step === 1 && s.active !== false);
-      let firstGreeting = "";
-      if (step1 && step1.question) {
-        firstGreeting = step1.question
-          .replace(/\{\{\s*client_name\s*\}\}/gi, clientName)
-          .replace(/\{\{\s*company_name\s*\}\}/gi, activeLead.company_name)
-          .replace(/\{\{\s*agent_persona_name\s*\}\}/gi, kb?.agent_persona_name || "Alex")
-          .replace(/\{\{\s*my_company\s*\}\}/gi, kb?.company_name || "Enterprise Systems")
-          .replace(/\{\{\s*exact_problem\s*\}\}/gi, problem);
-      } else {
-        firstGreeting = `Hello ${clientName}, this is ${kb?.agent_persona_name || "our representative"} from ${kb?.company_name || "our team"}. I'm reaching out regarding ${activeLead.company_name}'s website audit where we noticed ${problem}...`;
-      }
-
-      const startTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      setSimHistory([{ speaker: "agent", text: firstGreeting, time: startTime }]);
-      playAgentResponse(firstGreeting);
-
-      callTimerRef.current = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
-    }, 1200);
+      const nowTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      setSimHistory([{ speaker: "agent", text: opening, time: nowTime }]);
+      playAgentResponse(opening);
+      showToast(`✨ Call Connected! Speaking with AI Sales Agent (${persona}).`, "success");
+    }
   };
 
   const handleEndSimCall = async () => {
     setSimActive(false);
+    simActiveRef.current = false;
+    setSimConnecting(false);
     setIsAgentSpeaking(false);
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (e) {}
-    }
+    isAgentSpeakingRef.current = false;
     setIsRecordingMic(false);
-    if (callTimerRef.current) clearInterval(callTimerRef.current);
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
+    stopContinuousMic();
+    stopPcmPlayback();
+
+    if (simWebSocketRef.current) {
+      try {
+        if (simWebSocketRef.current.readyState === WebSocket.OPEN) {
+          simWebSocketRef.current.send(JSON.stringify({ type: "hangup" }));
+        }
+        simWebSocketRef.current.close();
+      } catch (e) {}
+      simWebSocketRef.current = null;
     }
+
+    if (simMediaStreamRef.current) {
+      simMediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      simMediaStreamRef.current = null;
+    }
+
+    if (simProcessorRef.current) {
+      try {
+        simProcessorRef.current.disconnect();
+      } catch (e) {}
+      simProcessorRef.current = null;
+    }
+
+    stopPcmPlayback();
+
+    if (callTimerRef.current) clearInterval(callTimerRef.current);
 
     const activeLead = selectedSimLead || DEFAULT_TEST_PROSPECT;
     if (activeLead && !activeLead.id.startsWith("00000000") && simHistory.length > 0) {
@@ -657,9 +1120,9 @@ export default function VoiceAgentPage() {
           duration_seconds: callDuration,
           sentiment: simBookedLink ? "HOT_INTERESTED" : "NEUTRAL",
           transcript: simHistory.map((h) => ({ speaker: h.speaker, text: h.text })),
-          summary: `Call finished in ${callDuration}s. Outcome: ${simBookedLink ? "Meeting Booked" : "Completed"}`,
+          summary: `Gemini Live call finished in ${callDuration}s. Outcome: ${simBookedLink ? "Meeting Booked" : "Completed"}`,
         });
-        showToast("Call log and outcome saved successfully!", "success");
+        showToast("Call log saved successfully!", "success");
         await loadData();
       } catch (err) {
         console.error("Failed to record completion:", err);
@@ -710,8 +1173,8 @@ export default function VoiceAgentPage() {
               <h1 className="text-sm font-bold text-white tracking-wide">
                 Autonomous Voice Outreach Agent
               </h1>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-semibold">
-                ElevenLabs Multilingual v2
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-semibold">
+                Google Gemini 2.0 Live Native Audio
               </span>
             </div>
             <p className="text-xs text-slate-400">
@@ -764,20 +1227,6 @@ export default function VoiceAgentPage() {
           <span>Ready for Call Queue ({queue.length})</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab("studio")}
-          className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition ${
-            activeTab === "studio"
-              ? "border-emerald-500 text-emerald-400"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <Radio className="w-4 h-4 text-purple-400" />
-          <span>Voice Studio & Cloning</span>
-          {kb?.cloned_voice_id && (
-            <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-          )}
-        </button>
 
         <button
           onClick={() => setActiveTab("prompt")}
@@ -1012,15 +1461,28 @@ export default function VoiceAgentPage() {
                         <td className="p-3.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
+                              onClick={() => handleDialTwilio(item)}
+                              disabled={callingItemId === item.id}
+                              className="px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-semibold transition flex items-center gap-1 shadow-sm cursor-pointer"
+                              title="Place Live Outbound Phone Call via Twilio + Google Gemini Live"
+                            >
+                              {callingItemId === item.id ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <PhoneCall className="w-3 h-3 text-cyan-200" />
+                              )}
+                              <span>{callingItemId === item.id ? "Calling..." : "Dial Phone"}</span>
+                            </button>
+                            <button
                               onClick={() => {
                                 setSelectedSimLead(item);
                                 setActiveTab("simulator");
                               }}
                               className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-semibold transition flex items-center gap-1 shadow-sm"
-                              title="Call Lead with AI"
+                              title="Test in Browser Simulator"
                             >
-                              <PhoneCall className="w-3 h-3" />
-                              <span>Call (AI)</span>
+                              <Play className="w-3 h-3" />
+                              <span>Simulate</span>
                             </button>
                             <button
                               onClick={() => handleDeleteQueueItem(item.id, item.company_name)}
@@ -1040,279 +1502,46 @@ export default function VoiceAgentPage() {
           </div>
         )}
 
-        {/* TAB 2: Voice Studio & Voice Cloning */}
-        {activeTab === "studio" && (
-          <div className="max-w-4xl mx-auto space-y-6">
-            {/* Cloner Box */}
-            <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-purple-950/20 to-slate-900 border border-purple-500/30 space-y-5 shadow-2xl">
-              <div className="flex items-center gap-2.5">
-                <Radio className="w-6 h-6 text-purple-400" />
-                <div>
-                  <h2 className="text-sm font-bold text-white tracking-wide">
-                    Instant Voice Cloning Studio (ElevenLabs)
-                  </h2>
-                  <p className="text-xs text-slate-400">
-                    Record 30-60 seconds of your voice directly through your mic, or upload an audio file. The AI will call prospects speaking in your exact voice!
-                  </p>
-                </div>
-              </div>
+        {/* TAB 2: Admin Studio: Script Flow & Knowledge Base (KB) */}
 
-              {/* Cloned Voice Active Card */}
-              {kb?.cloned_voice_id && (
-                <div className="p-4 rounded-xl bg-purple-950/40 border border-purple-500/40 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-300 font-bold text-xs border border-purple-500/40">
-                      ⭐
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-white flex items-center gap-2">
-                        <span>Active Cloned Voice: {kb.cloned_voice_name || "Your Cloned Voice"}</span>
-                        <span className="text-[10px] font-mono px-2 py-0.2 rounded bg-purple-500/30 text-purple-200">READY</span>
-                      </div>
-                      <div className="text-[10px] font-mono text-purple-300/80">Voice ID: {kb.cloned_voice_id}</div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!kb) return;
-                      await saveVoiceKB({ cloned_voice_id: "", cloned_voice_name: "" });
-                      setKb({ ...kb, cloned_voice_id: "", cloned_voice_name: "" });
-                      showToast("Deactivated cloned voice", "success");
-                    }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-950/60 border border-rose-900/60 hover:bg-rose-900/60 text-rose-300 transition cursor-pointer"
-                  >
-                    Cancel Cloned Voice ✕
-                  </button>
-                </div>
-              )}
-
-              {/* Record / Upload Options */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Option 1: Live Mic Recorder */}
-                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                      <Mic className="w-4 h-4 text-purple-400" />
-                      <span>Option A: Record from Microphone</span>
-                    </h3>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Read any paragraph for 30 seconds clearly into your microphone.
-                    </p>
-                  </div>
-
-                  <div className="py-2 text-center">
-                    {isRecordingSample ? (
-                      <div className="space-y-2">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono text-xs animate-pulse">
-                          <span className="w-2 h-2 rounded-full bg-rose-500" />
-                          <span>Recording: {recordTimer}s</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={stopRecordingSample}
-                          className="w-full py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition"
-                        >
-                          Stop Recording
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={startRecordingSample}
-                        className="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-2"
-                      >
-                        <Mic className="w-4 h-4" />
-                        <span>Start 30-Sec Recording</span>
-                      </button>
-                    )}
-                    {recordedBlob && (
-                      <div className="text-[11px] text-emerald-400 font-medium mt-2">
-                        ✓ Recorded sample ready ({recordedBlob.size} bytes)
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Option 2: Upload File */}
-                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                      <UploadCloud className="w-4 h-4 text-cyan-400" />
-                      <span>Option B: Upload Audio File</span>
-                    </h3>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Upload an existing clean voice sample (.mp3, .wav, or .m4a).
-                    </p>
-                  </div>
-
-                  <div className="py-2">
-                    <input
-                      type="file"
-                      accept="audio/*"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          setUploadedFile(e.target.files[0]);
-                        }
-                      }}
-                      className="w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700 cursor-pointer"
-                    />
-                    {uploadedFile && (
-                      <div className="text-[11px] text-emerald-400 font-medium mt-2 truncate">
-                        ✓ Selected: {uploadedFile.name}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Submit Clone Button */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-                <input
-                  type="text"
-                  placeholder="Voice Label (e.g. Executive Voice / Closer Voice)"
-                  value={voiceNameInput}
-                  onChange={(e) => setVoiceNameInput(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 flex-1 focus:outline-none focus:border-purple-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleCloneVoice}
-                  disabled={cloningLoading || (!recordedBlob && !uploadedFile)}
-                  className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-40 text-white font-bold rounded-xl text-xs shadow-lg shadow-purple-600/20 transition flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  {cloningLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                  <span>Clone My Voice with ElevenLabs</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Premade & Available Voices Catalog */}
-            <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                ElevenLabs Voice Catalog & Active Caller Voice
-              </h3>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {voices.map((v) => {
-                  const isSelected = kb?.elevenlabs_voice_id === v.voice_id;
-                  return (
-                    <div
-                      key={v.voice_id}
-                      className={`p-3.5 rounded-xl border flex items-center justify-between transition ${
-                        isSelected
-                          ? "bg-purple-950/30 border-purple-500/60 shadow-md"
-                          : "bg-slate-950 border-slate-800 hover:bg-slate-900"
-                      }`}
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-xs text-white">{v.name}</span>
-                          {v.category === "cloned" && (
-                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30">
-                              CLONED
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-slate-500">
-                          {v.labels?.accent || "Neutral"} • {v.labels?.gender || "Human"} • {v.labels?.use_case || "Sales"}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {v.preview_url && (
-                          <button
-                            type="button"
-                            onClick={() => handlePlayPreview(v.voice_id, v.preview_url)}
-                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-                            title="Play Preview"
-                          >
-                            {previewingVoiceId === v.voice_id ? (
-                              <Pause className="w-3.5 h-3.5 text-purple-400" />
-                            ) : (
-                              <Play className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!kb) return;
-                            if (isSelected) {
-                              await saveVoiceKB({ elevenlabs_voice_id: "" });
-                              setKb({ ...kb, elevenlabs_voice_id: "" });
-                              showToast(`Cancelled active voice: ${v.name}`, "success");
-                            } else {
-                              await saveVoiceKB({ elevenlabs_voice_id: v.voice_id });
-                              setKb({ ...kb, elevenlabs_voice_id: v.voice_id });
-                              showToast(`Voice set to: ${v.name}`, "success");
-                            }
-                          }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                            isSelected
-                              ? "bg-purple-600 hover:bg-rose-600 text-white group shadow-md shadow-purple-600/30"
-                              : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                          }`}
-                          title={isSelected ? "Click to cancel / deactivate this voice" : "Select this voice as active"}
-                        >
-                          {isSelected ? (
-                            <>
-                              <span className="group-hover:hidden flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                Active
-                              </span>
-                              <span className="hidden group-hover:inline text-rose-100 font-bold">
-                                Cancel Active ✕
-                              </span>
-                            </>
-                          ) : (
-                            "Use Voice"
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: Admin Studio: Script Flow & Knowledge Base (KB) */}
         {activeTab === "prompt" && (
-          <div className="max-w-4xl mx-auto space-y-6">
-            {/* Top Bar with Save Button */}
+          <div className="max-w-5xl mx-auto space-y-6">
+            {/* Top Bar with Status & Save Button */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 shadow-xl">
               <div>
                 <div className="flex items-center gap-2">
                   <SlidersHorizontal className="w-5 h-5 text-emerald-400" />
                   <h2 className="text-sm font-bold text-white tracking-wide">
-                    Admin Voice Studio: Script Flow & Knowledge Base
+                    Admin Voice Studio: Master Sales Playbook & Knowledge Base
                   </h2>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  Zero-code control: Configure what questions your AI asks on calls, and how it answers any client doubts or questions.
+                  Unified enterprise playbook. Google Gemini 2.0 Live reasons across all objections, services, and sales stages naturally without rigid cards.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setShowAddStepModal(true)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5"
+                  onClick={() => {
+                    if (!kb) return;
+                    setKb({
+                      ...kb,
+                      agent_persona_name: "",
+                      company_name: "",
+                      service_name: "",
+                      core_offer: "",
+                      calendly_url: "",
+                      first_message: "",
+                      system_prompt: "",
+                    });
+                    showToast("All fields cleared! Enter your custom details and click 'Save to Database'.", "success");
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                  title="Clear all fields to type your own custom data"
                 >
-                  <ListPlus className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>+ Add Script Step</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowAddFaqModal(true)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5"
-                >
-                  <BookOpen className="w-3.5 h-3.5 text-purple-400" />
-                  <span>+ Add Q&A</span>
+                  <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Clear All Fields</span>
                 </button>
 
                 <button
@@ -1322,7 +1551,7 @@ export default function VoiceAgentPage() {
                     setSavingKb(true);
                     try {
                       await saveVoiceKB(kb);
-                      showToast("All Script Flow & Knowledge Base changes saved to Database!", "success");
+                      showToast("All Playbook & Knowledge Base changes saved to Database!", "success");
                     } catch (err: any) {
                       showToast("Failed to save settings: " + (err.message || ""), "error");
                     } finally {
@@ -1330,7 +1559,7 @@ export default function VoiceAgentPage() {
                     }
                   }}
                   disabled={savingKb}
-                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-600/20 transition flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-600/20 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   {savingKb ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                   <span>Save to Database</span>
@@ -1338,278 +1567,79 @@ export default function VoiceAgentPage() {
               </div>
             </div>
 
-            {/* SECTION 1: Outbound Call Script Flow */}
+            {/* SECTION 1: Company, Consultant Identity & Voice Profile */}
             <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 shadow-xl">
               <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
                 <div className="flex items-center gap-2">
-                  <ListPlus className="w-4 h-4 text-cyan-400" />
+                  <Bot className="w-4 h-4 text-cyan-400" />
                   <h3 className="text-xs font-bold uppercase tracking-wider text-white">
-                    1. Outbound Call Script Flow (Sequential Questions Spoken by AI Agent)
+                    1. Company & Senior Consultant Identity
                   </h3>
-                  <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-mono font-bold">
-                    {(kb?.script_questions_json || []).length} Steps
-                  </span>
+                </div>
+                <span className="text-[10px] text-cyan-400 font-mono">100% Database Driven</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Company / Organization Name</label>
+                  <input
+                    type="text"
+                    value={kb?.company_name || ""}
+                    onChange={(e) => kb && setKb({ ...kb, company_name: e.target.value })}
+                    placeholder="e.g. Acme Corp, My Business..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-cyan-500"
+                  />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setShowAddStepModal(true)}
-                  className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Step</span>
-                </button>
-              </div>
-
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                When calling a prospect, the agent asks these questions in sequence. 
-                Variables like <code className="text-cyan-300 font-mono">{"{{client_name}}"}</code>, <code className="text-cyan-300 font-mono">{"{{company_name}}"}</code>, <code className="text-cyan-300 font-mono">{"{{exact_problem}}"}</code> automatically populate with prospect data.
-              </p>
-
-              {/* Steps List */}
-              <div className="space-y-3 pt-2">
-                {(kb?.script_questions_json || []).map((stepItem, idx) => (
-                  <div
-                    key={idx}
-                    className="p-4 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition space-y-2.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold text-[10px] border border-cyan-500/30">
-                          Step {stepItem.step || idx + 1}
-                        </span>
-                        <input
-                          type="text"
-                          value={stepItem.purpose || ""}
-                          onChange={(e) => {
-                            if (!kb) return;
-                            const updated = [...(kb.script_questions_json || [])];
-                            updated[idx] = { ...updated[idx], purpose: e.target.value };
-                            setKb({ ...kb, script_questions_json: updated });
-                          }}
-                          placeholder="Purpose (e.g. Problem Hook / Qualifying Question)"
-                          className="bg-transparent border-b border-transparent hover:border-slate-700 focus:border-cyan-500 focus:outline-none text-xs text-slate-200 font-semibold px-1 py-0.5"
-                        />
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-400">
-                          <input
-                            type="checkbox"
-                            checked={stepItem.active !== false}
-                            onChange={(e) => {
-                              if (!kb) return;
-                              const updated = [...(kb.script_questions_json || [])];
-                              updated[idx] = { ...updated[idx], active: e.target.checked };
-                              setKb({ ...kb, script_questions_json: updated });
-                            }}
-                            className="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0"
-                          />
-                          <span>Active</span>
-                        </label>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!kb) return;
-                            const updated = [...(kb.script_questions_json || [])];
-                            updated.splice(idx, 1);
-                            const renumbered = updated.map((s, i) => ({ ...s, step: i + 1 }));
-                            setKb({ ...kb, script_questions_json: renumbered });
-                            showToast("Step removed", "success");
-                          }}
-                          className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
-                          title="Delete Step"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <textarea
-                      rows={2}
-                      value={stepItem.question || ""}
-                      onChange={(e) => {
-                        if (!kb) return;
-                        const updated = [...(kb.script_questions_json || [])];
-                        updated[idx] = { ...updated[idx], question: e.target.value };
-                        setKb({ ...kb, script_questions_json: updated });
-                      }}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-100 font-sans focus:outline-none focus:border-cyan-500 leading-relaxed"
-                      placeholder="Enter what the agent will say or ask at this step..."
-                    />
-                  </div>
-                ))}
-
-                {(kb?.script_questions_json || []).length === 0 && (
-                  <div className="p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl">
-                    No script steps configured yet. Click "+ Add Step" above to add your first question.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* SECTION 2: Dynamic Knowledge Base (KB) & Client Q&A */}
-            <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 shadow-xl">
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-purple-400" />
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-white">
-                    2. Knowledge Base (KB) & Q&A (Objection Handling & Common Inquiries)
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20 text-[10px] font-mono font-bold">
-                    {(kb?.faq_kb_json || []).length} Q&A Rules
-                  </span>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Senior Consultant Persona Name</label>
+                  <input
+                    type="text"
+                    value={kb?.agent_persona_name || ""}
+                    onChange={(e) => kb && setKb({ ...kb, agent_persona_name: e.target.value })}
+                    placeholder="e.g. Sarah, Alex, John..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-cyan-500"
+                  />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setShowAddFaqModal(true)}
-                  className="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Q&A</span>
-                </button>
-              </div>
-
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                When a prospect raises an objection or asks a question during a call, the agent immediately delivers these answers via ElevenLabs. You can add or modify rules anytime without writing code.
-              </p>
-
-              {/* FAQ KB Cards Grid */}
-              <div className="space-y-3 pt-2">
-                {(kb?.faq_kb_json || []).map((faqItem, idx) => (
-                  <div
-                    key={faqItem.id || idx}
-                    className="p-4 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition space-y-3"
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Gemini Live Voice Profile</label>
+                  <select
+                    value={kb?.gemini_voice_name || "Aoede"}
+                    onChange={(e) => kb && setKb({ ...kb, gemini_voice_name: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 text-xs focus:outline-none focus:border-cyan-500 font-medium"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono font-bold text-[10px] border border-purple-500/30">
-                          {faqItem.category || "General"}
-                        </span>
-                        <input
-                          type="text"
-                          value={faqItem.question || ""}
-                          onChange={(e) => {
-                            if (!kb) return;
-                            const updated = [...(kb.faq_kb_json || [])];
-                            updated[idx] = { ...updated[idx], question: e.target.value };
-                            setKb({ ...kb, faq_kb_json: updated });
-                          }}
-                          placeholder="Client Question / Objection Title"
-                          className="bg-transparent border-b border-transparent hover:border-slate-700 focus:border-purple-500 focus:outline-none text-xs text-white font-bold px-1 py-0.5"
-                        />
-                      </div>
+                    <option value="Aoede">✨ Aoede (Warm, Engaging Female - Multilingual)</option>
+                    <option value="Kore">🌸 Kore (Calm, Sophisticated Female - Multilingual)</option>
+                    <option value="Charon">🏢 Charon (Authoritative, Deep Male - Multilingual)</option>
+                    <option value="Puck">⚡ Puck (Energetic, Natural Male - Multilingual)</option>
+                    <option value="Fenrir">🎯 Fenrir (Crisp, Confident Male - Multilingual)</option>
+                  </select>
+                </div>
 
-                      <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-400">
-                          <input
-                            type="checkbox"
-                            checked={faqItem.active !== false}
-                            onChange={(e) => {
-                              if (!kb) return;
-                              const updated = [...(kb.faq_kb_json || [])];
-                              updated[idx] = { ...updated[idx], active: e.target.checked };
-                              setKb({ ...kb, faq_kb_json: updated });
-                            }}
-                            className="rounded border-slate-700 bg-slate-900 text-purple-500 focus:ring-0"
-                          />
-                          <span>Active</span>
-                        </label>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!kb) return;
-                            const updated = (kb.faq_kb_json || []).filter((_, i) => i !== idx);
-                            setKb({ ...kb, faq_kb_json: updated });
-                            showToast("Q&A removed from Knowledge Base", "success");
-                          }}
-                          className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
-                          title="Delete Q&A"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Trigger keywords */}
-                    <div className="flex items-center gap-2">
-                      <Tag className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                      <input
-                        type="text"
-                        value={faqItem.triggers || ""}
-                        onChange={(e) => {
-                          if (!kb) return;
-                          const updated = [...(kb.faq_kb_json || [])];
-                          updated[idx] = { ...updated[idx], triggers: e.target.value };
-                          setKb({ ...kb, faq_kb_json: updated });
-                        }}
-                        placeholder="Trigger keywords (comma separated, e.g: price, cost, fee, expensive, pricing)"
-                        className="w-full bg-slate-900 border border-slate-800/80 rounded-lg px-2.5 py-1 text-[11px] text-slate-300 font-mono focus:outline-none focus:border-purple-500"
-                      />
-                    </div>
-
-                    {/* Agent Spoken Answer */}
-                    <div>
-                      <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
-                        Agent Spoken Answer (ElevenLabs Voice):
-                      </label>
-                      <textarea
-                        rows={2}
-                        value={faqItem.answer || ""}
-                        onChange={(e) => {
-                          if (!kb) return;
-                          const updated = [...(kb.faq_kb_json || [])];
-                          updated[idx] = { ...updated[idx], answer: e.target.value };
-                          setKb({ ...kb, faq_kb_json: updated });
-                        }}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-100 font-sans focus:outline-none focus:border-purple-500 leading-relaxed"
-                        placeholder="Enter the spoken answer the agent will deliver via ElevenLabs..."
-                      />
-                    </div>
-                  </div>
-                ))}
-
-                {(kb?.faq_kb_json || []).length === 0 && (
-                  <div className="p-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl">
-                    No Q&A rules configured yet. Click "+ Add Q&A" above to add question-answer rules.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* SECTION 3: Agent Persona & Offer Settings */}
-            <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 shadow-xl">
-              <div className="border-b border-slate-800/80 pb-3 flex items-center gap-2">
-                <Bot className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-white">
-                  3. Agent Persona & Company Offer
-                </h3>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Calendly Scheduling Link</label>
+                  <input
+                    type="url"
+                    value={kb?.calendly_url || ""}
+                    onChange={(e) => kb && setKb({ ...kb, calendly_url: e.target.value })}
+                    placeholder="https://calendly.com/your-org/demo"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-4 text-xs">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Company / Agency Name</label>
-                    <input
-                      type="text"
-                      value={kb?.company_name || ""}
-                      onChange={(e) => kb && setKb({ ...kb, company_name: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">Agent Persona Name</label>
-                    <input
-                      type="text"
-                      value={kb?.agent_persona_name || ""}
-                      onChange={(e) => kb && setKb({ ...kb, agent_persona_name: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
+              {/* Core Offer & Services */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-800/80 text-xs">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Service Specialty</label>
+                  <input
+                    type="text"
+                    value={kb?.service_name || ""}
+                    onChange={(e) => kb && setKb({ ...kb, service_name: e.target.value })}
+                    placeholder="e.g. Custom Software, Web Development, Digital Marketing..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-cyan-500"
+                  />
                 </div>
 
                 <div>
@@ -1618,423 +1648,316 @@ export default function VoiceAgentPage() {
                     type="text"
                     value={kb?.core_offer || ""}
                     onChange={(e) => kb && setKb({ ...kb, core_offer: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-emerald-500"
+                    placeholder="e.g. Free 5-minute online consultation & walkthrough..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-cyan-500"
                   />
                 </div>
+              </div>
+            </div>
 
-                {/* ElevenLabs Conversational AI Cloud Architecture (Zero-VPS Load) */}
-                <div className="p-4 rounded-xl bg-gradient-to-br from-indigo-950/40 via-slate-950 to-slate-900 border border-indigo-800/40 space-y-3">
+            {/* SECTION 2: Opening Call Greeting (First Words) */}
+            <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-3 shadow-xl">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-indigo-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-white">
+                    2. Opening Call Greeting (First Words Spoken by Agent)
+                  </h3>
+                </div>
+                <span className="text-[10px] text-indigo-400 font-mono">Immediate Spoken Hook</span>
+              </div>
+
+              <textarea
+                rows={2}
+                value={kb?.first_message || ""}
+                onChange={(e) => kb && setKb({ ...kb, first_message: e.target.value })}
+                placeholder="Type your custom opening greeting here (e.g. আসসালামু আলাইকুম স্যার... or Hello {{client_name}})..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 text-xs focus:outline-none focus:border-indigo-500 leading-relaxed font-sans"
+              />
+
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <span className="text-[10px] text-slate-500">Insert variable:</span>
+                {["{{agent_persona_name}}", "{{my_company}}", "{{client_name}}", "{{company_name}}"].map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => {
+                      if (!kb) return;
+                      setKb({ ...kb, first_message: (kb.first_message || "") + " " + tag });
+                    }}
+                    className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 hover:border-indigo-500/50 text-[10px] text-indigo-300 font-mono transition"
+                  >
+                    + {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* SECTION 3: Master Sales Playbook & Knowledge Document */}
+            <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 shadow-xl">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-purple-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-white">
+                    3. Master Sales Playbook & Enterprise Knowledge Base (Unified Paragraphs)
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-purple-300 font-mono">
+                    {((kb?.system_prompt || "").split(/\s+/).filter(Boolean).length)} Words
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Write your complete sales script, company knowledge, objection handling rules, and conversation flow here as a natural structured document. Google Gemini 2.0 Live understands this holistically—like an experienced, consultative human salesperson—without being trapped in rigid card checkboxes.
+              </p>
+
+              {/* Dynamic Tag Insertion Toolbar */}
+              <div className="flex flex-wrap items-center gap-1.5 p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80">
+                <span className="text-[10px] text-slate-400 font-medium">Insert dynamic variable tag:</span>
+                {[
+                  "{{agent_persona_name}}",
+                  "{{my_company}}",
+                  "{{client_name}}",
+                  "{{company_name}}",
+                  "{{service_name}}",
+                  "{{core_offer}}",
+                  "{{calendly_url}}",
+                  "{{exact_problem}}",
+                ].map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => {
+                      if (!kb) return;
+                      setKb({ ...kb, system_prompt: (kb.system_prompt || "") + " " + tag });
+                    }}
+                    className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 hover:border-purple-500/60 text-[10px] text-purple-300 font-mono transition"
+                  >
+                    + {tag}
+                  </button>
+                ))}
+              </div>
+
+              {/* Playbook Editor Textarea */}
+              <div className="relative">
+                <textarea
+                  rows={18}
+                  value={kb?.system_prompt || ""}
+                  onChange={(e) => kb && setKb({ ...kb, system_prompt: e.target.value })}
+                  placeholder="Enter your comprehensive B2B Sales Playbook..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-100 text-xs focus:outline-none focus:border-purple-500 font-mono leading-relaxed"
+                />
+              </div>
+
+              {/* Quick Guidance Box */}
+              <div className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-800/30 text-[11px] text-slate-300 space-y-1.5">
+                <div className="font-bold text-purple-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Key Senior B2B Consultative Principles Included:</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-slate-400 pl-1 text-[10px]">
+                  <li><strong className="text-slate-200">Existing Software Handling:</strong> Never push or force a demo if the client already has a vendor. Compliment them warmly, and ask consultatively about what solution they use and if they face any limitations or missing features.</li>
+                  <li><strong className="text-slate-200">Respect Busy Clients:</strong> If the client says "ব্যস্ত আছি / পরে ফোন দিন", immediately acknowledge politely and ask when it would be convenient to follow up without pitching.</li>
+                  <li><strong className="text-slate-200">Human Speech Rhythm:</strong> Punctuate answers with natural pauses (commas, dashes) and keep each reply strictly under 20 words for ultra-fast, human-like voice synthesis.</li>
+                  <li><strong className="text-slate-200">Flexible Scheduling:</strong> Send your Calendly link via WhatsApp or Email so prospects can choose their own date and time freely.</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* SECTION 4: Telephony & Voice Engine Infrastructure */}
+            <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 shadow-xl">
+              <div className="border-b border-slate-800/80 pb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-cyan-400" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-white">
+                    4. Telephony & AI Voice Engine Infrastructure
+                  </h3>
+                </div>
+                <span className="text-[10px] text-cyan-400 font-mono">Twilio & Google Gemini Live</span>
+              </div>
+
+              <div className="space-y-4 text-xs">
+
+                {/* Google Gemini 2.0 Live & Twilio Voice Calling Architecture */}
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-cyan-950/40 via-slate-950 to-slate-900 border border-cyan-800/40 space-y-4 shadow-xl">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-indigo-400 animate-pulse" />
-                      <h4 className="font-bold text-xs text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                        ElevenLabs Conversational AI Engine (Zero-VPS Cloud)
+                      <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+                      <h4 className="font-bold text-xs text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                        Google Gemini 2.0 Flash Live & Twilio Voice Engine
                       </h4>
                     </div>
-                    {kb?.elevenlabs_agent_id ? (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-                        ⚡ Cloud Agent Active
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold border border-amber-500/30">
-                        Pending Sync
-                      </span>
-                    )}
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
+                      ⚡ 100% Free AI • Zero Mac Load
+                    </span>
                   </div>
 
                   <p className="text-[11px] text-slate-400 leading-relaxed">
-                    All Speech-to-Text (STT), Brain LLM reasoning, and real-time Voice Streaming execute directly on ElevenLabs' high-speed global cluster. <strong className="text-indigo-300">0% CPU / RAM load on your VPS.</strong>
+                    Speech-to-Text (STT), multilingual dialogue reasoning in <strong className="text-cyan-300">Bangla & English</strong>, and real-time audio generation run on Google Gemini 2.0 Flash Live. Real telephone calls are routed via Twilio.
                   </p>
 
-                  <div className="space-y-3 pt-1">
-                    {/* API Key Input Row */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                    {/* Gemini API Key */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
                         <label className="block text-slate-300 font-semibold text-[11px]">
-                          ElevenLabs API Key
+                          Google Gemini API Key
                         </label>
-                        {elAccount?.is_connected ? (
-                          <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            Live Account Connected
-                          </span>
-                        ) : null}
+                        {kb?.gemini_api_key_configured && (
+                          <span className="text-[10px] text-emerald-400 font-semibold">● Verified</span>
+                        )}
                       </div>
-
-                      <div className="flex gap-2">
-                        <input
-                          type="password"
-                          placeholder="sk_... (ElevenLabs Secret API Key)"
-                          value={kb?.elevenlabs_api_key || ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (kb) setKb({ ...kb, elevenlabs_api_key: val });
-                          }}
-                          className="flex-1 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-indigo-500"
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!kb?.elevenlabs_api_key && !kb?.elevenlabs_api_key_configured) {
-                              showToast("Please enter your ElevenLabs API Key first", "error");
-                              return;
-                            }
-                            setLoadingElAccount(true);
-                            try {
-                              const st = await fetchElevenLabsAccountStatus(kb?.elevenlabs_api_key);
-                              setElAccount(st);
-                              if (st.is_connected) {
-                                if (st.voices && st.voices.length > 0) setVoices(st.voices);
-                                showToast("Live ElevenLabs Account & Models connected!", "success");
-                              } else if (st.error) {
-                                showToast(st.error, "error");
-                              }
-                            } catch {
-                              showToast("Failed to fetch live ElevenLabs status", "error");
-                            } finally {
-                              setLoadingElAccount(false);
-                            }
-                          }}
-                          disabled={loadingElAccount}
-                          className="px-3.5 py-2 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
-                        >
-                          {loadingElAccount ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-indigo-400" />}
-                          <span>{loadingElAccount ? "Syncing..." : "Sync Live Account"}</span>
-                        </button>
-                      </div>
-
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        {kb?.elevenlabs_api_key_configured || elAccount?.is_connected
-                          ? "✅ ElevenLabs API Key is actively configured and verified"
-                          : "Enter key starting with 'sk_' to instantly load your available models, quota, and voices."}
+                      <input
+                        type="password"
+                        placeholder="AIzaSy... (Free Google AI Studio Key)"
+                        value={kb?.gemini_api_key || ""}
+                        onChange={(e) => kb && setKb({ ...kb, gemini_api_key: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
+                      />
+                      <p className="text-[10px] text-slate-500">
+                        Get free key from <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline">aistudio.google.com</a> (No Credit Card required)
                       </p>
                     </div>
 
-                    {/* Live ElevenLabs Account Dashboard Card */}
-                    {elAccount?.is_connected && elAccount.subscription && (
-                      <div className="p-3.5 rounded-xl bg-indigo-950/30 border border-indigo-800/40 space-y-3">
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-200">Plan:</span>
-                            <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-bold uppercase text-[10px] border border-indigo-500/30">
-                              {elAccount.subscription.tier}
-                            </span>
-                            <span className="text-[11px] text-emerald-400 font-semibold">● Active</span>
-                          </div>
-
-                          <div className="text-[11px] text-slate-300 font-mono">
-                            Quota: {elAccount.subscription.character_count.toLocaleString()} / {elAccount.subscription.character_limit.toLocaleString()} chars
-                          </div>
-                        </div>
-
-                        {/* Progress Bar */}
-                        <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
-                          <div
-                            className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-1.5 rounded-full transition-all"
-                            style={{
-                              width: `${Math.min(
-                                100,
-                                Math.round(
-                                  (elAccount.subscription.character_count / (elAccount.subscription.character_limit || 1)) * 100
-                                )
-                              )}%`,
-                            }}
-                          />
-                        </div>
-
-                        {/* Active Models in Account */}
-                        <div className="space-y-1.5 pt-1">
-                          <div className="text-[10px] uppercase font-bold text-slate-400 flex items-center justify-between">
-                            <span>Active Models Available in Your Account</span>
-                            <span className="text-cyan-400 font-mono">{elAccount.models.length} Models</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                            {elAccount.models.map((m) => (
-                              <button
-                                key={m.model_id}
-                                type="button"
-                                onClick={() => {
-                                  if (kb) setKb({ ...kb, elevenlabs_model_id: m.model_id });
-                                  showToast(`Selected TTS Model: ${m.name}`, "success");
-                                }}
-                                className={`px-2 py-1 rounded text-[10px] font-mono border transition flex items-center gap-1 ${
-                                  (kb?.elevenlabs_model_id || "eleven_turbo_v2") === m.model_id
-                                    ? "bg-indigo-600/40 border-indigo-400 text-indigo-200 font-bold"
-                                    : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
-                                }`}
-                                title={m.description || m.name}
-                              >
-                                {m.model_id === "eleven_turbo_v2" && <span className="text-cyan-400 font-bold">⚡</span>}
-                                <span>{m.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Existing Conversational Agents in Account */}
-                        {elAccount.agents && elAccount.agents.length > 0 && (
-                          <div className="pt-2.5 border-t border-indigo-900/40 space-y-2.5">
-                            <label className="block text-slate-300 font-semibold text-[11px] flex items-center justify-between">
-                              <span>Select Existing Agent from ElevenLabs Account</span>
-                              <span className="text-[10px] text-cyan-400 font-mono font-bold bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
-                                {elAccount.agents.length} Found
-                              </span>
-                            </label>
-
-                            {/* Dropdown for quick selection */}
-                            <select
-                              value={kb?.elevenlabs_agent_id || ""}
-                              onChange={(e) => {
-                                if (kb && e.target.value) {
-                                  setKb({ ...kb, elevenlabs_agent_id: e.target.value });
-                                  showToast(`Selected agent: ${e.target.value}`, "success");
-                                }
-                              }}
-                              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 text-xs focus:outline-none focus:border-indigo-500"
-                            >
-                              <option value="">-- Choose an existing agent in your account --</option>
-                              {elAccount.agents.map((ag) => (
-                                <option key={ag.agent_id} value={ag.agent_id}>
-                                  🤖 {ag.name || "Agent"} ({ag.agent_id}) {kb?.elevenlabs_agent_id === ag.agent_id ? "★ ACTIVE" : ""}
-                                </option>
-                              ))}
-                            </select>
-
-                            {/* Agent Cards with Direct Delete Buttons */}
-                            <div className="space-y-1.5 pt-1">
-                              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-                                Manage Created Agents (Direct Delete from ElevenLabs):
-                              </span>
-                              <div className="grid grid-cols-1 gap-1.5">
-                                {elAccount.agents.map((ag) => {
-                                  const isSelected = kb?.elevenlabs_agent_id === ag.agent_id;
-                                  const isDeleting = deletingAgentId === ag.agent_id;
-                                  return (
-                                    <div
-                                      key={ag.agent_id}
-                                      className={`flex items-center justify-between p-2 rounded-lg border transition text-xs ${
-                                        isSelected
-                                          ? "bg-indigo-950/40 border-indigo-500/50 text-indigo-100"
-                                          : "bg-slate-950 border-slate-800/80 text-slate-300 hover:border-slate-700"
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-2 min-w-0">
-                                        <Bot className={`w-3.5 h-3.5 shrink-0 ${isSelected ? "text-indigo-400" : "text-slate-400"}`} />
-                                        <div className="truncate">
-                                          <div className="font-semibold text-[11px] truncate flex items-center gap-1.5">
-                                            <span>{ag.name || "Sales Agent"}</span>
-                                            {isSelected && (
-                                              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono font-bold">
-                                                ACTIVE
-                                              </span>
-                                            )}
-                                          </div>
-                                          <div className="text-[9px] font-mono text-slate-500 truncate">
-                                            ID: {ag.agent_id}
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-1.5 shrink-0">
-                                        {!isSelected ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              if (kb) {
-                                                setKb({ ...kb, elevenlabs_agent_id: ag.agent_id });
-                                                showToast(`Selected agent: ${ag.name || ag.agent_id}`, "success");
-                                              }
-                                            }}
-                                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold text-slate-200 transition cursor-pointer"
-                                          >
-                                            Select
-                                          </button>
-                                        ) : (
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              if (kb) {
-                                                setKb({ ...kb, elevenlabs_agent_id: "" });
-                                                showToast("Deselected active agent", "success");
-                                              }
-                                            }}
-                                            className="px-2 py-1 rounded bg-indigo-600/30 text-indigo-300 text-[10px] font-semibold hover:bg-indigo-600/40 transition cursor-pointer"
-                                          >
-                                            Deselect
-                                          </button>
-                                        )}
-
-                                        {/* Direct Delete from ElevenLabs Account */}
-                                        <button
-                                          type="button"
-                                          disabled={isDeleting}
-                                          onClick={() => handleDeleteElevenLabsAgent(ag.agent_id, ag.name)}
-                                          className="p-1 rounded bg-rose-950/40 border border-rose-900/50 hover:bg-rose-900/40 text-rose-400 hover:text-rose-200 transition cursor-pointer disabled:opacity-50"
-                                          title="Delete permanently from ElevenLabs account"
-                                        >
-                                          {isDeleting ? (
-                                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                          ) : (
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                          )}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1 text-[11px]">
-                          Brain LLM Engine (Selected on ElevenLabs)
-                        </label>
-                        <select
-                          value={kb?.elevenlabs_llm || "gemini-1.5-flash"}
-                          onChange={(e) => kb && setKb({ ...kb, elevenlabs_llm: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 text-xs focus:outline-none focus:border-indigo-500"
-                        >
-                          <optgroup label="⚡ Google Gemini (Ultra-Fast Sub-Second Latency - Best for Calls)">
-                            <option value="gemini-2.0-flash">⚡ Gemini 2.0 Flash (Next-Gen Ultra-Fast ~350ms)</option>
-                            <option value="gemini-1.5-flash">⚡ Gemini 1.5 Flash (Sub-Second Latency - Recommended)</option>
-                            <option value="gemini-1.5-pro">🔬 Gemini 1.5 Pro (Deep Reasoning & Analysis)</option>
-                            <option value="gemini-1.0-pro">⚡ Gemini 1.0 Pro (Standard)</option>
-                          </optgroup>
-
-                          <optgroup label="🎯 OpenAI GPT Series">
-                            <option value="gpt-4o-mini">🎯 GPT-4o Mini (Cost-Effective & Natural Conversational)</option>
-                            <option value="gpt-4o">🧠 GPT-4o (Flagship Multimodal Intelligence)</option>
-                            <option value="gpt-4-turbo">🏢 GPT-4 Turbo (High Precision Enterprise)</option>
-                            <option value="gpt-3.5-turbo">⚡ GPT-3.5 Turbo (Fast Classic)</option>
-                          </optgroup>
-
-                          <optgroup label="🧠 Anthropic Claude Series">
-                            <option value="claude-3-7-sonnet">👑 Claude 3.7 Sonnet (Latest Hybrid Reasoning)</option>
-                            <option value="claude-3-5-sonnet">💼 Claude 3.5 Sonnet (Elite Consultative Sales)</option>
-                            <option value="claude-3-haiku">⚡ Claude 3 Haiku (Ultra-Fast Response)</option>
-                          </optgroup>
-
-                          <optgroup label="🌐 Custom & Open-Source LLMs (Groq / OpenClaw)">
-                            <option value="custom-llm">🛠️ Custom LLM / OpenClaw (DeepSeek R1 / Llama 3.3)</option>
-                          </optgroup>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1 text-[11px]">
-                          ElevenLabs Agent ID (Auto-Generated or Manual)
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. agt_..."
-                          value={kb?.elevenlabs_agent_id || ""}
-                          onChange={(e) => kb && setKb({ ...kb, elevenlabs_agent_id: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-indigo-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Sync / Deploy Button */}
-                    <div className="pt-2 flex items-center justify-between border-t border-indigo-900/40">
-                      <div className="text-[10px] text-slate-400">
-                        Pushes current Script Questions, FAQ KB & Prompt into an ElevenLabs Conversational Agent.
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!kb?.elevenlabs_api_key && !kb?.elevenlabs_api_key_configured) {
-                            showToast("Please enter and save your ElevenLabs API Key first!", "error");
-                            return;
-                          }
-                          setIsSyncingAgent(true);
-                          try {
-                            await saveVoiceKB(kb);
-                            const res = await syncElevenLabsAgent();
-                            setKb({ ...kb, elevenlabs_agent_id: res.agent_id, elevenlabs_llm: res.llm });
-                            showToast(`Success! ElevenLabs Agent deployed (ID: ${res.agent_id})`, "success");
-                            // Re-fetch live account to list the new agent
-                            await handleFetchElevenLabsAccount();
-                          } catch (err: any) {
-                            showToast(err.message || "Failed to deploy ElevenLabs Agent", "error");
-                          } finally {
-                            setIsSyncingAgent(false);
-                          }
-                        }}
-                        disabled={isSyncingAgent}
-                        className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition flex items-center gap-1.5 shadow-md shadow-indigo-600/20 cursor-pointer"
+                    {/* Gemini Voice Persona */}
+                    <div className="space-y-1">
+                      <label className="block text-slate-300 font-semibold text-[11px]">
+                        Gemini Live Voice Persona
+                      </label>
+                      <select
+                        value={kb?.gemini_voice_name || "Charon"}
+                        onChange={(e) => kb && setKb({ ...kb, gemini_voice_name: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 text-xs focus:outline-none focus:border-cyan-500"
                       >
-                        {isSyncingAgent ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                        <span>{kb?.elevenlabs_agent_id ? "Re-Sync Agent to ElevenLabs" : "Deploy / Create ElevenLabs Agent"}</span>
-                      </button>
+                        <option value="Charon">🏢 Charon (Authoritative, Deep Male - Multilingual)</option>
+                        <option value="Puck">⚡ Puck (Energetic, Natural Male - Multilingual)</option>
+                        <option value="Fenrir">🎯 Fenrir (Crisp, Confident Male - Multilingual)</option>
+                        <option value="Aoede">✨ Aoede (Warm, Engaging Female - Multilingual)</option>
+                        <option value="Kore">🌸 Kore (Calm, Sophisticated Female - Multilingual)</option>
+                      </select>
+                      <p className="text-[10px] text-slate-500">
+                        Speaks fluently in Bengali, English, and mixed Banglish automatically.
+                      </p>
                     </div>
+
+                    {/* Twilio Account SID */}
+                    <div className="space-y-1">
+                      <label className="block text-slate-300 font-semibold text-[11px]">
+                        Twilio Account SID
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        value={kb?.twilio_account_sid || ""}
+                        onChange={(e) => kb && setKb({ ...kb, twilio_account_sid: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    {/* Twilio Auth Token */}
+                    <div className="space-y-1">
+                      <label className="block text-slate-300 font-semibold text-[11px]">
+                        Twilio Auth Token
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="Auth Token"
+                        value={kb?.twilio_auth_token || ""}
+                        onChange={(e) => kb && setKb({ ...kb, twilio_auth_token: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    {/* Twilio Caller Phone Number */}
+                    <div className="space-y-1">
+                      <label className="block text-slate-300 font-semibold text-[11px]">
+                        Twilio Caller Phone Number
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="+1234567890 (E.164)"
+                        value={kb?.twilio_from_phone || ""}
+                        onChange={(e) => kb && setKb({ ...kb, twilio_from_phone: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    {/* Twilio Webhook Base URL */}
+                    <div className="space-y-1">
+                      <label className="block text-slate-300 font-semibold text-[11px]">
+                        Public Webhook Base URL (ngrok or Domain)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://your-domain.com or https://xxxx.ngrok-free.app"
+                        value={kb?.twilio_webhook_base_url || ""}
+                        onChange={(e) => kb && setKb({ ...kb, twilio_webhook_base_url: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-between border-t border-cyan-900/40">
+                    <span className="text-[10px] text-slate-400">
+                      Twilio telephone stream connects directly to Google Gemini 2.0 Flash in real-time.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!kb) return;
+                        setSavingKb(true);
+                        try {
+                          await saveVoiceKB(kb);
+                          showToast("Gemini Live & Twilio Voice Engine settings saved!", "success");
+                        } catch (err: any) {
+                          showToast(err.message || "Failed to save settings", "error");
+                        } finally {
+                          setSavingKb(false);
+                        }
+                      }}
+                      disabled={savingKb}
+                      className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold rounded-lg text-xs transition flex items-center gap-1.5 shadow-md shadow-cyan-600/20 cursor-pointer disabled:opacity-50"
+                    >
+                      {savingKb ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      <span>Save Voice Engine Settings</span>
+                    </button>
                   </div>
                 </div>
 
-                {/* ElevenLabs Agent Studio Controls (No Hardcode Speech & Live Sliders) */}
+                {/* Google Gemini Live Studio Controls (No Hardcode Speech & Live Sliders) */}
                 <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
                     <div className="flex items-center gap-2">
                       <Sliders className="w-4 h-4 text-cyan-400" />
                       <h4 className="font-bold text-xs text-white uppercase tracking-wider">
-                        ElevenLabs Agent Studio Controls (No Hardcode Speech & Live Sliders)
+                        Google Gemini Live Studio Controls (Conversational Speech & Sliders)
                       </h4>
                     </div>
-                    <span className="text-[10px] text-cyan-400 font-mono">1:1 Studio Parity</span>
+                    <span className="text-[10px] text-cyan-400 font-mono">100% Google Gemini Live</span>
                   </div>
 
-                  {/* 1. First Message (Welcome Speech) + Interruptible Toggle */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                        <MessageSquare className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>First Message (Initial greeting spoken when prospect answers)</span>
-                      </label>
-
-                      <label className="flex items-center gap-2 cursor-pointer bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-lg hover:border-slate-700 transition">
-                        <span className="text-[10px] text-slate-300 font-semibold">Interruptible Speech:</span>
-                        <input
-                          type="checkbox"
-                          checked={kb?.interruptible !== false}
-                          onChange={(e) => kb && setKb({ ...kb, interruptible: e.target.checked })}
-                          className="rounded text-indigo-500 bg-slate-950 border-slate-700 focus:ring-0 cursor-pointer"
-                        />
-                        <span className={`text-[10px] font-bold ${kb?.interruptible !== false ? "text-emerald-400" : "text-slate-500"}`}>
-                          {kb?.interruptible !== false ? "ON" : "OFF"}
-                        </span>
-                      </label>
+                  {/* Interruptible Speech Toggle */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-slate-900 border border-slate-800">
+                    <div>
+                      <span className="text-xs font-bold text-slate-200">Natural Conversation Interruption</span>
+                      <p className="text-[10px] text-slate-400">When client speaks while agent is speaking, agent stops immediately to listen.</p>
                     </div>
 
-                    <textarea
-                      rows={3}
-                      value={kb?.first_message || ""}
-                      onChange={(e) => kb && setKb({ ...kb, first_message: e.target.value })}
-                      placeholder="Hello {{client_name}}, this is {{agent_persona_name}} with {{my_company}} calling regarding..."
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-slate-100 text-xs focus:outline-none focus:border-indigo-500 leading-relaxed font-sans"
-                    />
-
-                    {/* Quick Variable Tag Pills */}
-                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                      <span className="text-[10px] text-slate-500">Insert tag:</span>
-                      {["{{client_name}}", "{{company_name}}", "{{exact_problem}}", "{{agent_persona_name}}", "{{my_company}}"].map((tag) => (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => {
-                            if (!kb) return;
-                            setKb({ ...kb, first_message: (kb.first_message || "") + " " + tag });
-                          }}
-                          className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 hover:border-indigo-500/50 text-[10px] text-indigo-300 font-mono transition"
-                        >
-                          + {tag}
-                        </button>
-                      ))}
-                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer bg-slate-950 border border-slate-700 px-3 py-1.5 rounded-lg hover:border-slate-600 transition">
+                      <span className="text-[11px] text-slate-300 font-semibold">Interruptible Speech:</span>
+                      <input
+                        type="checkbox"
+                        checked={kb?.interruptible !== false}
+                        onChange={(e) => kb && setKb({ ...kb, interruptible: e.target.checked })}
+                        className="rounded text-indigo-500 bg-slate-900 border-slate-700 focus:ring-0 cursor-pointer"
+                      />
+                      <span className={`text-[11px] font-bold ${kb?.interruptible !== false ? "text-emerald-400" : "text-slate-500"}`}>
+                        {kb?.interruptible !== false ? "ON" : "OFF"}
+                      </span>
+                    </label>
                   </div>
 
                   {/* 2. Voice Sliders & Timezone */}
@@ -2241,6 +2164,311 @@ export default function VoiceAgentPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* 5. Meta WhatsApp Business Cloud API Gateway */}
+                  <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-950/40 via-slate-950 to-slate-900 border border-emerald-800/40 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-emerald-400" />
+                        <h5 className="font-bold text-xs text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <span>WhatsApp Business Cloud API Gateway</span>
+                        </h5>
+                      </div>
+                      {kb?.whatsapp_phone_number_id && (kb?.whatsapp_access_token || kb?.whatsapp_configured) ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Live & Connected
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold border border-amber-500/30 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" /> Setup Required
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Connect your Meta WhatsApp Cloud API credentials to automatically dispatch post-call discovery booking links and reminders directly to your clients' phones.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1 text-[11px] flex items-center justify-between">
+                          <span>WhatsApp Phone Number ID</span>
+                          <a
+                            href="https://developers.facebook.com/apps"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-emerald-400 hover:underline flex items-center gap-0.5 font-normal"
+                          >
+                            Meta Developer Portal <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        </label>
+                        <input
+                          type="text"
+                          value={kb?.whatsapp_phone_number_id || ""}
+                          onChange={(e) => kb && setKb({ ...kb, whatsapp_phone_number_id: e.target.value })}
+                          placeholder="e.g. 109283746512345"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-100 text-xs focus:outline-none focus:border-emerald-500 font-mono"
+                        />
+                        <span className="text-[10px] text-slate-500 mt-0.5 block">
+                          Found in WhatsApp &gt; API Setup &gt; Phone number ID
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1 text-[11px] flex items-center justify-between">
+                          <span>Meta System User Access Token</span>
+                          <a
+                            href="https://business.facebook.com/settings/system-users"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-emerald-400 hover:underline flex items-center gap-0.5 font-normal"
+                          >
+                            Business Settings <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showWaToken ? "text" : "password"}
+                            value={kb?.whatsapp_access_token || ""}
+                            onChange={(e) => kb && setKb({ ...kb, whatsapp_access_token: e.target.value })}
+                            placeholder={kb?.whatsapp_configured ? "•••••••••••••••••••• (Leave blank to keep current)" : "Permanent token with whatsapp_business_messaging"}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 pr-9 text-slate-100 text-xs focus:outline-none focus:border-emerald-500 font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowWaToken(!showWaToken)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 text-xs"
+                          >
+                            {showWaToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                        <span className="text-[10px] text-slate-500 mt-0.5 block">
+                          Generate from System Users with whatsapp_business_messaging permission
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Live Test WhatsApp Delivery Box */}
+                    <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-center gap-2">
+                      <div className="flex-1 w-full">
+                        <input
+                          type="text"
+                          value={testWaPhone}
+                          onChange={(e) => setTestWaPhone(e.target.value)}
+                          placeholder="Test phone (e.g. 01712643138 or +88017...)"
+                          className="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-100 text-xs focus:outline-none focus:border-emerald-500 font-mono"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleTestWhatsApp}
+                        disabled={testWaLoading}
+                        className="w-full sm:w-auto px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50 shrink-0"
+                      >
+                        {testWaLoading ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Dispatching...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" />
+                            <span>Send Live Test WhatsApp</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {testWaFeedback && (
+                      <div
+                        className={`p-2 rounded-lg text-xs font-mono ${
+                          testWaFeedback.success
+                            ? "bg-emerald-950/60 text-emerald-300 border border-emerald-800/60"
+                            : "bg-rose-950/60 text-rose-300 border border-rose-800/60"
+                        }`}
+                      >
+                        {testWaFeedback.msg}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 6. Post-Call Instant Delivery Templates (WhatsApp & Email) */}
+                  <div className="p-4 rounded-xl bg-gradient-to-br from-purple-950/40 via-slate-950 to-slate-900 border border-purple-800/40 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Share2 className="w-4 h-4 text-purple-400" />
+                        <h5 className="font-bold text-xs text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <span>Post-Call Instant Delivery Templates (WhatsApp & Email)</span>
+                        </h5>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-bold border border-purple-500/30">
+                        100% Dynamic Admin Control
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      When a call concludes with an agreed demo or interested lead, the system automatically renders and dispatches these exact personalized templates to the client's verified WhatsApp and email.
+                    </p>
+
+                    {/* WhatsApp Template */}
+                    <div className="space-y-1.5">
+                      <label className="block text-slate-300 font-semibold text-[11px] flex items-center justify-between">
+                        <span>Post-Call WhatsApp Message Template</span>
+                        <span className="text-[10px] text-purple-400 font-mono">Dispatched instantly to verified WhatsApp</span>
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={
+                          kb?.post_call_whatsapp_template ??
+                          "Hello {{client_name}},\n\nThank you for taking our call today regarding custom software and digital automation for {{company_name}}.\n\nAs discussed, here is the direct link to pick a convenient 10-minute slot for our discovery demo:\n👉 {{calendly_prefilled_url}}\n\n(Your details are already pre-filled—just choose a time that fits your schedule).\n\nIf you have any questions in the meantime, feel free to reply directly to this message.\n\nBest regards,\n{{agent_persona_name}} | {{my_company}}"
+                        }
+                        onChange={(e) => kb && setKb({ ...kb, post_call_whatsapp_template: e.target.value })}
+                        placeholder="Enter your custom post-call WhatsApp message template..."
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-slate-100 text-xs focus:outline-none focus:border-purple-500 leading-relaxed font-sans"
+                      />
+                      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        <span className="text-[10px] text-slate-500">Insert tag:</span>
+                        {["{{client_name}}", "{{company_name}}", "{{calendly_prefilled_url}}", "{{agent_persona_name}}", "{{my_company}}"].map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => {
+                              if (!kb) return;
+                              setKb({ ...kb, post_call_whatsapp_template: (kb.post_call_whatsapp_template || "") + " " + tag });
+                            }}
+                            className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 hover:border-purple-500/50 text-[10px] text-purple-300 font-mono transition"
+                          >
+                            + {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Email Subject & Body Template */}
+                    <div className="space-y-3 pt-2 border-t border-slate-800/80">
+                      {/* Active Admin SMTP Sender Telemetry */}
+                      {kb?.active_smtp_sender ? (
+                        <div className="p-2.5 rounded-lg bg-emerald-950/60 border border-emerald-700/50 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
+                          <span className="flex items-center gap-1.5 text-emerald-300 font-medium">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <span>Connected Admin SMTP Outbox: <strong>{kb.active_smtp_sender}</strong> {kb.active_smtp_name ? `(${kb.active_smtp_name})` : ""}</span>
+                          </span>
+                          <span className="text-[10px] text-emerald-400/90 font-mono">
+                            Host: {kb.active_smtp_host || "Active"} | Total Inboxes: {kb.total_smtp_inboxes || 1}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between text-[11px]">
+                          <span className="flex items-center gap-1.5 text-slate-300 font-medium">
+                            <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>No active Admin SMTP inboxes detected — Operating in Safe Simulated Mode</span>
+                          </span>
+                          <Link href="/admin" className="text-[10px] text-purple-400 hover:underline">
+                            Admin SMTP Hub &rarr;
+                          </Link>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1 text-[11px]">
+                          Post-Call Email Subject Line
+                        </label>
+                        <input
+                          type="text"
+                          value={kb?.post_call_email_subject ?? "Discovery Session: {{my_company}} & {{company_name}}"}
+                          onChange={(e) => kb && setKb({ ...kb, post_call_email_subject: e.target.value })}
+                          placeholder="e.g. Discovery Session: {{my_company}} & {{company_name}}"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-100 text-xs focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-300 font-semibold mb-1 text-[11px]">
+                          Post-Call Email Body (HTML & Plain Text)
+                        </label>
+                        <textarea
+                          rows={8}
+                          value={
+                            kb?.post_call_email_template ??
+                            "Dear {{client_name}},\n\nThank you for speaking with our team today regarding technology solutions and workflow automation for {{company_name}}.\n\nAs discussed on our call, we would love to show you a brief 10-minute preview tailored to your operational needs.\n\nPlease select a convenient date and time on our calendar:\n👉 {{calendly_prefilled_url}}\n\nWhat we will cover in 10 minutes:\n• Live workflow architecture tailored to {{company_name}}\n• Relevant software modules & integration walkthrough\n• Operational ROI & zero-friction deployment roadmap\n\nYour contact details are already attached to the calendar link, so booking takes less than 30 seconds.\n\nIf you have any questions beforehand or need to reschedule, simply reply directly to this email or reach us on WhatsApp.\n\nWarm regards,\n{{agent_persona_name}} & The {{my_company}} Team"
+                          }
+                          onChange={(e) => kb && setKb({ ...kb, post_call_email_template: e.target.value })}
+                          placeholder="Enter your custom post-call email body template..."
+                          className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-slate-100 text-xs focus:outline-none focus:border-purple-500 leading-relaxed font-sans"
+                        />
+                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                          <span className="text-[10px] text-slate-500">Insert tag:</span>
+                          {["{{client_name}}", "{{company_name}}", "{{calendly_prefilled_url}}", "{{agent_persona_name}}", "{{my_company}}"].map((tag) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => {
+                                if (!kb) return;
+                                setKb({ ...kb, post_call_email_template: (kb.post_call_email_template || "") + " " + tag });
+                              }}
+                              className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 hover:border-purple-500/50 text-[10px] text-purple-300 font-mono transition"
+                            >
+                              + {tag}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Live Test Email Delivery Box */}
+                        <div className="pt-3 border-t border-slate-800/80 flex flex-col gap-2">
+                          <div className="flex flex-col sm:flex-row items-center gap-2">
+                            <div className="flex-1 w-full">
+                              <input
+                                type="email"
+                                value={testEmailTo}
+                                onChange={(e) => setTestEmailTo(e.target.value)}
+                                placeholder="Recipient email (e.g. yourname@gmail.com)"
+                                className="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-100 text-xs focus:outline-none focus:border-purple-500 font-mono"
+                              />
+                            </div>
+                            <div className="w-full sm:w-48">
+                              <input
+                                type="text"
+                                value={testEmailCompany}
+                                onChange={(e) => setTestEmailCompany(e.target.value)}
+                                placeholder="Prospect Company (optional)"
+                                className="w-full bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-100 text-xs focus:outline-none focus:border-purple-500"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleTestEmail}
+                              disabled={testEmailLoading}
+                              className="w-full sm:w-auto px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50 shrink-0"
+                            >
+                              {testEmailLoading ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Dispatching...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Mail className="w-3.5 h-3.5" />
+                                  <span>Send Live Test Email</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {testEmailFeedback && (
+                          <div
+                            className={`p-2 rounded-lg text-xs font-mono ${
+                              testEmailFeedback.success
+                                ? "bg-purple-950/60 text-purple-300 border border-purple-800/60"
+                                : "bg-rose-950/60 text-rose-300 border border-rose-800/60"
+                            }`}
+                          >
+                            {testEmailFeedback.msg}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Country Language Routing Map */}
@@ -2290,213 +2518,10 @@ export default function VoiceAgentPage() {
               </div>
             </div>
 
-            {/* Modal: Add Script Step */}
-            {showAddStepModal && (
-              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <div className="flex items-center gap-2">
-                      <ListPlus className="w-4 h-4 text-cyan-400" />
-                      <h3 className="font-bold text-sm text-white">Add New Script Step</h3>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddStepModal(false)}
-                      className="text-slate-400 hover:text-white"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <div className="space-y-3 text-xs">
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Step Purpose / Label</label>
-                      <input
-                        type="text"
-                        value={newStepPurpose}
-                        onChange={(e) => setNewStepPurpose(e.target.value)}
-                        placeholder="e.g. Qualifying Question / Booking Pitch"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">Spoken Question / Script</label>
-                      <textarea
-                        rows={3}
-                        value={newStepQuestion}
-                        onChange={(e) => setNewStepQuestion(e.target.value)}
-                        placeholder="Enter what the agent will say or ask at this step..."
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100"
-                      />
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        Supported tags: <span className="text-cyan-300 font-mono">{"{{client_name}}"}</span>, <span className="text-cyan-300 font-mono">{"{{company_name}}"}</span>, <span className="text-cyan-300 font-mono">{"{{exact_problem}}"}</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() => setShowAddStepModal(false)}
-                      className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!kb) return;
-                        const currentSteps = kb.script_questions_json || [];
-                        const nextStepNum = currentSteps.length + 1;
-                        const newStep = {
-                          step: nextStepNum,
-                          purpose: newStepPurpose.trim() || `Step ${nextStepNum}`,
-                          question: newStepQuestion.trim() || "Are you currently experiencing conversion drop-offs on your website or landing pages?",
-                          active: true,
-                        };
-                        setKb({
-                          ...kb,
-                          script_questions_json: [...currentSteps, newStep],
-                        });
-                        setNewStepQuestion("");
-                        setShowAddStepModal(false);
-                        showToast(`Added Step ${nextStepNum} to Call Script!`, "success");
-                      }}
-                      className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-600/20"
-                    >
-                      Add Step
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Modal: Add FAQ KB */}
-            {showAddFaqModal && (
-              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <div className="flex items-center gap-2">
-                      <BookOpen className="w-4 h-4 text-purple-400" />
-                      <h3 className="font-bold text-sm text-white">Add Q&A to Knowledge Base</h3>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddFaqModal(false)}
-                      className="text-slate-400 hover:text-white"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <div className="space-y-3 text-xs">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Category</label>
-                        <select
-                          value={newFaqCategory}
-                          onChange={(e) => setNewFaqCategory(e.target.value)}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100"
-                        >
-                          <option value="Pricing">Pricing / Cost</option>
-                          <option value="Services">Services / Offer</option>
-                          <option value="Competitor">Competitor / Team</option>
-                          <option value="Time">Time / Busy</option>
-                          <option value="Information">Information / Send Email</option>
-                          <option value="General">General FAQ</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-slate-300 font-semibold mb-1">Question / Objection Title</label>
-                        <input
-                          type="text"
-                          value={newFaqQuestion}
-                          onChange={(e) => setNewFaqQuestion(e.target.value)}
-                          placeholder="e.g. Where is your headquarters located?"
-                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">
-                        Trigger Keywords (Comma separated)
-                      </label>
-                      <input
-                        type="text"
-                        value={newFaqTriggers}
-                        onChange={(e) => setNewFaqTriggers(e.target.value)}
-                        placeholder="e.g. office, location, headquarters, address, city"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-[11px]"
-                      />
-                      <p className="text-[10px] text-slate-500 mt-1">
-                        The AI agent triggers this spoken response whenever the prospect mentions any of these keywords.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block text-slate-300 font-semibold mb-1">
-                        Agent Spoken Answer (ElevenLabs Voice)
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={newFaqAnswer}
-                        onChange={(e) => setNewFaqAnswer(e.target.value)}
-                        placeholder="Enter the spoken answer (keep under 15-20 words for natural speech flow)..."
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() => setShowAddFaqModal(false)}
-                      className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!kb) return;
-                        if (!newFaqQuestion.trim() || !newFaqAnswer.trim()) {
-                          showToast("Please enter both question and answer", "error");
-                          return;
-                        }
-                        const currentFaqs = kb.faq_kb_json || [];
-                        const newFaq = {
-                          id: `faq_${Date.now()}`,
-                          category: newFaqCategory,
-                          question: newFaqQuestion.trim(),
-                          triggers: newFaqTriggers.trim() || newFaqQuestion.trim(),
-                          answer: newFaqAnswer.trim(),
-                          active: true,
-                        };
-                        setKb({
-                          ...kb,
-                          faq_kb_json: [...currentFaqs, newFaq],
-                        });
-                        setNewFaqQuestion("");
-                        setNewFaqTriggers("");
-                        setNewFaqAnswer("");
-                        setShowAddFaqModal(false);
-                        showToast("Added new Q&A to Knowledge Base!", "success");
-                      }}
-                      className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-md shadow-purple-600/20"
-                    >
-                      Add Q&A
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        {/* TAB 4: Live Call Simulator (ElevenLabs-Style Web Testing Studio) */}
+        {/* TAB 4: Live Call Simulator (Google Gemini Live Multimodal Testing Studio) */}
         {activeTab === "simulator" && (() => {
           const activeLead = selectedSimLead || DEFAULT_TEST_PROSPECT;
           return (
@@ -2522,7 +2547,21 @@ export default function VoiceAgentPage() {
                         <span>•</span>
                         <span>{getCountryFlag(activeLead.country)} {activeLead.country}</span>
                         <span>•</span>
-                        <span className="text-cyan-400 font-semibold">Language: {activeLead.language || "English"}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = (activeLead.language || "Bengali").toLowerCase();
+                            const nextL = cur.includes("bengali") ? "English" : "Bengali";
+                            setSelectedSimLead((prev) => ({
+                              ...(prev || DEFAULT_TEST_PROSPECT),
+                              language: nextL,
+                            }));
+                          }}
+                          className="text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer underline decoration-cyan-500/40"
+                          title="Click to switch language between Bengali & English"
+                        >
+                          Language: {activeLead.language || "Bengali"} ⇄
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -2542,7 +2581,7 @@ export default function VoiceAgentPage() {
                       disabled={simActive}
                       className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
                     >
-                      <option value={DEFAULT_TEST_PROSPECT.id}>⭐ Demo Prospect: Farhan Ahmed (Apex Global)</option>
+                      <option value={DEFAULT_TEST_PROSPECT.id}>⭐ Practice Simulator Lead ({DEFAULT_TEST_PROSPECT.contact_person})</option>
                       {queue.map((q) => (
                         <option key={q.id} value={q.id}>
                           👤 {q.contact_person} ({q.company_name})
@@ -2585,254 +2624,223 @@ export default function VoiceAgentPage() {
                 </div>
               </div>
 
-              {/* ElevenLabs Animated Conversational Sphere / Visualizer Orb */}
-              {simActive && (
-                <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 shadow-xl flex flex-col items-center justify-center relative overflow-hidden">
+              {/* 100% Pure Voice Calling Screen (Hands-Free Phone HUD - Zero Chatbot Feeling) */}
+              {simActive ? (
+                <div className="p-8 rounded-3xl bg-gradient-to-b from-slate-900 via-slate-950 to-slate-950 border border-slate-800 shadow-2xl flex flex-col items-center justify-center relative overflow-hidden space-y-6">
+                  {/* Glowing Ambient Acoustic Background Light */}
                   <div
-                    className={`absolute w-44 h-44 rounded-full blur-2xl transition-all duration-700 opacity-60 ${
+                    className={`absolute w-72 h-72 rounded-full blur-3xl transition-all duration-700 opacity-40 pointer-events-none ${
                       isAgentSpeaking
-                        ? "bg-cyan-500/40 animate-pulse scale-125"
-                        : isRecordingMic
-                        ? "bg-rose-500/40 animate-pulse scale-125"
-                        : isProcessingTurn
-                        ? "bg-amber-500/40 animate-pulse"
+                        ? "bg-cyan-500/50 scale-125"
+                        : isRecordingMic && !isMuted
+                        ? "bg-emerald-500/50 scale-125"
                         : "bg-indigo-500/20"
                     }`}
                   />
 
-                  <div
-                    className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-500 ${
-                      isAgentSpeaking
-                        ? "ring-4 ring-cyan-400/50 shadow-2xl shadow-cyan-500/50 scale-105"
-                        : isRecordingMic
-                        ? "ring-4 ring-rose-400/60 shadow-2xl shadow-rose-500/50 scale-110"
-                        : isProcessingTurn
-                        ? "ring-2 ring-amber-400/60 animate-spin"
-                        : "ring-1 ring-slate-700"
-                    }`}
-                  >
+                  {/* Target Lead & Calling Header */}
+                  <div className="text-center z-10 space-y-1">
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-900/90 border border-slate-700/80 text-[11px] font-mono text-emerald-400 shadow-inner">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>LIVE CALL • {Math.floor(callDuration / 60)}:{(callDuration % 60).toString().padStart(2, "0")}</span>
+                    </div>
+                    <h3 className="text-2xl font-bold text-white tracking-tight pt-1">
+                      {activeLead.contact_person || "Decision Maker"}
+                    </h3>
+                    <p className="text-xs text-slate-400 font-medium">
+                      {activeLead.company_name} • {activeLead.phone || "Direct Voice Line"}
+                    </p>
+                  </div>
+
+                  {/* High-Fidelity Animated Acoustic Calling Orb */}
+                  <div className="relative z-10 my-2 flex items-center justify-center">
                     <div
-                      className={`w-20 h-20 rounded-full flex flex-col items-center justify-center transition-all duration-500 shadow-inner ${
+                      className={`w-36 h-36 rounded-full flex items-center justify-center transition-all duration-500 ${
                         isAgentSpeaking
-                          ? "bg-gradient-to-tr from-cyan-600 via-sky-500 to-indigo-600 animate-pulse"
-                          : isRecordingMic
-                          ? "bg-gradient-to-tr from-rose-600 via-pink-500 to-amber-500 animate-pulse"
-                          : isProcessingTurn
-                          ? "bg-gradient-to-tr from-amber-600 to-orange-500"
-                          : "bg-gradient-to-tr from-slate-800 to-slate-900 border border-slate-700"
+                          ? "ring-8 ring-cyan-500/30 shadow-2xl shadow-cyan-500/50 scale-110"
+                          : isRecordingMic && !isMuted
+                          ? "ring-8 ring-emerald-500/30 shadow-2xl shadow-emerald-500/50 scale-110"
+                          : isMuted
+                          ? "ring-4 ring-rose-500/20 shadow-none"
+                          : "ring-2 ring-slate-800"
                       }`}
                     >
-                      {isAgentSpeaking ? (
-                        <Volume2 className="w-8 h-8 text-white animate-pulse" />
-                      ) : isRecordingMic ? (
-                        <Mic className="w-8 h-8 text-white animate-pulse" />
-                      ) : isProcessingTurn ? (
-                        <RefreshCw className="w-8 h-8 text-white animate-spin" />
-                      ) : (
-                        <Bot className="w-8 h-8 text-slate-300" />
-                      )}
+                      <div
+                        className={`w-28 h-28 rounded-full flex flex-col items-center justify-center transition-all duration-500 shadow-inner ${
+                          isAgentSpeaking
+                            ? "bg-gradient-to-tr from-cyan-600 via-sky-500 to-indigo-600 animate-pulse"
+                            : isRecordingMic && !isMuted
+                            ? "bg-gradient-to-tr from-emerald-600 via-teal-500 to-cyan-600 animate-pulse"
+                            : isMuted
+                            ? "bg-slate-900 border border-rose-800/60"
+                            : "bg-gradient-to-tr from-slate-800 to-slate-900 border border-slate-700"
+                        }`}
+                      >
+                        {isAgentSpeaking ? (
+                          <Volume2 className="w-12 h-12 text-white animate-pulse" />
+                        ) : isMuted ? (
+                          <MicOff className="w-12 h-12 text-rose-400" />
+                        ) : (
+                          <Mic className="w-12 h-12 text-emerald-300 animate-pulse" />
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Realtime Live Speech Status */}
-                  <div className="mt-3 text-center">
-                    <div className="text-xs font-bold tracking-wide uppercase">
+                  {/* Realtime Call Voice Status */}
+                  <div className="z-10 text-center">
+                    <div className="text-xs font-semibold tracking-wide">
                       {isAgentSpeaking ? (
-                        <span className="text-cyan-300 flex items-center justify-center gap-1.5">
+                        <span className="text-cyan-300 flex items-center justify-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                          AI Agent is Speaking (ElevenLabs Voice)
+                          <span>AI Agent Speaking ({kb?.agent_persona_name || "Karim"} - Gemini Live Voice)...</span>
+                        </span>
+                      ) : isMuted ? (
+                        <span className="text-rose-400 flex items-center justify-center gap-1.5">
+                          <MicOff className="w-3.5 h-3.5" />
+                          <span>Microphone is Muted</span>
                         </span>
                       ) : isRecordingMic ? (
-                        <span className="text-rose-300 flex items-center justify-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
-                          Listening to Client (Speak into Mic)
+                        <span className="text-emerald-300 flex items-center justify-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                          <span>🎙️ Microphone Live — Speak naturally with your voice</span>
                         </span>
                       ) : isProcessingTurn ? (
                         <span className="text-amber-300 flex items-center justify-center gap-1.5">
                           <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                          AI Brain Reasoning & Generating Speech...
+                          <span>AI Processing Voice...</span>
                         </span>
                       ) : (
-                        <span className="text-emerald-400 flex items-center justify-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                          Call Connected • Ready for Client Voice
-                        </span>
+                        <span className="text-slate-400">Call Connected • Connecting Voice...</span>
                       )}
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* Live Call Transcript Bubble Box (Clear Agent vs Client Dialogue) */}
-              {simActive && (
-                <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-3 min-h-[220px] max-h-[380px] overflow-y-auto">
-                  {simConnecting ? (
-                    <div className="flex flex-col items-center justify-center p-8 text-xs text-slate-400 gap-2">
-                      <RefreshCw className="w-5 h-5 animate-spin text-sky-400" />
-                      <span>Dialing {activeLead.phone}... Connecting ElevenLabs stream...</span>
-                    </div>
-                  ) : (
-                    simHistory.map((h, i) => {
-                      const isAgent = h.speaker === "agent";
-                      return (
-                        <div
-                          key={i}
-                          className={`flex flex-col ${isAgent ? "items-start" : "items-end"}`}
-                        >
-                          {/* Speaker Label with Audio Replay */}
-                          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider mb-1 px-1">
-                            {isAgent ? (
-                              <>
-                                <Bot className="w-3.5 h-3.5 text-cyan-400" />
-                                <span className="text-cyan-400">🤖 AI Sales Agent (ElevenLabs)</span>
-                                <span className="text-slate-600">•</span>
-                                <span className="text-slate-500 font-normal">{h.time}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => playAgentResponse(h.text)}
-                                  className="ml-1 text-[9px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-0.5 bg-cyan-950/60 border border-cyan-800/50 px-1.5 py-0.2 rounded cursor-pointer"
-                                  title="Replay Audio"
-                                >
-                                  <Volume2 className="w-2.5 h-2.5" />
-                                  <span>Replay</span>
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-slate-500 font-normal">{h.time}</span>
-                                <span className="text-slate-600">•</span>
-                                <span className="text-emerald-400">👤 Client / Prospect (You)</span>
-                                <User className="w-3.5 h-3.5 text-emerald-400" />
-                              </>
-                            )}
-                          </div>
-
-                          {/* Speech Bubble */}
-                          <div
-                            className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-md ${
-                              isAgent
-                                ? "bg-slate-900 border border-cyan-500/30 text-slate-100 rounded-tl-sm"
-                                : "bg-emerald-950/90 border border-emerald-500/50 text-emerald-100 rounded-tr-sm"
-                            }`}
-                          >
-                            {h.text}
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-
-              {/* Quick Objection / Reply Test Pills */}
-              {simActive && !simConnecting && (
-                <div className="space-y-1.5 px-1">
-                  <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider flex items-center justify-between">
-                    <span>⚡ Quick Objection & Response Test Pills:</span>
-                    <span className="text-[10px] text-slate-500">Click pill to test agent reaction</span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {[
-                      "What is your pricing?",
-                      "I am busy right now, call later",
-                      "We already have a team",
-                      "Can you send an email with details?",
-                      "Yes, send me your Calendly link to book a time",
-                    ].map((pill) => (
-                      <button
-                        key={pill}
-                        type="button"
-                        disabled={isProcessingTurn || isAgentSpeaking}
-                        onClick={() => handleSimTurn(pill)}
-                        className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 text-[10px] font-medium text-slate-300 hover:text-emerald-300 transition cursor-pointer disabled:opacity-40"
-                      >
-                        "{pill}"
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Lead Reply Input for Simulator */}
-              {simActive && !simConnecting && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (isRecordingMic) {
-                      toggleMicListening();
-                    }
-                    handleSimTurn(simUserInput);
-                  }}
-                  className="space-y-2"
-                >
-                  <div className="flex items-center gap-2">
-                    {/* Realtime Microphone Button */}
+                  {/* Smartphone In-Call Action Bar (Clean Phone Controls) */}
+                  <div className="flex items-center justify-center gap-6 z-10 pt-2">
+                    {/* Mute / Unmute Button */}
                     <button
                       type="button"
                       onClick={toggleMicListening}
-                      disabled={isProcessingTurn}
-                      className={`px-3.5 py-2.5 rounded-xl border font-bold flex items-center gap-2 transition cursor-pointer text-xs shrink-0 ${
-                        isRecordingMic
-                          ? "bg-rose-500/20 border-rose-500 text-rose-300 ring-2 ring-rose-500/40 shadow-lg shadow-rose-500/20 animate-pulse"
-                          : "bg-slate-900 border-slate-700 hover:border-emerald-500 text-slate-200 hover:text-white"
+                      className={`w-14 h-14 rounded-full flex flex-col items-center justify-center transition-all shadow-lg cursor-pointer ${
+                        isMuted
+                          ? "bg-rose-950/80 border-2 border-rose-500 text-rose-400 hover:bg-rose-900/80"
+                          : "bg-slate-900 border-2 border-emerald-500/60 text-emerald-400 hover:bg-slate-800 hover:border-emerald-400"
                       }`}
-                      title={isRecordingMic ? "Click to stop mic" : "Click to speak with your microphone"}
+                      title={isMuted ? "Unmute Microphone" : "Mute Microphone"}
                     >
-                      {isRecordingMic ? (
-                        <>
-                          <MicOff className="w-4 h-4 text-rose-400" />
-                          <span>Listening...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Mic className="w-4 h-4 text-emerald-400" />
-                          <span>Speak Mic</span>
-                        </>
-                      )}
+                      {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                     </button>
 
-                    {/* Text Input / Spoken transcript */}
-                    <input
-                      type="text"
-                      placeholder={
-                        isRecordingMic
-                          ? "Listening... Speak naturally into your mic (e.g. 'I am busy right now', 'What is your price?')..."
-                          : "Type reply or click 'Speak Mic' to talk in real-time..."
-                      }
-                      value={simUserInput}
-                      onChange={(e) => setSimUserInput(e.target.value)}
-                      className={`flex-1 bg-slate-900 border rounded-xl px-3.5 py-2.5 text-xs text-slate-200 focus:outline-none transition ${
-                        isRecordingMic
-                          ? "border-rose-500/70 ring-1 ring-rose-500/50 text-rose-100"
-                          : "border-slate-800 focus:border-emerald-500"
-                      }`}
-                    />
-
-                    {/* Send Button */}
+                    {/* Red Phone Hang Up Button */}
                     <button
-                      type="submit"
-                      disabled={!simUserInput.trim() || isProcessingTurn}
-                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer shrink-0"
+                      type="button"
+                      onClick={handleEndSimCall}
+                      className="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-xl shadow-rose-600/40 hover:scale-105 transition-all cursor-pointer"
+                      title="End Call / Hang Up"
                     >
-                      {isProcessingTurn ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <span>Send</span>
-                      )}
+                      <PhoneOff className="w-7 h-7" />
+                    </button>
+
+                    {/* Language Switcher Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cur = (activeLead.language || "Bengali").toLowerCase();
+                        const nextL = cur.includes("bengali") ? "English" : "Bengali";
+                        setSelectedSimLead((prev) => ({
+                          ...(prev || DEFAULT_TEST_PROSPECT),
+                          language: nextL,
+                        }));
+                      }}
+                      className="w-14 h-14 rounded-full bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 flex flex-col items-center justify-center transition-all cursor-pointer shadow-lg hover:bg-slate-800"
+                      title="Toggle Language"
+                    >
+                      <span className="text-xs font-bold font-mono">
+                        {(activeLead.language || "Bengali").toLowerCase().includes("bengali") ? "বাংলা" : "ENG"}
+                      </span>
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between px-1 text-[10px] text-slate-500">
-                    <span className="flex items-center gap-1">
-                      <span>💡 Tip: Click</span>
-                      <strong className="text-emerald-400">Speak Mic</strong>
-                      <span>to roleplay as a client speaking directly through your microphone.</span>
-                    </span>
-                    <span>
-                      Language: <span className="text-cyan-400 font-semibold">{activeLead.language || "English"}</span>
-                    </span>
+                  {/* Collapsible Live Transcript Toggle (Hidden by default, zero clutter) */}
+                  <div className="w-full z-10 pt-2 border-t border-slate-800/80">
+                    <button
+                      type="button"
+                      onClick={() => setShowTranscript((prev) => !prev)}
+                      className="w-full py-1 text-[11px] text-slate-500 hover:text-slate-300 font-medium flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    >
+                      <span>{showTranscript ? "Hide Live Transcript" : "Show Technical Transcript"}</span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showTranscript ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {showTranscript && (
+                      <div className="mt-3 p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-2 max-h-48 overflow-y-auto text-xs">
+                        {simHistory.length === 0 ? (
+                          <div className="text-slate-500 text-center py-2 text-[11px]">No speech turns logged yet...</div>
+                        ) : (
+                          simHistory.map((h, i) => (
+                            <div key={i} className={`flex flex-col ${h.speaker === "agent" ? "items-start" : "items-end"}`}>
+                              <span className="text-[10px] text-slate-500 font-mono mb-0.5">
+                                {h.speaker === "agent" ? `🤖 ${kb?.agent_persona_name || "Agent"}` : "👤 You"} • {h.time}
+                              </span>
+                              <div
+                                className={`px-3 py-1.5 rounded-xl max-w-[85%] ${
+                                  h.speaker === "agent"
+                                    ? "bg-slate-900 border border-cyan-500/30 text-slate-200"
+                                    : "bg-emerald-950/80 border border-emerald-500/40 text-emerald-100"
+                                }`}
+                              >
+                                {h.text}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
-                </form>
+                </div>
+              ) : (
+                /* Idle Call Screen */
+                simHistory.length > 0 && (
+                  <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                      <span className="text-rose-400 font-bold">Previous Call Ended</span>
+                      <span className="text-slate-500">•</span>
+                      <span className="text-slate-400 font-mono">Duration: {callDuration}s</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowTranscript((prev) => !prev)}
+                      className="text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>{showTranscript ? "Hide Transcript" : "View Previous Transcript"}</span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showTranscript ? "rotate-180" : ""}`} />
+                    </button>
+                  </div>
+                )
+              )}
+
+              {/* Collapsed Transcript when call is ended */}
+              {!simActive && showTranscript && simHistory.length > 0 && (
+                <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-2 max-h-56 overflow-y-auto text-xs">
+                  {simHistory.map((h, i) => (
+                    <div key={i} className={`flex flex-col ${h.speaker === "agent" ? "items-start" : "items-end"}`}>
+                      <span className="text-[10px] text-slate-500 font-mono mb-0.5">
+                        {h.speaker === "agent" ? `🤖 ${kb?.agent_persona_name || "Agent"}` : "👤 You"} • {h.time}
+                      </span>
+                      <div
+                        className={`px-3 py-1.5 rounded-xl max-w-[85%] ${
+                          h.speaker === "agent"
+                            ? "bg-slate-900 border border-cyan-500/30 text-slate-200"
+                            : "bg-emerald-950/80 border border-emerald-500/40 text-emerald-100"
+                        }`}
+                      >
+                        {h.text}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
 
               {/* Meeting Booked Banner */}

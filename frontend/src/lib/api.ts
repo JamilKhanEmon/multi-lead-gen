@@ -691,6 +691,15 @@ export interface VoiceKnowledgeBase {
   script_questions_json?: ScriptQuestionItem[];
   faq_kb_json?: FaqKbItem[];
   voice_provider?: string;
+  gemini_api_key?: string;
+  gemini_api_key_configured?: boolean;
+  gemini_voice_name?: string;
+  gemini_model_id?: string;
+  twilio_configured?: boolean;
+  twilio_account_sid?: string;
+  twilio_auth_token?: string;
+  twilio_from_phone?: string;
+  twilio_webhook_base_url?: string;
   elevenlabs_api_key?: string;
   elevenlabs_api_key_configured?: boolean;
   elevenlabs_voice_id?: string;
@@ -711,6 +720,16 @@ export interface VoiceKnowledgeBase {
   whatsapp_prompt_question?: string;
   email_prompt_question?: string;
   meeting_confirmation_speech?: string;
+  post_call_whatsapp_template?: string;
+  post_call_email_subject?: string;
+  post_call_email_template?: string;
+  whatsapp_phone_number_id?: string;
+  whatsapp_access_token?: string;
+  whatsapp_configured?: boolean;
+  active_smtp_sender?: string;
+  active_smtp_name?: string;
+  active_smtp_host?: string;
+  total_smtp_inboxes?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -722,6 +741,7 @@ export interface VoiceCallQueueItem {
   contact_title?: string;
   company_name: string;
   phone: string;
+  email?: string;
   country?: string;
   language?: string;
   exact_problem: string;
@@ -794,6 +814,63 @@ export async function saveVoiceKB(payload: Partial<VoiceKnowledgeBase>): Promise
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Failed to save Voice Agent KB");
+  return res.json();
+}
+
+export async function testWhatsAppConnection(data: {
+  phone_number_id?: string;
+  access_token?: string;
+  target_phone: string;
+  message?: string;
+}): Promise<{
+  success: boolean;
+  message_id?: string;
+  recipient?: string;
+  error?: string;
+}> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/voice-agent/test-whatsapp`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to send test WhatsApp message");
+  }
+  return res.json();
+}
+
+export async function testEmailConnection(data: {
+  target_email: string;
+  subject?: string;
+  body?: string;
+  client_name?: string;
+  company_name?: string;
+  my_company?: string;
+  agent_persona_name?: string;
+}): Promise<{
+  success: boolean;
+  note: string;
+  sender_email?: string;
+  recipient: string;
+}> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/voice-agent/test-email`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to send test email");
+  }
   return res.json();
 }
 
@@ -872,20 +949,26 @@ export async function batchQueueAction(
 
 export async function sendVoiceDialogueTurn(payload: {
   queue_item_id?: string;
+  session_id?: string;
   user_speech_text: string;
   conversation_history?: Array<{ speaker: string; text: string }>;
   client_name?: string;
   company_name?: string;
   exact_problem?: string;
   language?: string;
+  client_email?: string;
+  phone?: string;
 }): Promise<{
   agent_reply_text: string;
   meeting_booked: boolean;
   meeting_link?: string;
   meeting_time?: string;
   detected_intent: string;
+  conversation_stage?: string;
+  session_id?: string;
   language?: string;
   audio_base64?: string;
+  should_hangup?: boolean;
 }> {
   const res = await fetch(`${API_BASE}/voice-agent/dialogue-turn`, {
     method: "POST",
@@ -1024,6 +1107,27 @@ export async function synthesizeTTSAudio(text: string, voiceId?: string): Promis
   });
   if (!res.ok) throw new Error("TTS synthesis failed");
   return res.blob();
+}
+
+export async function triggerOutboundCall(itemId: string): Promise<{
+  success: boolean;
+  message: string;
+  call_sid?: string;
+  queue_item?: VoiceCallQueueItem;
+}> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/voice-agent/queue/${itemId}/call`, {
+    method: "POST",
+    headers,
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to dispatch outbound call");
+  }
+  return res.json();
 }
 
 export async function syncElevenLabsAgent(): Promise<{

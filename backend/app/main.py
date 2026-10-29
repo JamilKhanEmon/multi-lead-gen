@@ -445,6 +445,18 @@ async def lifespan(app: FastAPI):
                     await conn.execute(text("ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS usage_stats_json JSONB DEFAULT '{}'::jsonb;"))
                     await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS calendly_url VARCHAR(500);"))
                     await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS calendly_api_key VARCHAR(255);"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS post_call_whatsapp_template TEXT;"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS post_call_email_subject VARCHAR(255);"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS post_call_email_template TEXT;"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS whatsapp_phone_number_id VARCHAR(100);"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS whatsapp_access_token VARCHAR(500);"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS gemini_api_key VARCHAR(255);"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS gemini_voice_name VARCHAR(50) DEFAULT 'Aoede';"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS gemini_model_id VARCHAR(100) DEFAULT 'gemini-2.5-flash-native-audio-latest';"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS twilio_account_sid VARCHAR(255);"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS twilio_auth_token VARCHAR(255);"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS twilio_from_phone VARCHAR(50);"))
+                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS twilio_webhook_base_url VARCHAR(500);"))
                 except Exception:
                     pass
             except Exception as migration_err:

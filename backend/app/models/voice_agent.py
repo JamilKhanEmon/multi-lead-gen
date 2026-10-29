@@ -27,26 +27,21 @@ DEFAULT_COUNTRY_LANGUAGE_MAP: Dict[str, str] = {
 class VoiceKnowledgeBase(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "voice_knowledge_bases"
 
-    name: Mapped[str] = mapped_column(String(255), default="Sales Assistant", nullable=False)
-    company_name: Mapped[str] = mapped_column(String(255), default="Global Enterprise Solutions", nullable=False)
-    agent_persona_name: Mapped[str] = mapped_column(String(100), default="Alex", nullable=False)
-    service_name: Mapped[str] = mapped_column(String(255), default="Client Acquisition & Conversion Systems", nullable=False)
-    service_description: Mapped[str] = mapped_column(Text, default="Automated buyer lead qualification and operational gap fixing.", nullable=False)
-    core_offer: Mapped[str] = mapped_column(String(255), default="100% Risk-Free 14-Day Pilot Implementation", nullable=False)
+    name: Mapped[str] = mapped_column(String(255), default="Enterprise B2B Voice Agent", nullable=False)
+    company_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    agent_persona_name: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    service_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    service_description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    core_offer: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     
     first_message: Mapped[str] = mapped_column(
         Text, 
-        default="Hello {{client_name}}, this is {{agent_persona_name}} from {{my_company}}. I'm reaching out regarding {{company_name}}'s digital presence and website audit.", 
+        default="", 
         nullable=False
     )
     system_prompt: Mapped[str] = mapped_column(
         Text,
-        default="""You are an elite, consultative B2B Sales Executive.
-Goal: Mention the exact flaw/problem identified at {{company_name}}: "{{exact_problem}}".
-Rule: Keep EVERY response under 18 words (maximum 8 seconds of speech).
-Do NOT give long lectures. If they ask about pricing, highlight our risk-free pilot: "{{core_offer}}".
-Pivot quickly to book a 10-minute Zoom or Google Meet demo: "Does tomorrow 11 AM or 3 PM work better for you?"
-When a time is agreed, confirm the slot and state that the meeting link is being dispatched via WhatsApp/SMS.""",
+        default="",
         nullable=False
     )
     
@@ -60,14 +55,24 @@ When a time is agreed, confirm the slot and state that the meeting link is being
     script_questions_json: Mapped[list] = mapped_column(JSONB, default=DEFAULT_SCRIPT_QUESTIONS, nullable=False)
     faq_kb_json: Mapped[list] = mapped_column(JSONB, default=DEFAULT_FAQ_KB, nullable=False)
 
-    # ElevenLabs & Telephony Settings
-    voice_provider: Mapped[str] = mapped_column(String(50), default="elevenlabs", nullable=False)
+    # Voice Provider & Telephony Settings (Google Gemini Live & Twilio)
+    voice_provider: Mapped[str] = mapped_column(String(50), default="gemini", nullable=False)
+    gemini_api_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    gemini_voice_name: Mapped[str] = mapped_column(String(50), default="Charon", nullable=False) # Charon, Puck, Fenrir, Aoede, Kore
+    gemini_model_id: Mapped[str] = mapped_column(String(100), default="gemini-2.5-flash-native-audio-latest", nullable=False)
+
+    # Twilio Calling Credentials
+    twilio_account_sid: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    twilio_auth_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    twilio_from_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    twilio_webhook_base_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # Legacy fields retained for backward-compatibility
     elevenlabs_api_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    elevenlabs_voice_id: Mapped[str] = mapped_column(String(100), default="21m00Tcm4TlvDq8ikWAM", nullable=False) # Rachel / default
-    elevenlabs_model_id: Mapped[str] = mapped_column(String(100), default="eleven_multilingual_v2", nullable=False)
+    elevenlabs_voice_id: Mapped[str] = mapped_column(String(100), default="21m00Tcm4TlvDq8ikWAM", nullable=True)
+    elevenlabs_model_id: Mapped[str] = mapped_column(String(100), default="eleven_multilingual_v2", nullable=True)
     elevenlabs_agent_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    elevenlabs_llm: Mapped[str] = mapped_column(String(50), default="gemini-1.5-flash", nullable=False)
-    
+    elevenlabs_llm: Mapped[str] = mapped_column(String(50), default="gemini-2.0-flash-exp", nullable=True)
     cloned_voice_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     cloned_voice_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     cloned_voice_sample_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -83,6 +88,15 @@ When a time is agreed, confirm the slot and state that the meeting link is being
     whatsapp_prompt_question: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     email_prompt_question: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     meeting_confirmation_speech: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Post-Call Instant Outreach Templates (Admin Controllable)
+    post_call_whatsapp_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    post_call_email_subject: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    post_call_email_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # WhatsApp Cloud API Credentials (Admin Configurable)
+    whatsapp_phone_number_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    whatsapp_access_token: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Auto-Call Autopilot
     auto_call_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -111,10 +125,17 @@ When a time is agreed, confirm the slot and state that the meeting link is being
             "objections_json": self.objections_json or [],
             "script_questions_json": self.script_questions_json or [],
             "faq_kb_json": self.faq_kb_json or [],
-            "voice_provider": self.voice_provider,
+            "voice_provider": self.voice_provider or "gemini",
+            "gemini_api_key_configured": bool(self.gemini_api_key),
+            "gemini_voice_name": self.gemini_voice_name or "Charon",
+            "gemini_model_id": self.gemini_model_id or "gemini-2.5-flash-native-audio-latest",
+            "twilio_configured": bool(self.twilio_account_sid and self.twilio_auth_token and self.twilio_from_phone),
+            "twilio_account_sid": self.twilio_account_sid or "",
+            "twilio_from_phone": self.twilio_from_phone or "",
+            "twilio_webhook_base_url": self.twilio_webhook_base_url or "",
             "elevenlabs_api_key_configured": bool(self.elevenlabs_api_key),
-            "elevenlabs_voice_id": self.elevenlabs_voice_id,
-            "elevenlabs_model_id": self.elevenlabs_model_id,
+            "elevenlabs_voice_id": self.elevenlabs_voice_id or "21m00Tcm4TlvDq8ikWAM",
+            "elevenlabs_model_id": self.elevenlabs_model_id or "eleven_multilingual_v2",
             "elevenlabs_agent_id": self.elevenlabs_agent_id,
             "elevenlabs_llm": self.elevenlabs_llm or "gemini-1.5-flash",
             "cloned_voice_id": self.cloned_voice_id,
@@ -128,6 +149,12 @@ When a time is agreed, confirm the slot and state that the meeting link is being
             "whatsapp_prompt_question": self.whatsapp_prompt_question or "",
             "email_prompt_question": self.email_prompt_question or "",
             "meeting_confirmation_speech": self.meeting_confirmation_speech or "",
+            "post_call_whatsapp_template": self.post_call_whatsapp_template or "",
+            "post_call_email_subject": self.post_call_email_subject or "",
+            "post_call_email_template": self.post_call_email_template or "",
+            "whatsapp_phone_number_id": self.whatsapp_phone_number_id or "",
+            "whatsapp_access_token": self.whatsapp_access_token or "",
+            "whatsapp_configured": bool(self.whatsapp_phone_number_id and self.whatsapp_access_token),
             "auto_call_enabled": self.auto_call_enabled,
             "max_daily_calls": self.max_daily_calls,
             "country_language_map": self.country_language_map or DEFAULT_COUNTRY_LANGUAGE_MAP,
