@@ -444,20 +444,62 @@ async def lifespan(app: FastAPI):
                     await conn.execute(text("ALTER TABLE persona_signatures ALTER COLUMN company DROP NOT NULL;"))
                     await conn.execute(text("ALTER TABLE email_outreach_logs ALTER COLUMN campaign_id DROP NOT NULL;"))
                     await conn.execute(text("ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS usage_stats_json JSONB DEFAULT '{}'::jsonb;"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS calendly_url VARCHAR(500);"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS calendly_api_key VARCHAR(255);"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS post_call_whatsapp_template TEXT;"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS post_call_email_subject VARCHAR(255);"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS post_call_email_template TEXT;"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS whatsapp_phone_number_id VARCHAR(100);"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS whatsapp_access_token VARCHAR(500);"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS gemini_api_key VARCHAR(255);"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS gemini_voice_name VARCHAR(50) DEFAULT 'Aoede';"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS gemini_model_id VARCHAR(100) DEFAULT 'gemini-2.5-flash-native-audio-latest';"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS twilio_account_sid VARCHAR(255);"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS twilio_auth_token VARCHAR(255);"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS twilio_from_phone VARCHAR(50);"))
-                    await conn.execute(text("ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS twilio_webhook_base_url VARCHAR(500);"))
+                    voice_cols = [
+                        ("name", "VARCHAR(255) DEFAULT 'Enterprise B2B Voice Agent'"),
+                        ("company_name", "VARCHAR(255) DEFAULT ''"),
+                        ("agent_persona_name", "VARCHAR(100) DEFAULT ''"),
+                        ("service_name", "VARCHAR(255) DEFAULT ''"),
+                        ("service_description", "TEXT DEFAULT ''"),
+                        ("core_offer", "VARCHAR(255) DEFAULT ''"),
+                        ("first_message", "TEXT DEFAULT ''"),
+                        ("system_prompt", "TEXT DEFAULT ''"),
+                        ("meeting_platform", "VARCHAR(50) DEFAULT 'Google Meet'"),
+                        ("calendly_url", "VARCHAR(500)"),
+                        ("calendly_api_key", "VARCHAR(255)"),
+                        ("office_hours_start", "VARCHAR(10) DEFAULT '10:00'"),
+                        ("office_hours_end", "VARCHAR(10) DEFAULT '18:00'"),
+                        ("is_active", "BOOLEAN DEFAULT TRUE"),
+                        ("objections_json", "JSONB DEFAULT '[]'::jsonb"),
+                        ("script_questions_json", "JSONB DEFAULT '[]'::jsonb"),
+                        ("faq_kb_json", "JSONB DEFAULT '[]'::jsonb"),
+                        ("voice_provider", "VARCHAR(50) DEFAULT 'gemini'"),
+                        ("gemini_api_key", "VARCHAR(255)"),
+                        ("gemini_voice_name", "VARCHAR(50) DEFAULT 'Aoede'"),
+                        ("gemini_model_id", "VARCHAR(100) DEFAULT 'gemini-2.5-flash-native-audio-latest'"),
+                        ("twilio_account_sid", "VARCHAR(255)"),
+                        ("twilio_auth_token", "VARCHAR(255)"),
+                        ("twilio_from_phone", "VARCHAR(50)"),
+                        ("twilio_webhook_base_url", "VARCHAR(500)"),
+                        ("elevenlabs_api_key", "VARCHAR(255)"),
+                        ("elevenlabs_voice_id", "VARCHAR(100) DEFAULT '21m00Tcm4TlvDq8ikWAM'"),
+                        ("elevenlabs_model_id", "VARCHAR(100) DEFAULT 'eleven_multilingual_v2'"),
+                        ("elevenlabs_agent_id", "VARCHAR(100)"),
+                        ("elevenlabs_llm", "VARCHAR(50) DEFAULT 'gemini-2.0-flash-exp'"),
+                        ("cloned_voice_id", "VARCHAR(100)"),
+                        ("cloned_voice_name", "VARCHAR(255)"),
+                        ("cloned_voice_sample_url", "VARCHAR(500)"),
+                        ("interruptible", "BOOLEAN DEFAULT TRUE"),
+                        ("voice_stability", "FLOAT DEFAULT 0.5"),
+                        ("voice_similarity", "FLOAT DEFAULT 0.75"),
+                        ("voice_speed", "FLOAT DEFAULT 1.0"),
+                        ("agent_timezone", "VARCHAR(50) DEFAULT 'Asia/Dhaka'"),
+                        ("whatsapp_prompt_question", "TEXT"),
+                        ("email_prompt_question", "TEXT"),
+                        ("meeting_confirmation_speech", "TEXT"),
+                        ("post_call_whatsapp_template", "TEXT"),
+                        ("post_call_email_subject", "VARCHAR(255)"),
+                        ("post_call_email_template", "TEXT"),
+                        ("whatsapp_phone_number_id", "VARCHAR(100)"),
+                        ("whatsapp_access_token", "VARCHAR(500)"),
+                        ("auto_call_enabled", "BOOLEAN DEFAULT FALSE"),
+                        ("max_daily_calls", "INTEGER DEFAULT 50"),
+                        ("country_language_map", "JSONB DEFAULT '{}'::jsonb"),
+                    ]
+                    for col_n, col_d in voice_cols:
+                        try:
+                            await conn.execute(text(f"ALTER TABLE voice_knowledge_bases ADD COLUMN IF NOT EXISTS {col_n} {col_d};"))
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             except Exception as migration_err:
