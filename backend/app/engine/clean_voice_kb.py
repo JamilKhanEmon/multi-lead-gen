@@ -103,6 +103,10 @@ async def ensure_voice_tables_and_seed():
             print(f"  ✓ Initialized clean active record with ID: {kb.id}")
         else:
             primary = existing[0]
+            if primary.core_offer == "superadmin@leadgen.local":
+                primary.core_offer = ""
+                await session.commit()
+                print("  ✓ Cleared accidental browser autofill email from core_offer.")
             if len(existing) > 1:
                 await session.execute(delete(VoiceKnowledgeBase).where(VoiceKnowledgeBase.id != primary.id))
                 await session.commit()

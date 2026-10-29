@@ -1569,6 +1569,12 @@ export default function VoiceAgentPage() {
 
             {/* SECTION 1: Company, Consultant Identity & Voice Profile */}
             <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4 shadow-xl">
+              {/* Invisible credential trap to isolate browser password manager autofill */}
+              <div className="sr-only opacity-0 h-0 overflow-hidden" aria-hidden="true">
+                <input type="text" name="fake_username_trap" tabIndex={-1} autoComplete="username" />
+                <input type="password" name="fake_password_trap" tabIndex={-1} autoComplete="current-password" />
+              </div>
+
               <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
                 <div className="flex items-center gap-2">
                   <Bot className="w-4 h-4 text-cyan-400" />
@@ -1584,6 +1590,8 @@ export default function VoiceAgentPage() {
                   <label className="block text-slate-300 font-semibold mb-1">Company / Organization Name</label>
                   <input
                     type="text"
+                    name="voice_company_name"
+                    autoComplete="off"
                     value={kb?.company_name || ""}
                     onChange={(e) => kb && setKb({ ...kb, company_name: e.target.value })}
                     placeholder="e.g. Acme Corp, My Business..."
@@ -1595,6 +1603,8 @@ export default function VoiceAgentPage() {
                   <label className="block text-slate-300 font-semibold mb-1">Senior Consultant Persona Name</label>
                   <input
                     type="text"
+                    name="voice_agent_persona_name"
+                    autoComplete="off"
                     value={kb?.agent_persona_name || ""}
                     onChange={(e) => kb && setKb({ ...kb, agent_persona_name: e.target.value })}
                     placeholder="e.g. Sarah, Alex, John..."
@@ -1621,6 +1631,8 @@ export default function VoiceAgentPage() {
                   <label className="block text-slate-300 font-semibold mb-1">Calendly Scheduling Link</label>
                   <input
                     type="url"
+                    name="voice_calendly_url"
+                    autoComplete="off"
                     value={kb?.calendly_url || ""}
                     onChange={(e) => kb && setKb({ ...kb, calendly_url: e.target.value })}
                     placeholder="https://calendly.com/your-org/demo"
@@ -1635,6 +1647,8 @@ export default function VoiceAgentPage() {
                   <label className="block text-slate-300 font-semibold mb-1">Service Specialty</label>
                   <input
                     type="text"
+                    name="voice_service_specialty"
+                    autoComplete="off"
                     value={kb?.service_name || ""}
                     onChange={(e) => kb && setKb({ ...kb, service_name: e.target.value })}
                     placeholder="e.g. Custom Software, Web Development, Digital Marketing..."
@@ -1646,6 +1660,11 @@ export default function VoiceAgentPage() {
                   <label className="block text-slate-300 font-semibold mb-1">Core Risk-Free Offer</label>
                   <input
                     type="text"
+                    name="voice_core_risk_free_offer"
+                    id="voice_agent_core_offer_field"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={kb?.core_offer || ""}
                     onChange={(e) => kb && setKb({ ...kb, core_offer: e.target.value })}
                     placeholder="e.g. Free 5-minute online consultation & walkthrough..."
@@ -1812,6 +1831,8 @@ export default function VoiceAgentPage() {
                       </div>
                       <input
                         type="password"
+                        name="gemini_api_key_field"
+                        autoComplete="new-password"
                         placeholder="AIzaSy... (Free Google AI Studio Key)"
                         value={kb?.gemini_api_key || ""}
                         onChange={(e) => kb && setKb({ ...kb, gemini_api_key: e.target.value })}
@@ -1850,6 +1871,8 @@ export default function VoiceAgentPage() {
                       </label>
                       <input
                         type="text"
+                        name="twilio_sid_field"
+                        autoComplete="off"
                         placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                         value={kb?.twilio_account_sid || ""}
                         onChange={(e) => kb && setKb({ ...kb, twilio_account_sid: e.target.value })}
@@ -1864,6 +1887,8 @@ export default function VoiceAgentPage() {
                       </label>
                       <input
                         type="password"
+                        name="twilio_auth_token_field"
+                        autoComplete="new-password"
                         placeholder="Auth Token"
                         value={kb?.twilio_auth_token || ""}
                         onChange={(e) => kb && setKb({ ...kb, twilio_auth_token: e.target.value })}
@@ -2153,6 +2178,8 @@ export default function VoiceAgentPage() {
                         </label>
                         <input
                           type="password"
+                          name="calendly_api_key_field"
+                          autoComplete="new-password"
                           value={kb?.calendly_api_key || ""}
                           onChange={(e) => kb && setKb({ ...kb, calendly_api_key: e.target.value })}
                           placeholder={kb?.calendly_api_key_configured ? "•••••••••••••••••••• (Leave blank to keep current)" : "Personal Access Token from calendly.com/integrations"}
@@ -2204,6 +2231,8 @@ export default function VoiceAgentPage() {
                         </label>
                         <input
                           type="text"
+                          name="wa_phone_id_field"
+                          autoComplete="off"
                           value={kb?.whatsapp_phone_number_id || ""}
                           onChange={(e) => kb && setKb({ ...kb, whatsapp_phone_number_id: e.target.value })}
                           placeholder="e.g. 109283746512345"
@@ -2229,6 +2258,8 @@ export default function VoiceAgentPage() {
                         <div className="relative">
                           <input
                             type={showWaToken ? "text" : "password"}
+                            name="wa_access_token_field"
+                            autoComplete="new-password"
                             value={kb?.whatsapp_access_token || ""}
                             onChange={(e) => kb && setKb({ ...kb, whatsapp_access_token: e.target.value })}
                             placeholder={kb?.whatsapp_configured ? "•••••••••••••••••••• (Leave blank to keep current)" : "Permanent token with whatsapp_business_messaging"}

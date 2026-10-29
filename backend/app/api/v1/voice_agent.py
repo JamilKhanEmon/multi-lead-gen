@@ -53,6 +53,8 @@ async def get_active_knowledge_base(
     if not kb:
         kb = VoiceKnowledgeBase(is_active=True)
         db.add(kb)
+    if kb.core_offer == "superadmin@leadgen.local":
+        kb.core_offer = ""
         await db.commit()
         await db.refresh(kb)
     
