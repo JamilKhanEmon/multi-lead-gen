@@ -72,6 +72,7 @@ import {
   fetchAvailableVoices,
   synthesizeTTSAudio,
   triggerOutboundCall,
+  getAvailableGeminiModels,
   testWhatsAppConnection,
   testEmailConnection,
   VoiceKnowledgeBase,
@@ -248,6 +249,29 @@ export default function VoiceAgentPage() {
   const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Dynamic Gemini Models state (queried live from Google API)
+  const [dynamicGeminiModels, setDynamicGeminiModels] = useState<Array<{ id: string; name: string; supports_live: boolean }>>([
+    { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (Official - Low Latency)", supports_live: true },
+    { id: "gemini-3.8-live", name: "Gemini 3.8 Live (Native Audio)", supports_live: true },
+  ]);
+  const [loadingModels, setLoadingModels] = useState<boolean>(false);
+  const [isModelsFromGoogle, setIsModelsFromGoogle] = useState<boolean>(false);
+
+  const refreshGeminiModels = async (keyToUse?: string) => {
+    try {
+      setLoadingModels(true);
+      const res = await getAvailableGeminiModels(keyToUse || kb?.gemini_api_key);
+      if (res && res.models && res.models.length > 0) {
+        setDynamicGeminiModels(res.models);
+        setIsModelsFromGoogle(res.from_google);
+      }
+    } catch (e) {
+      console.warn("Notice loading dynamic Gemini models:", e);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
   // Simulator State
   const [selectedSimLead, setSelectedSimLead] = useState<VoiceCallQueueItem | null>(DEFAULT_TEST_PROSPECT);
   const [simActive, setSimActive] = useState(false);
@@ -294,6 +318,9 @@ export default function VoiceAgentPage() {
       setLogs(logsData);
       setOfficeHours(hoursData);
       setVoices(voicesData);
+      if (kbData && (kbData.gemini_api_key || kbData.gemini_api_key_configured)) {
+        refreshGeminiModels(kbData.gemini_api_key);
+      }
       if (queueData.length > 0) {
         setSelectedSimLead((prev) => (prev && prev.id !== DEFAULT_TEST_PROSPECT.id ? prev : queueData[0]));
       } else {
@@ -1901,7 +1928,7 @@ export default function VoiceAgentPage() {
                     Speech-to-Text (STT), multilingual dialogue reasoning in <strong className="text-cyan-300">Bangla & English</strong>, and real-time audio generation run on Google Gemini 2.0 Flash Live. Real telephone calls are routed via Twilio.
                   </p>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1">
                     {/* Gemini API Key */}
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
@@ -1916,17 +1943,61 @@ export default function VoiceAgentPage() {
                           <span className="text-[10px] text-amber-400 font-semibold">● Not Configured</span>
                         )}
                       </div>
-                      <input
-                        type="password"
-                        name="gemini_api_key_field"
-                        autoComplete="new-password"
-                        placeholder={kb?.gemini_api_key_configured ? "••••••••••••••••••••••••" : "AIzaSy... (Google AI Studio Key)"}
-                        value={kb?.gemini_api_key || ""}
-                        onChange={(e) => kb && setKb({ ...kb, gemini_api_key: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
-                      />
+                      <div className="flex gap-1.5">
+                        <input
+                          type="password"
+                          name="gemini_api_key_field"
+                          autoComplete="new-password"
+                          placeholder={kb?.gemini_api_key_configured ? "••••••••••••••••••••••••" : "AIzaSy... (Google AI Studio Key)"}
+                          value={kb?.gemini_api_key || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (kb) setKb({ ...kb, gemini_api_key: val });
+                            if (val.length > 25) refreshGeminiModels(val);
+                          }}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => refreshGeminiModels(kb?.gemini_api_key)}
+                          title="Query live models from Google API"
+                          className="px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs flex items-center justify-center transition-colors"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${loadingModels ? "animate-spin text-cyan-400" : ""}`} />
+                        </button>
+                      </div>
                       <p className="text-[10px] text-slate-500">
-                        Google AI Studio API Key from <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline">aistudio.google.com</a>
+                        From <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline">aistudio.google.com</a>
+                      </p>
+                    </div>
+
+                    {/* Dynamic Gemini Model Selection */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-slate-300 font-semibold text-[11px]">
+                          Active Gemini Model
+                        </label>
+                        {isModelsFromGoogle ? (
+                          <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                            ✓ Live from Google
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">Presets</span>
+                        )}
+                      </div>
+                      <select
+                        value={kb?.gemini_model_id || "gemini-3.8-flash"}
+                        onChange={(e) => kb && setKb({ ...kb, gemini_model_id: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 text-xs focus:outline-none focus:border-cyan-500 font-medium"
+                      >
+                        {dynamicGeminiModels.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.supports_live ? "⚡ " : "📄 "} {m.name}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[10px] text-slate-500">
+                        {dynamicGeminiModels.length} models detected. Auto-supports future Google models.
                       </p>
                     </div>
 
@@ -1943,8 +2014,6 @@ export default function VoiceAgentPage() {
                         <option value="Charon">🏢 Charon (Authoritative, Deep Male - Multilingual)</option>
                         <option value="Puck">⚡ Puck (Energetic, Natural Male - Multilingual)</option>
                         <option value="Fenrir">🎯 Fenrir (Crisp, Confident Male - Multilingual)</option>
-                        <option value="Aoede">✨ Aoede (Warm, Engaging Female - Multilingual)</option>
-                        <option value="Kore">🌸 Kore (Calm, Sophisticated Female - Multilingual)</option>
                       </select>
                       <p className="text-[10px] text-slate-500">
                         Speaks fluently in Bengali, English, and mixed Banglish automatically.

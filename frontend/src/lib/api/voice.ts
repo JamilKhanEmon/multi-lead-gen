@@ -542,5 +542,44 @@ export async function triggerOutboundCall(itemId: string): Promise<{
   return res.json();
 }
 
+export async function getAvailableGeminiModels(apiKey?: string): Promise<{
+  success: boolean;
+  models: Array<{ id: string; name: string; supports_live: boolean }>;
+  from_google: boolean;
+}> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const qs = apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : "";
+  try {
+    const res = await fetch(`${API_BASE}/voice-agent/gemini-models${qs}`, {
+      method: "GET",
+      headers,
+    });
+    if (!res.ok) {
+      return {
+        success: false,
+        models: [
+          { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (Recommended)", supports_live: true },
+          { id: "gemini-3.8-live", name: "Gemini 3.8 Live (Native Audio)", supports_live: true },
+        ],
+        from_google: false,
+      };
+    }
+    return res.json();
+  } catch (e) {
+    return {
+      success: false,
+      models: [
+        { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash (Recommended)", supports_live: true },
+        { id: "gemini-3.8-live", name: "Gemini 3.8 Live (Native Audio)", supports_live: true },
+      ],
+      from_google: false,
+    };
+  }
+}
+
+
 
 

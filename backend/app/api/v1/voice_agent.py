@@ -236,6 +236,60 @@ async def list_available_voices(
     ]
     return gemini_voices
 
+@router.get("/gemini-models")
+async def list_available_gemini_models(
+    api_key: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    Dynamically query Google Gemini API in real-time to list all active, available models for the user's API Key.
+    Future-proof: Any newly released Google models (e.g. Gemini 3.8, Gemini 4.0) automatically appear in the UI.
+    """
+    stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
+    res = await db.execute(stmt)
+    kb = res.scalars().first()
+
+    effective_key = (api_key or (kb.gemini_api_key if kb else None) or settings.GEMINI_API_KEY or "").strip()
+    fallback_models = [
+        {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (Google Official - Ultra Low Latency)", "supports_live": True},
+        {"id": "gemini-3.8-live", "name": "Gemini 3.8 Live (Native Audio Streaming)", "supports_live": True},
+        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "supports_live": False},
+    ]
+
+    if not effective_key:
+        return {"success": True, "models": fallback_models, "from_google": False}
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={effective_key}"
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_models = data.get("models", [])
+                formatted = []
+                for m in raw_models:
+                    model_id = m.get("name", "").replace("models/", "").strip()
+                    methods = m.get("supportedGenerationMethods", [])
+                    if "generateContent" in methods or "bidiGenerateContent" in methods:
+                        display = m.get("displayName") or model_id
+                        supports_live = "bidiGenerateContent" in methods
+                        formatted.append({
+                            "id": model_id,
+                            "name": f"{display} ({model_id})",
+                            "supports_live": supports_live,
+                        })
+                if formatted:
+                    # Sort prioritizing flash and live models
+                    formatted.sort(key=lambda x: (not x["supports_live"], "flash" not in x["id"].lower(), x["id"]))
+                    return {"success": True, "models": formatted, "from_google": True}
+            else:
+                logger.warning(f"[Gemini Models] Google API response {resp.status_code}: {resp.text[:200]}")
+    except Exception as ge:
+        logger.warning(f"[Gemini Models] Notice querying Google models: {ge}")
+
+    return {"success": True, "models": fallback_models, "from_google": False}
+
 @router.post("/clone-voice")
 async def clone_user_voice(
     voice_name: str = Form("My Cloned Sales Voice"),
