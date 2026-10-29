@@ -331,6 +331,56 @@ export default function VoiceAgentPage() {
     }
   };
 
+  // Manual Save Lead handler
+  const handleSaveLead = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newLead.company_name?.trim()) {
+      showToast("Please enter Company Name", "error");
+      return;
+    }
+    if (!newLead.contact_person?.trim()) {
+      showToast("Please enter Decision Maker Name", "error");
+      return;
+    }
+    if (!newLead.phone?.trim()) {
+      showToast("Please enter Phone Number", "error");
+      return;
+    }
+    if (!newLead.exact_problem?.trim()) {
+      showToast("Please enter Website Gap / Problem", "error");
+      return;
+    }
+
+    setIsAddingLead(true);
+    try {
+      await addLeadToQueue({
+        company_name: newLead.company_name.trim(),
+        contact_person: newLead.contact_person.trim(),
+        phone: newLead.phone.trim(),
+        country: newLead.country || "Bangladesh",
+        language: newLead.language || "Bengali",
+        exact_problem: newLead.exact_problem.trim(),
+        selected_for_call: true,
+      });
+      showToast("✓ Lead saved to voice queue successfully!", "success");
+      setShowAddModal(false);
+      setNewLead({
+        contact_person: "",
+        company_name: "",
+        phone: "",
+        country: "Bangladesh",
+        language: "Bengali",
+        exact_problem: "",
+      });
+      await loadData();
+    } catch (err: any) {
+      console.error("Save lead error:", err);
+      showToast(err.message || "Failed to add lead to queue", "error");
+    } finally {
+      setIsAddingLead(false);
+    }
+  };
+
   // Sync Card 1 leads handler
   const handleSyncFromCard1 = async () => {
     try {
@@ -2961,31 +3011,7 @@ export default function VoiceAgentPage() {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
             <h3 className="font-bold text-sm text-white">Add Manual Lead to Voice Queue</h3>
             <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                setIsAddingLead(true);
-                try {
-                  await addLeadToQueue({
-                    ...newLead,
-                    selected_for_call: true,
-                  });
-                  showToast("✓ Lead added to voice queue successfully!", "success");
-                  setShowAddModal(false);
-                  setNewLead({
-                    contact_person: "",
-                    company_name: "",
-                    phone: "",
-                    country: "Bangladesh",
-                    language: "Bengali",
-                    exact_problem: "",
-                  });
-                  await loadData();
-                } catch (err: any) {
-                  showToast(err.message || "Failed to add lead to queue", "error");
-                } finally {
-                  setIsAddingLead(false);
-                }
-              }}
+              onSubmit={handleSaveLead}
               className="space-y-3 text-xs"
             >
               <div>
@@ -3061,16 +3087,18 @@ export default function VoiceAgentPage() {
                   type="button"
                   disabled={isAddingLead}
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg disabled:opacity-50"
+                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg disabled:opacity-50 hover:bg-slate-700 transition"
                 >
                   Cancel
                 </button>
                 <button
-                  type="submit"
+                  type="button"
                   disabled={isAddingLead}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg font-bold transition flex items-center gap-2"
+                  onClick={() => handleSaveLead()}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg font-bold transition flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-950"
                 >
-                  {isAddingLead ? "Saving..." : "Save Lead"}
+                  {isAddingLead && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {isAddingLead ? "Saving Lead..." : "Save Lead"}
                 </button>
               </div>
             </form>

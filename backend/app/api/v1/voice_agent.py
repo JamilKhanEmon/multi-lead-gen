@@ -313,41 +313,46 @@ async def add_lead_to_queue(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    country = payload.country
-    language = payload.language
-    if not country or country.lower() in ["", "global"]:
-        auto_c, auto_l = VoiceAgentService.resolve_country_and_language_waterfall(
+    try:
+        country = payload.country
+        language = payload.language
+        if not country or country.lower() in ["", "global"]:
+            auto_c, auto_l = VoiceAgentService.resolve_country_and_language_waterfall(
+                phone=payload.phone,
+                location_country=payload.country,
+            )
+            country = auto_c
+            if not language or language in ["English", ""]:
+                language = auto_l
+
+        lead_uuid = None
+        if payload.lead_id and payload.lead_id.strip():
+            try:
+                lead_uuid = uuid.UUID(payload.lead_id.strip())
+            except (ValueError, TypeError):
+                lead_uuid = None
+
+        item = VoiceCallQueueItem(
+            contact_person=payload.contact_person,
+            contact_title=payload.contact_title,
+            company_name=payload.company_name,
             phone=payload.phone,
-            location_country=payload.country,
+            country=country,
+            language=language,
+            exact_problem=payload.exact_problem,
+            selected_for_call=payload.selected_for_call,
+            lead_id=lead_uuid,
+            notes=payload.notes,
+            status="READY",
         )
-        country = auto_c
-        if not language or language in ["English", ""]:
-            language = auto_l
-
-    lead_uuid = None
-    if payload.lead_id and payload.lead_id.strip():
-        try:
-            lead_uuid = uuid.UUID(payload.lead_id.strip())
-        except (ValueError, TypeError):
-            lead_uuid = None
-
-    item = VoiceCallQueueItem(
-        contact_person=payload.contact_person,
-        contact_title=payload.contact_title,
-        company_name=payload.company_name,
-        phone=payload.phone,
-        country=country,
-        language=language,
-        exact_problem=payload.exact_problem,
-        selected_for_call=payload.selected_for_call,
-        lead_id=lead_uuid,
-        notes=payload.notes,
-        status="READY",
-    )
-    db.add(item)
-    await db.commit()
-    await db.refresh(item)
-    return item.to_dict()
+        db.add(item)
+        await db.commit()
+        await db.refresh(item)
+        return item.to_dict()
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"[voice_agent] Failed to add lead to queue: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database error saving lead: {str(e)}")
 
 @router.put("/queue/{item_id}", response_model=VoiceCallQueueItemResponse)
 async def update_queue_item(
