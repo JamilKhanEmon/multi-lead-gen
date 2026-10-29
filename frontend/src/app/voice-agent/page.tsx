@@ -567,25 +567,26 @@ export default function VoiceAgentPage() {
         ["Puck", "Charon", "Fenrir"].includes(kb?.gemini_voice_name || "") ||
         /karim|alex|rahim|tanvir|hasan|male|john|david/i.test(kb?.agent_persona_name || "");
 
-      // 1. Primary: High-fidelity natural male voice via backend
+      // 1. Primary: High-fidelity natural voice via backend Google Gemini Live Native TTS
       try {
         const formData = new FormData();
         formData.append("text", text);
+        formData.append("voice_name", kb?.gemini_voice_name || (isMaleVoice ? "Charon" : "Aoede"));
         if (isMaleVoice) {
-          formData.append("voice_id", "pNInz6obpgDQGcFmaJgB"); // Adam (Deep, Natural Male)
+          formData.append("voice_id", "Charon");
         }
         const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
         const headers: Record<string, string> = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
 
-        const resp = await fetch("http://127.0.0.1:8000/api/v1/voice-agent/tts", {
+        const resp = await fetch("/api/v1/voice-agent/tts", {
           method: "POST",
           headers,
           body: formData,
         });
         if (resp.ok) {
           const blob = await resp.blob();
-          if (blob.size > 1000) {
+          if (blob.size > 800) {
             const audioUrl = URL.createObjectURL(blob);
             const audio = new Audio(audioUrl);
             setIsAgentSpeaking(true);
@@ -605,7 +606,7 @@ export default function VoiceAgentPage() {
         console.warn("Backend audio notice, falling back:", err);
       }
 
-      // 2. Emergency fallback via Web Speech API with pitch-down for male persona
+      // 2. Emergency fallback via Web Speech API (Natural human pace, zero robotic distortion)
       const utterance = new SpeechSynthesisUtterance(text);
       const isBn = /[\u0980-\u09FF]/.test(text);
 
@@ -615,9 +616,8 @@ export default function VoiceAgentPage() {
         const bnVoice = voices.find((v) => v.lang.startsWith("bn") || v.name.toLowerCase().includes("bangla"));
         if (bnVoice) utterance.voice = bnVoice;
         utterance.lang = "bn-BD";
-        // macOS only ships Lekha (Female) for Bengali. Shift pitch downward heavily so it sounds masculine
-        utterance.pitch = isMaleVoice ? 0.52 : 1.0;
-        utterance.rate = 0.85;
+        utterance.pitch = 1.0;
+        utterance.rate = 0.95;
       } else {
         if (isMaleVoice) {
           const maleVoice = voices.find(
@@ -950,7 +950,11 @@ export default function VoiceAgentPage() {
     params.set("country", activeLead.country || "Bangladesh");
     if (activeLead.id && !activeLead.id.startsWith("00000000")) params.set("queue_item_id", activeLead.id);
     const qs = params.toString() ? `?${params.toString()}` : "";
-    const wsUrl = `ws://127.0.0.1:8000/api/v1/voice-agent/browser/stream/${simSessionId}${qs}`;
+    const wsProto = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsHost = typeof window !== "undefined"
+      ? (window.location.port === "3000" ? `${window.location.hostname}:8000` : window.location.host)
+      : "127.0.0.1:8000";
+    const wsUrl = `${wsProto}//${wsHost}/api/v1/voice-agent/browser/stream/${simSessionId}${qs}`;
 
     try {
       const socket = new WebSocket(wsUrl);

@@ -2,7 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export function useWebSocket(url: string = "ws://127.0.0.1:8000/ws/events") {
+function getDefaultWsUrl(): string {
+  if (typeof window === "undefined") return "ws://127.0.0.1:8000/ws/events";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const host = window.location.port === "3000" ? `${window.location.hostname}:8000` : window.location.host;
+  return `${proto}//${host}/ws/events`;
+}
+
+export function useWebSocket(url?: string) {
+  const targetUrl = url || getDefaultWsUrl();
   const [lastMessage, setLastMessage] = useState<any>(null);
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -13,7 +21,7 @@ export function useWebSocket(url: string = "ws://127.0.0.1:8000/ws/events") {
 
     const connect = () => {
       try {
-        ws = new WebSocket(url);
+        ws = new WebSocket(targetUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {

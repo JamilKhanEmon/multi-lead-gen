@@ -916,6 +916,29 @@ async def process_live_dialogue_turn(
 
     return turn_result
 
+def pcm_to_wav(pcm_bytes: bytes, sample_rate: int = 24000, num_channels: int = 1, bits_per_sample: int = 16) -> bytes:
+    """Encode raw PCM-16 audio into standard RIFF WAVE bytes for browser playback."""
+    byte_rate = sample_rate * num_channels * (bits_per_sample // 8)
+    block_align = num_channels * (bits_per_sample // 8)
+    data_size = len(pcm_bytes)
+    header = struct.pack(
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF',
+        data_size + 36,
+        b'WAVE',
+        b'fmt ',
+        16,
+        1,
+        num_channels,
+        sample_rate,
+        byte_rate,
+        block_align,
+        bits_per_sample,
+        b'data',
+        data_size
+    )
+    return header + pcm_bytes
+
 @router.post("/tts")
 async def synthesize_text_audio(
     text: str = Form(...),
@@ -923,11 +946,64 @@ async def synthesize_text_audio(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Generate audio stream for arbitrary text using Google Multilingual Speech Synthesis."""
+    """
+    Generate high-fidelity human conversational audio stream using Google Gemini 2.0 Live Native Audio.
+    Includes natural breathing, pauses, and the active male/female persona.
+    """
     clean_text = re.sub(r'[\*\#\_\[\]\(\)]', '', text).strip()
+    if not clean_text:
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+
+    stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
+    res = await db.execute(stmt)
+    kb = res.scalars().first()
+
+    gemini_key = getattr(kb, "gemini_api_key", None) or settings.GEMINI_API_KEY
+    voice_name = getattr(kb, "gemini_voice_name", "Charon") or "Charon"
+
+    # 1. Native High-Fidelity Gemini Audio Generation (Natural Human Breath & Cadence)
+    if gemini_key:
+        try:
+            model_name = getattr(kb, "gemini_model_id", "gemini-2.5-flash-native-audio-latest") or "gemini-2.5-flash-native-audio-latest"
+            if model_name.startswith("models/"):
+                model_name = model_name[7:]
+            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
+            payload = {
+                "contents": [{
+                    "parts": [{
+                        "text": f"Read the following speech text in a polite, highly natural, consultative human voice. Take natural breaths between thoughts. Do not preface or explain anything, simply speak the exact text naturally:\n{clean_text}"
+                    }]
+                }],
+                "generationConfig": {
+                    "responseModalities": ["AUDIO"],
+                    "speechConfig": {
+                        "voiceConfig": {
+                            "prebuiltVoiceConfig": {
+                                "voiceName": voice_name
+                            }
+                        }
+                    }
+                }
+            }
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(gemini_url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        for part in parts:
+                            inline = part.get("inlineData")
+                            if inline and inline.get("data"):
+                                raw_pcm = base64.b64decode(inline["data"])
+                                wav_bytes = pcm_to_wav(raw_pcm, 24000)
+                                return Response(content=wav_bytes, media_type="audio/wav")
+        except Exception as ge:
+            logger.warning(f"[VoiceAgent TTS] Gemini Live synthesis fallback notice: {ge}")
+
+    # 2. Universal Multilingual Fallback
     is_bn = bool(re.search(r'[\u0980-\u09ff]', clean_text))
     tl = "bn" if is_bn else "en"
-
     url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={urllib.parse.quote(clean_text[:250])}&tl={tl}&client=tw-ob"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
