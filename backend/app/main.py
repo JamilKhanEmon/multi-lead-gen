@@ -395,6 +395,7 @@ async def autonomous_autopilot_daemon():
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} [{settings.ENVIRONMENT}]")
     try:
+        from app.models.voice_agent import VoiceKnowledgeBase, VoiceCallQueueItem, VoiceCallLog
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             from sqlalchemy import text

@@ -813,7 +813,14 @@ export async function saveVoiceKB(payload: Partial<VoiceKnowledgeBase>): Promise
     headers,
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Failed to save Voice Agent KB");
+  if (!res.ok) {
+    let detail = `(Status ${res.status})`;
+    try {
+      const errData = await res.json();
+      if (errData.detail) detail = typeof errData.detail === "string" ? errData.detail : JSON.stringify(errData.detail);
+    } catch (e) {}
+    throw new Error(`Failed to save Voice Agent KB: ${detail}`);
+  }
   return res.json();
 }
 
