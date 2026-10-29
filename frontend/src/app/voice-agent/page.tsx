@@ -614,17 +614,53 @@ export default function VoiceAgentPage() {
       const utterance = new SpeechSynthesisUtterance(utteranceText);
       const isBn = /[\u0980-\u09ff]/.test(utteranceText);
       const voices = window.speechSynthesis.getVoices();
+
+      // STRICT FILTER: NEVER select a female voice (Oparna, Lekha, Zira, Heera, etc.)
+      const isFemaleVoice = (v: SpeechSynthesisVoice) => {
+        const lower = (v.name + " " + (v as any).voiceURI).toLowerCase();
+        return (
+          lower.includes("female") ||
+          lower.includes("oparna") ||
+          lower.includes("lekha") ||
+          lower.includes("zira") ||
+          lower.includes("heera") ||
+          lower.includes("samantha") ||
+          lower.includes("karen") ||
+          lower.includes("victoria") ||
+          lower.includes("fiona")
+        );
+      };
+
       if (isBn) {
-        const maleBn = voices.find((v) => v.lang.toLowerCase().includes("bn") && 
-          (v.name.toLowerCase().includes("male") || (!v.name.toLowerCase().includes("female") && !v.name.toLowerCase().includes("zira") && !v.name.toLowerCase().includes("heera"))));
-        if (maleBn) utterance.voice = maleBn;
-        else {
-          const anyBn = voices.find((v) => v.lang.toLowerCase().includes("bn"));
-          if (anyBn) utterance.voice = anyBn;
+        // Only select Bengali voice if it is guaranteed to be male
+        const maleBn = voices.find(
+          (v) =>
+            v.lang.toLowerCase().includes("bn") &&
+            !isFemaleVoice(v) &&
+            (v.name.toLowerCase().includes("male") ||
+              v.name.toLowerCase().includes("pradeep") ||
+              v.name.toLowerCase().includes("bashkar"))
+        );
+        if (maleBn) {
+          utterance.voice = maleBn;
+        } else {
+          // STRICT RULE: No male Bengali voice exists in Apple macOS / Google Chrome offline TTS.
+          // NEVER EVER fallback to female Oparna. Suppress to guarantee persona integrity.
+          console.warn("[VoiceAgent] Offline OS has no male Bengali voice. Suppressing fallback to prevent female voice leak.");
+          return;
         }
       } else {
-        const maleEn = voices.find((v) => v.lang.toLowerCase().startsWith("en") && 
-          (v.name.toLowerCase().includes("male") || v.name.toLowerCase().includes("david") || v.name.toLowerCase().includes("guy") || v.name.toLowerCase().includes("george") || v.name.toLowerCase().includes("daniel") || v.name.toLowerCase().includes("mark")));
+        const maleEn = voices.find(
+          (v) =>
+            v.lang.toLowerCase().startsWith("en") &&
+            !isFemaleVoice(v) &&
+            (v.name.toLowerCase().includes("male") ||
+              v.name.toLowerCase().includes("david") ||
+              v.name.toLowerCase().includes("guy") ||
+              v.name.toLowerCase().includes("george") ||
+              v.name.toLowerCase().includes("daniel") ||
+              v.name.toLowerCase().includes("mark"))
+        );
         if (maleEn) utterance.voice = maleEn;
       }
       utterance.rate = 0.96;
@@ -675,7 +711,7 @@ export default function VoiceAgentPage() {
         });
         if (resp.ok) {
           const blob = await resp.blob();
-          if (blob.size > 800) {
+          if (blob.size > 400) {
             const audioUrl = URL.createObjectURL(blob);
             const audio = new Audio(audioUrl);
             setIsAgentSpeaking(true);
@@ -686,21 +722,22 @@ export default function VoiceAgentPage() {
             audio.onerror = () => {
               setIsAgentSpeaking(false);
               URL.revokeObjectURL(audioUrl);
-              speakBrowserFallback(text);
             };
             await audio.play();
             return;
           }
+        } else {
+          const errData = await resp.json().catch(() => ({}));
+          const errMsg = errData.detail || "Voice synthesis error";
+          if (resp.status === 400 && errMsg.includes("Gemini API Key")) {
+            showToast("⚠️ Google Gemini API Key required! Please enter your key in Settings tab.", "error");
+          }
         }
-        // Fallback to browser SpeechSynthesis if backend audio is pending/unavailable
-        speakBrowserFallback(text);
       } catch (err) {
-        console.warn("Backend audio notice, falling back to browser speech:", err);
-        speakBrowserFallback(text);
+        console.warn("Backend audio notice:", err);
       }
     } catch (e) {
       console.warn("Speech playback notice:", e);
-      speakBrowserFallback(text);
     }
   };
 

@@ -1093,8 +1093,11 @@ class VoiceAgentService:
             "- Sound like a real, empathetic human on a live phone call—warm, unhurried, calm, and conversational."
         )
 
+        caller_persona = variables.get("agent_persona_name") or "Sales Representative"
+        caller_company = variables.get("my_company") or "our company"
+
         system_instruction = (
-            f"You are {variables.get('agent_persona_name') or 'Karim'}, a consultative, friendly B2B sales professional from {variables.get('my_company') or 'NiBiz Soft'} speaking on a live phone call with {client_name} at {company_name}.\n"
+            f"You are {caller_persona}, a consultative, friendly B2B sales professional from {caller_company} speaking on a live phone call with {client_name} at {company_name}.\n"
             f"Company Services: {matched_service}.\n"
             f"Core Offer: {variables.get('core_offer')}.\n"
             f"{lang_instruction}\n"

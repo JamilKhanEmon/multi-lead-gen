@@ -982,8 +982,9 @@ async def synthesize_text_audio(
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
-    Generate high-fidelity human conversational audio stream using Google Gemini 2.0 Live Native Audio.
-    Includes natural breathing, pauses, and the active male/female persona.
+    Generate high-fidelity, natural human conversational male audio stream using Google Gemini 2.0 Native Audio.
+    Includes natural breathing pauses, consultative tone, and authoritative masculine persona (Charon).
+    Permanently bans robotic female fallbacks.
     """
     clean_text = re.sub(r'[\*\#\_\[\]\(\)]', '', text).strip()
     if not clean_text:
@@ -994,55 +995,119 @@ async def synthesize_text_audio(
     kb = res.scalars().first()
 
     gemini_key = getattr(kb, "gemini_api_key", None) or settings.GEMINI_API_KEY
-    target_voice = voice_name or getattr(kb, "gemini_voice_name", "Charon") or "Charon"
+    raw_voice = voice_name or getattr(kb, "gemini_voice_name", "Charon") or "Charon"
+    # Ensure authoritative masculine voice is enforced (Charon, Puck, or Fenrir)
+    target_voice = "Charon" if raw_voice in ["Aoede", "Kore", ""] else raw_voice
 
-    # 1. Native High-Fidelity Gemini Audio Generation via Gemini Live Engine
-    if gemini_key:
-        try:
-            live_session = GeminiLiveSession(
-                api_key=gemini_key,
-                system_prompt="You are a professional sales consultant. Read the exact text aloud in your natural, human, confident consultative voice with realistic conversational pauses. Speak ONLY the exact words provided without any preamble or commentary.",
-                voice_name=target_voice,
-            )
-            await live_session.connect()
-            await live_session.send_text_chunk(clean_text)
+    if not gemini_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Google Gemini API Key is required for natural human male voice synthesis. Please configure it in Voice Agent Settings."
+        )
 
-            pcm_data = bytearray()
-            async def collect_audio():
-                async for event in live_session.receive_events():
-                    if event.get("type") == "audio" and event.get("pcm_24k"):
-                        pcm_data.extend(event["pcm_24k"])
-                    elif event.get("type") == "turn_complete":
-                        break
+    # 1. Primary: Direct Google Gemini 2.0 REST Audio Synthesis (Ultra-low latency, pure male Charon voice)
+    model_name = getattr(kb, "gemini_model_id", None) or "gemini-2.0-flash"
+    if not model_name or "2.5" in model_name:
+        model_name = "gemini-2.0-flash"
+    clean_model = model_name.replace("models/", "").strip()
 
-            try:
-                await asyncio.wait_for(collect_audio(), timeout=7.0)
-            except (asyncio.TimeoutError, Exception):
-                pass
-            finally:
-                await live_session.close()
+    persona = (getattr(kb, "agent_persona_name", "") or "Consultative Representative").strip()
+    company = (getattr(kb, "company_name", "") or "").strip()
+    company_clause = f" from {company}" if company else ""
 
-            if len(pcm_data) > 400:
-                wav_bytes = pcm_to_wav(bytes(pcm_data), 24000)
-                return Response(content=wav_bytes, media_type="audio/wav")
-        except Exception as ge:
-            logger.warning(f"[VoiceAgent TTS] Gemini Live synthesis notice: {ge}")
-
-    # 2. Universal Multilingual Fallback
-    is_bn = bool(re.search(r'[\u0980-\u09ff]', clean_text))
-    tl = "bn" if is_bn else "en"
-    url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={urllib.parse.quote(clean_text[:250])}&tl={tl}&client=tw-ob"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    rest_url = f"https://generativelanguage.googleapis.com/v1beta/models/{clean_model}:generateContent?key={gemini_key.strip()}"
+    rest_payload = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": (
+                            f"You are {persona}{company_clause}, an authoritative, professional, and consultative sales executive. "
+                            "Read the following exact spoken words aloud in your natural, warm, confident consultative voice "
+                            "with natural human conversational pauses. Speak ONLY these exact words without adding any preamble, commentary, or robotic phrases: "
+                            f"{clean_text}"
+                        )
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {
+                "voiceConfig": {
+                    "prebuiltVoiceConfig": {
+                        "voiceName": target_voice
+                    }
+                }
+            }
+        }
+    }
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.get(url, headers=headers)
-            if r.status_code == 200 and len(r.content) > 300:
-                return Response(content=r.content, media_type="audio/mpeg")
-    except Exception as e:
-        logger.warning(f"[VoiceAgent TTS] Google TTS notice: {e}")
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(rest_url, json=rest_payload, headers={"Content-Type": "application/json"})
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    for p in parts:
+                        inline = p.get("inlineData")
+                        if inline and inline.get("data"):
+                            raw_bytes = base64.b64decode(inline["data"])
+                            mime = inline.get("mimeType", "")
+                            if "wav" in mime:
+                                return Response(content=raw_bytes, media_type="audio/wav")
+                            else:
+                                # 24kHz linear PCM -> standard WAV container
+                                wav_bytes = pcm_to_wav(raw_bytes, 24000)
+                                return Response(content=wav_bytes, media_type="audio/wav")
+            else:
+                logger.warning(f"[VoiceAgent TTS] Gemini REST returned status {resp.status_code}: {resp.text[:250]}")
+    except Exception as re_err:
+        logger.warning(f"[VoiceAgent TTS] Gemini REST synthesis notice: {re_err}")
 
-    raise HTTPException(status_code=500, detail="Speech synthesis unavailable")
+    # 2. Secondary: High-Fidelity Gemini Live Native Audio via WebSocket Stream
+    try:
+        live_session = GeminiLiveSession(
+            api_key=gemini_key,
+            system_prompt=(
+                f"You are {persona}{company_clause}, a professional consultative B2B sales professional. "
+                "Speak the following exact words aloud in your natural, human, confident voice with realistic conversational pauses. "
+                "Speak ONLY the exact words provided without any preamble or commentary."
+            ),
+            voice_name=target_voice,
+            model=clean_model,
+        )
+        await live_session.connect()
+        await live_session.send_text_chunk(clean_text)
+
+        pcm_data = bytearray()
+        async def collect_audio():
+            async for event in live_session.receive_events():
+                if event.get("type") == "audio" and event.get("pcm_24k"):
+                    pcm_data.extend(event["pcm_24k"])
+                elif event.get("type") == "turn_complete":
+                    break
+
+        try:
+            await asyncio.wait_for(collect_audio(), timeout=8.0)
+        except (asyncio.TimeoutError, Exception):
+            pass
+        finally:
+            await live_session.close()
+
+        if len(pcm_data) > 400:
+            wav_bytes = pcm_to_wav(bytes(pcm_data), 24000)
+            return Response(content=wav_bytes, media_type="audio/wav")
+    except Exception as ge:
+        logger.warning(f"[VoiceAgent TTS] Gemini Live fallback notice: {ge}")
+
+    # Explicitly refuse robotic female fallbacks (Google Translate TTS banned)
+    raise HTTPException(
+        status_code=502,
+        detail="Gemini Audio synthesis unavailable. Please verify your Gemini API Key in Voice Agent settings."
+    )
 
 @router.post("/queue/{item_id}/call-complete")
 async def complete_call_and_record(

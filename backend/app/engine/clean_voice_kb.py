@@ -51,7 +51,7 @@ async def ensure_voice_tables_and_seed():
                 primary.gemini_model_id = "gemini-2.0-flash-exp"
                 await session.commit()
                 print("  ✓ Corrected gemini_model_id to valid official 'gemini-2.0-flash-exp'.")
-            if not primary.gemini_voice_name or primary.gemini_voice_name in ["Aoede", "Kore"]:
+            if not primary.gemini_voice_name or primary.gemini_voice_name in ["Aoede", "Kore", ""]:
                 primary.gemini_voice_name = "Charon"
                 await session.commit()
                 print("  ✓ Corrected gemini_voice_name to authoritative male 'Charon'.")
@@ -59,8 +59,13 @@ async def ensure_voice_tables_and_seed():
                 await session.execute(delete(VoiceKnowledgeBase).where(VoiceKnowledgeBase.id != primary.id))
                 await session.commit()
                 print(f"  ✓ Cleaned up {len(existing) - 1} duplicate rows.")
+            
+            from app.core.config import settings
+            has_gemini_key = bool(primary.gemini_api_key or settings.GEMINI_API_KEY)
+            key_status = "CONFIGURED (Active for High-Fidelity Male Live Voice)" if has_gemini_key else "NOT CONFIGURED (Must be pasted into Voice Agent Settings tab)"
             print(f"  ✓ Found active record with ID: {primary.id}")
             print(f"    Company: '{primary.company_name}' | Persona: '{primary.agent_persona_name}' | Voice: '{primary.gemini_voice_name}'")
+            print(f"    Gemini Live API Key: {key_status}")
 
     print("[3/3] Voice Agent Database is 100% verified, migrated, and ready for updates!")
 
