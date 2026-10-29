@@ -2736,7 +2736,7 @@ export default function AdminPortalPage() {
                   <span>Autonomous Voice Outreach</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  ElevenLabs Conversational Voice Agent with Voice Cloning, dynamic country-language adaptation, and Card 1 verified phone number dialing.
+                  Google Gemini 2.0 Flash Live Native Audio Voice Agent with dynamic country-language adaptation, real-time sub-second VAD, and Card 1 verified phone number dialing.
                 </p>
               </div>
 
@@ -2754,7 +2754,7 @@ export default function AdminPortalPage() {
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400/60 font-bold mt-0.5">✓</span>
-                    <span><strong>ElevenLabs Voice Cloning:</strong> Record or upload 1 minute of audio to call prospects in your exact personal voice.</span>
+                    <span><strong>Google Gemini 2.0 Live Native Voice:</strong> Low-latency audio streaming with natural human breathing pauses & multiple male/female voice personas (Aoede, Kore, Charon, Puck, Fenrir).</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-emerald-400/60 font-bold mt-0.5">✓</span>
@@ -2774,7 +2774,7 @@ export default function AdminPortalPage() {
                 className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition group"
               >
                 <PhoneCall className="w-3.5 h-3.5 text-white" />
-                <span>Launch Voice Outreach Hub (ElevenLabs AI Agent)</span>
+                <span>Launch Voice Outreach Hub (Google Gemini Live)</span>
                 <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition" />
               </Link>
             </div>
