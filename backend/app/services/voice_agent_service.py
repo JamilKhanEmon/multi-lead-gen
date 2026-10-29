@@ -226,66 +226,126 @@ class VoiceAgentService:
 
     @classmethod
     async def sync_leads_from_card_1(cls, db: AsyncSession) -> int:
-        """Pulls verified discovered leads from Card 1 (leads table) and populates the Voice Call Queue."""
-        stmt = (
-            select(Lead)
-            .options(selectinload(Lead.business).selectinload(Business.locations))
-            .where(Lead.is_qualified == True)
-            .order_by(desc(Lead.created_at))
-            .limit(100)
-        )
-        res = await db.execute(stmt)
-        leads = res.scalars().all()
-
+        """Pulls verified discovered leads from Card 1 (leads & businesses table) and populates the Voice Call Queue."""
         synced_count = 0
-        for lead in leads:
-            biz = lead.business
-            if not biz or not biz.phone or not biz.phone.strip():
-                continue
-
-            phone = biz.phone.strip()
-
-            # Check if phone already in queue
-            q_stmt = select(VoiceCallQueueItem).where(VoiceCallQueueItem.phone == phone).limit(1)
-            q_res = await db.execute(q_stmt)
-            existing = q_res.scalar_one_or_none()
-            if existing:
-                continue
-
-            meta = biz.metadata_json or {}
-            loc = biz.locations[0] if (biz.locations and len(biz.locations) > 0) else None
-            loc_country = loc.country if loc and loc.country else (meta.get("country") or meta.get("search_country"))
-
-            # Multi-Signal Waterfall Resolution
-            country, lang = cls.resolve_country_and_language_waterfall(
-                phone=phone,
-                location_country=loc_country,
-                search_metadata=meta,
+        try:
+            # 1. Fetch leads from leads table (prioritize qualified, but take any discovered lead with phone)
+            stmt = (
+                select(Lead)
+                .options(selectinload(Lead.business).selectinload(Business.locations))
+                .order_by(desc(Lead.is_qualified), desc(Lead.created_at))
+                .limit(200)
             )
+            res = await db.execute(stmt)
+            leads = res.scalars().all()
 
-            raw_problem = lead.what_they_need or lead.why_they_need_us or lead.primary_gap_summary or ""
-            clean_problem = cls.sanitize_exact_problem(raw_problem, biz.canonical_name)
+            for lead in leads:
+                try:
+                    biz = lead.business
+                    if not biz or not biz.phone or not biz.phone.strip():
+                        continue
 
-            queue_item = VoiceCallQueueItem(
-                lead_id=lead.id,
-                contact_person=biz.contact_person or "Decision Maker",
-                contact_title=biz.contact_title or "Owner / Executive",
-                company_name=biz.canonical_name,
-                phone=phone,
-                country=country,
-                language=lang,
-                exact_problem=clean_problem,
-                status="READY",
-                selected_for_call=True,
-            )
-            db.add(queue_item)
-            synced_count += 1
+                    phone = biz.phone.strip()
 
-        if synced_count > 0:
-            await db.commit()
-            logger.info(f"[VoiceAgentService] Successfully synced {synced_count} qualified leads from Card 1 into Call Queue.")
+                    # Check if phone already in queue (safe scalar first)
+                    q_stmt = select(VoiceCallQueueItem).where(VoiceCallQueueItem.phone == phone).limit(1)
+                    q_res = await db.execute(q_stmt)
+                    if q_res.scalars().first():
+                        continue
 
-        return synced_count
+                    meta = biz.metadata_json or {}
+                    loc = biz.locations[0] if (biz.locations and len(biz.locations) > 0) else None
+                    loc_country = loc.country if loc and loc.country else (meta.get("country") or meta.get("search_country"))
+
+                    # Multi-Signal Waterfall Resolution
+                    country, lang = cls.resolve_country_and_language_waterfall(
+                        phone=phone,
+                        location_country=loc_country,
+                        search_metadata=meta,
+                    )
+
+                    raw_problem = getattr(lead, "what_they_need", None) or getattr(lead, "why_they_need_us", None) or getattr(lead, "primary_gap_summary", None) or ""
+                    clean_problem = cls.sanitize_exact_problem(raw_problem, biz.canonical_name)
+                    if not clean_problem:
+                        clean_problem = "Customer inquiry response speed and automated lead qualification"
+
+                    queue_item = VoiceCallQueueItem(
+                        lead_id=lead.id,
+                        contact_person=biz.contact_person or "Decision Maker",
+                        contact_title=biz.contact_title or "Owner / Executive",
+                        company_name=biz.canonical_name,
+                        phone=phone,
+                        country=country,
+                        language=lang,
+                        exact_problem=clean_problem,
+                        status="READY",
+                        selected_for_call=True,
+                    )
+                    db.add(queue_item)
+                    synced_count += 1
+                except Exception as lead_err:
+                    logger.warning(f"[VoiceAgentService] Skipping problematic lead: {lead_err}")
+                    continue
+
+            # 2. If no leads synced from leads table, check businesses table directly
+            if synced_count == 0:
+                b_stmt = (
+                    select(Business)
+                    .options(selectinload(Business.locations))
+                    .where(Business.phone.isnot(None), Business.phone != "")
+                    .order_by(desc(Business.created_at))
+                    .limit(100)
+                )
+                b_res = await db.execute(b_stmt)
+                businesses = b_res.scalars().all()
+
+                for biz in businesses:
+                    try:
+                        if not biz.phone or not biz.phone.strip():
+                            continue
+                        phone = biz.phone.strip()
+
+                        q_stmt = select(VoiceCallQueueItem).where(VoiceCallQueueItem.phone == phone).limit(1)
+                        q_res = await db.execute(q_stmt)
+                        if q_res.scalars().first():
+                            continue
+
+                        meta = biz.metadata_json or {}
+                        loc = biz.locations[0] if (biz.locations and len(biz.locations) > 0) else None
+                        loc_country = loc.country if loc and loc.country else (meta.get("country") or meta.get("search_country"))
+
+                        country, lang = cls.resolve_country_and_language_waterfall(
+                            phone=phone,
+                            location_country=loc_country,
+                            search_metadata=meta,
+                        )
+
+                        queue_item = VoiceCallQueueItem(
+                            contact_person=biz.contact_person or "Decision Maker",
+                            contact_title=biz.contact_title or "Owner / Executive",
+                            company_name=biz.canonical_name,
+                            phone=phone,
+                            country=country,
+                            language=lang,
+                            exact_problem="Website performance and automated online booking",
+                            status="READY",
+                            selected_for_call=True,
+                        )
+                        db.add(queue_item)
+                        synced_count += 1
+                    except Exception as biz_err:
+                        logger.warning(f"[VoiceAgentService] Skipping problematic business: {biz_err}")
+                        continue
+
+            if synced_count > 0:
+                await db.commit()
+                logger.info(f"[VoiceAgentService] Successfully synced {synced_count} leads into Call Queue.")
+
+            return synced_count
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"[VoiceAgentService] sync_leads_from_card_1 error: {e}", exc_info=True)
+            raise e
 
 
     @classmethod

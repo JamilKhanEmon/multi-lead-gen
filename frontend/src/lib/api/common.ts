@@ -12,7 +12,12 @@ export const API_BASE = typeof window !== "undefined"
 
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("leadgen_access_token");
+  return (
+    localStorage.getItem("leadgen_access_token") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("auth_token") ||
+    localStorage.getItem("access_token")
+  );
 }
 
 export function getStoredUser(): any | null {

@@ -1,4 +1,5 @@
 import { API_BASE, getStoredToken } from "./common";
+export { getStoredToken };
 
 export interface ScriptQuestionItem {
   step: number;
@@ -27,6 +28,9 @@ export interface VoiceKnowledgeBase {
   first_message: string;
   system_prompt: string;
   meeting_platform: string;
+  calendly_url?: string;
+  calendly_api_key?: string;
+  calendly_api_key_configured?: boolean;
   office_hours_start: string;
   office_hours_end: string;
   is_active: boolean;
@@ -55,6 +59,11 @@ export interface VoiceKnowledgeBase {
   auto_call_enabled?: boolean;
   max_daily_calls?: number;
   country_language_map?: Record<string, string>;
+  interruptible?: boolean;
+  voice_stability?: number;
+  voice_similarity?: number;
+  voice_speed?: number;
+  agent_timezone?: string;
   whatsapp_prompt_question?: string;
   email_prompt_question?: string;
   meeting_confirmation_speech?: string;
@@ -162,9 +171,20 @@ export async function saveVoiceKB(payload: Partial<VoiceKnowledgeBase>): Promise
   return res.json();
 }
 
+function getAuthHeaders(contentType: boolean = true): Record<string, string> {
+  const token = getStoredToken();
+  const headers: Record<string, string> = {};
+  if (contentType) headers["Content-Type"] = "application/json";
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
 export async function fetchCallQueue(): Promise<VoiceCallQueueItem[]> {
   try {
-    const res = await fetch(`${API_BASE}/voice-agent/queue`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/voice-agent/queue`, {
+      headers: getAuthHeaders(false),
+      cache: "no-store",
+    });
     if (!res.ok) return [];
     return await res.json();
   } catch (err) {
@@ -176,38 +196,63 @@ export async function fetchCallQueue(): Promise<VoiceCallQueueItem[]> {
 export async function addLeadToQueue(payload: Partial<VoiceCallQueueItem>): Promise<VoiceCallQueueItem> {
   const res = await fetch(`${API_BASE}/voice-agent/queue`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(true),
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Failed to add lead to queue");
+  if (!res.ok) {
+    let detail = `(Status ${res.status})`;
+    try {
+      const err = await res.json();
+      if (err.detail) detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    } catch {}
+    throw new Error(`Failed to add lead to queue: ${detail}`);
+  }
   return res.json();
 }
 
 export async function updateQueueItem(itemId: string, payload: Partial<VoiceCallQueueItem>): Promise<VoiceCallQueueItem> {
   const res = await fetch(`${API_BASE}/voice-agent/queue/${itemId}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(true),
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Failed to update queue item");
+  if (!res.ok) {
+    let detail = `(Status ${res.status})`;
+    try {
+      const err = await res.json();
+      if (err.detail) detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    } catch {}
+    throw new Error(`Failed to update queue item: ${detail}`);
+  }
   return res.json();
 }
 
 export async function deleteQueueItem(itemId: string): Promise<any> {
   const res = await fetch(`${API_BASE}/voice-agent/queue/${itemId}`, {
     method: "DELETE",
+    headers: getAuthHeaders(false),
   });
   if (!res.ok) throw new Error("Failed to delete queue item");
   return res.json();
 }
 
-export async function batchQueueAction(action: "select_all" | "deselect_all" | "sync_from_leads"): Promise<any> {
+export async function batchQueueAction(
+  action: "select_all" | "deselect_all" | "sync_from_leads" | "delete_selected",
+  item_ids?: string[]
+): Promise<any> {
   const res = await fetch(`${API_BASE}/voice-agent/queue/batch`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action }),
+    headers: getAuthHeaders(true),
+    body: JSON.stringify({ action, item_ids }),
   });
-  if (!res.ok) throw new Error("Failed to execute batch queue action");
+  if (!res.ok) {
+    let detail = `(Status ${res.status})`;
+    try {
+      const err = await res.json();
+      if (err.detail) detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    } catch {}
+    throw new Error(`Failed to execute batch queue action: ${detail}`);
+  }
   return res.json();
 }
 
@@ -236,7 +281,7 @@ export async function sendVoiceDialogueTurn(payload: {
 }> {
   const res = await fetch(`${API_BASE}/voice-agent/dialogue-turn`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(true),
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Failed to process voice dialogue turn");
@@ -257,7 +302,7 @@ export async function completeCallAndRecord(
 ): Promise<any> {
   const res = await fetch(`${API_BASE}/voice-agent/queue/${itemId}/call-complete`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(true),
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error("Failed to complete call and record outcome");
@@ -266,7 +311,10 @@ export async function completeCallAndRecord(
 
 export async function fetchCallLogs(): Promise<VoiceCallLog[]> {
   try {
-    const res = await fetch(`${API_BASE}/voice-agent/logs`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/voice-agent/logs`, {
+      headers: getAuthHeaders(false),
+      cache: "no-store",
+    });
     if (!res.ok) return [];
     return await res.json();
   } catch (err) {
@@ -309,7 +357,14 @@ export async function syncLeadsFromCard1(): Promise<{ success: boolean; synced_c
     method: "POST",
     headers,
   });
-  if (!res.ok) throw new Error("Failed to sync leads from Card 1");
+  if (!res.ok) {
+    let detail = `(Status ${res.status})`;
+    try {
+      const err = await res.json();
+      if (err.detail) detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    } catch {}
+    throw new Error(`Failed to sync leads: ${detail}`);
+  }
   return res.json();
 }
 

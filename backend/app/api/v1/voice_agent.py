@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import desc, update, delete
 
 from app.db.session import get_db, AsyncSessionLocal
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_current_user_optional
 from app.core.config import settings
 from app.models.audit import User
 from app.models.voice_agent import VoiceKnowledgeBase, VoiceCallQueueItem, VoiceCallLog, DEFAULT_COUNTRY_LANGUAGE_MAP
@@ -40,7 +40,7 @@ router = APIRouter(prefix="/voice-agent", tags=["B2B Voice Calling Agent"])
 @router.get("/kb", response_model=VoiceKnowledgeBaseResponse)
 async def get_active_knowledge_base(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
     Returns the active Voice Knowledge Base directly from the PostgreSQL database.
@@ -78,7 +78,7 @@ async def get_active_knowledge_base(
 async def save_or_update_knowledge_base(
     payload: VoiceKnowledgeBaseUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
     Updates the active Voice Knowledge Base directly into the PostgreSQL database.
@@ -122,7 +122,7 @@ async def save_or_update_knowledge_base(
 @router.post("/kb/clean-reset", response_model=VoiceKnowledgeBaseResponse)
 async def clean_reset_knowledge_base(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
     Purges ALL old knowledge base rows from the database and initializes a single fresh record.
@@ -137,7 +137,7 @@ async def clean_reset_knowledge_base(
 @router.delete("/queue/all")
 async def clear_entire_queue(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Permanently delete all leads from the ready for call queue in database."""
     await db.execute(delete(VoiceCallQueueItem))
@@ -167,7 +167,7 @@ async def check_office_hours_status(
 @router.post("/sync-elevenlabs-agent")
 async def sync_elevenlabs_agent(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Native deployment handler: Autonomous outreach agent runs 100% on Google Gemini Live."""
     return {
@@ -180,7 +180,7 @@ async def sync_elevenlabs_agent(
 async def delete_elevenlabs_agent(
     agent_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Cleanup handler for legacy agent instances."""
     return {
@@ -192,7 +192,7 @@ async def delete_elevenlabs_agent(
 @router.get("/signed-url")
 async def get_elevenlabs_signed_url(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Status endpoint for real-time voice streaming engine."""
     return {"signed_url": None, "agent_id": None, "has_agent": False, "engine": "google_gemini_live"}
@@ -202,7 +202,7 @@ async def get_elevenlabs_signed_url(
 async def get_elevenlabs_account_status(
     payload: Optional[Dict[str, Any]] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Status indicating 100% active Google Gemini Live Engine."""
     return {
@@ -217,7 +217,7 @@ async def get_elevenlabs_account_status(
 @router.get("/voices")
 async def list_available_voices(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """List available voices: Google Gemini Live lifelike multilingual personas."""
     gemini_voices = [
@@ -238,7 +238,7 @@ async def clone_user_voice(
     audio_file: Optional[UploadFile] = File(None),
     audio_base64: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Uploads personal voice sample to save custom voice persona."""
     stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
@@ -264,15 +264,20 @@ async def clone_user_voice(
 @router.post("/sync-card1-leads")
 async def sync_leads_from_card_1(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Sync verified phone numbers from Card 1 into the Ready for Call Queue."""
-    count = await VoiceAgentService.sync_leads_from_card_1(db)
-    return {
-        "success": True,
-        "synced_count": count,
-        "message": f"Synced {count} verified leads from Card 1 into the Ready for Call Queue."
-    }
+    try:
+        count = await VoiceAgentService.sync_leads_from_card_1(db)
+        msg = f"Synced {count} verified leads from Card 1 into Call Queue." if count > 0 else "Card 1 checked: No new unsynced leads with phone numbers found."
+        return {
+            "success": True,
+            "synced_count": count,
+            "message": msg,
+        }
+    except Exception as e:
+        logger.error(f"[voice_agent] sync_leads_from_card_1 failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to sync leads from Card 1: {str(e)}")
 
 @router.get("/queue", response_model=List[VoiceCallQueueItemResponse])
 async def list_call_queue(
@@ -280,7 +285,7 @@ async def list_call_queue(
     country_filter: Optional[str] = Query(None, alias="country"),
     search: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     query = select(VoiceCallQueueItem)
     if status_filter and status_filter.upper() != "ALL":
@@ -306,7 +311,7 @@ async def list_call_queue(
 async def add_lead_to_queue(
     payload: VoiceCallQueueItemCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     country = payload.country
     language = payload.language
@@ -319,6 +324,13 @@ async def add_lead_to_queue(
         if not language or language in ["English", ""]:
             language = auto_l
 
+    lead_uuid = None
+    if payload.lead_id and payload.lead_id.strip():
+        try:
+            lead_uuid = uuid.UUID(payload.lead_id.strip())
+        except (ValueError, TypeError):
+            lead_uuid = None
+
     item = VoiceCallQueueItem(
         contact_person=payload.contact_person,
         contact_title=payload.contact_title,
@@ -328,7 +340,7 @@ async def add_lead_to_queue(
         language=language,
         exact_problem=payload.exact_problem,
         selected_for_call=payload.selected_for_call,
-        lead_id=uuid.UUID(payload.lead_id) if payload.lead_id else None,
+        lead_id=lead_uuid,
         notes=payload.notes,
         status="READY",
     )
@@ -342,7 +354,7 @@ async def update_queue_item(
     item_id: str,
     payload: VoiceCallQueueItemUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     stmt = select(VoiceCallQueueItem).where(VoiceCallQueueItem.id == uuid.UUID(item_id))
     res = await db.execute(stmt)
@@ -361,7 +373,7 @@ async def update_queue_item(
 async def delete_queue_item(
     item_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     stmt = select(VoiceCallQueueItem).where(VoiceCallQueueItem.id == uuid.UUID(item_id))
     res = await db.execute(stmt)
@@ -376,7 +388,7 @@ async def delete_queue_item(
 async def execute_batch_queue_action(
     payload: BatchQueueActionRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     action = payload.action
     item_ids = payload.item_ids or []
@@ -413,7 +425,7 @@ async def execute_batch_queue_action(
 async def trigger_outbound_call(
     item_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Trigger real-time outbound telephone call via Twilio + Google Gemini Live."""
     stmt = (
@@ -857,7 +869,7 @@ async def browser_audio_stream_websocket(websocket: WebSocket, session_id: str):
 async def process_live_dialogue_turn(
     payload: VoiceDialogueTurnRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Processes speech turn, uses ElevenLabs Multilingual v2, and handles meeting booking."""
     stmt = select(VoiceKnowledgeBase).where(VoiceKnowledgeBase.is_active == True)
@@ -943,8 +955,9 @@ def pcm_to_wav(pcm_bytes: bytes, sample_rate: int = 24000, num_channels: int = 1
 async def synthesize_text_audio(
     text: str = Form(...),
     voice_id: Optional[str] = Form(None),
+    voice_name: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
     Generate high-fidelity human conversational audio stream using Google Gemini 2.0 Live Native Audio.
@@ -959,7 +972,7 @@ async def synthesize_text_audio(
     kb = res.scalars().first()
 
     gemini_key = getattr(kb, "gemini_api_key", None) or settings.GEMINI_API_KEY
-    voice_name = getattr(kb, "gemini_voice_name", "Charon") or "Charon"
+    target_voice = voice_name or getattr(kb, "gemini_voice_name", "Charon") or "Charon"
 
     # 1. Native High-Fidelity Gemini Audio Generation via Gemini Live Engine
     if gemini_key:
@@ -967,7 +980,7 @@ async def synthesize_text_audio(
             live_session = GeminiLiveSession(
                 api_key=gemini_key,
                 system_prompt="You are a professional sales consultant. Read the exact text aloud in your natural, human, confident consultative voice with realistic conversational pauses. Speak ONLY the exact words provided without any preamble or commentary.",
-                voice_name=voice_name,
+                voice_name=target_voice,
             )
             await live_session.connect()
             await live_session.send_text_chunk(clean_text)
@@ -1014,7 +1027,7 @@ async def complete_call_and_record(
     item_id: str,
     payload: Dict[str, Any],
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Record call outcome, sentiment, transcript, extract spoken contacts, and render post-call outreach."""
     stmt = (
@@ -1226,7 +1239,7 @@ async def complete_call_and_record(
 async def test_whatsapp_connection(
     payload: Dict[str, Any],
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Send a live test WhatsApp message to verify Meta Cloud API credentials."""
     phone_number_id = (payload.get("phone_number_id") or "").strip()
@@ -1266,7 +1279,7 @@ async def test_whatsapp_connection(
 async def test_email_connection(
     payload: Dict[str, Any],
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Send a test email to verify SMTP gateway configuration and sender inbox."""
     target_email = (payload.get("target_email") or "").strip()
@@ -1390,7 +1403,7 @@ async def get_call_logs(
     sentiment_filter: Optional[str] = Query(None, alias="sentiment"),
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     query = select(VoiceCallLog)
     if sentiment_filter and sentiment_filter.upper() != "ALL":

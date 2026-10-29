@@ -906,7 +906,14 @@ export async function addLeadToQueue(payload: Partial<VoiceCallQueueItem>): Prom
     headers,
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Failed to add lead to queue");
+  if (!res.ok) {
+    let detail = `(Status ${res.status})`;
+    try {
+      const err = await res.json();
+      if (err.detail) detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    } catch {}
+    throw new Error(`Failed to add lead to queue: ${detail}`);
+  }
   return res.json();
 }
 
@@ -920,7 +927,14 @@ export async function updateQueueItem(itemId: string, payload: Partial<VoiceCall
     headers,
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Failed to update queue item");
+  if (!res.ok) {
+    let detail = `(Status ${res.status})`;
+    try {
+      const err = await res.json();
+      if (err.detail) detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    } catch {}
+    throw new Error(`Failed to update queue item: ${detail}`);
+  }
   return res.json();
 }
 
@@ -933,7 +947,14 @@ export async function deleteQueueItem(itemId: string): Promise<any> {
     method: "DELETE",
     headers,
   });
-  if (!res.ok) throw new Error("Failed to delete queue item");
+  if (!res.ok) {
+    let detail = `(Status ${res.status})`;
+    try {
+      const err = await res.json();
+      if (err.detail) detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    } catch {}
+    throw new Error(`Failed to delete queue item: ${detail}`);
+  }
   return res.json();
 }
 
@@ -950,7 +971,14 @@ export async function batchQueueAction(
     headers,
     body: JSON.stringify({ action, item_ids }),
   });
-  if (!res.ok) throw new Error("Failed to execute batch queue action");
+  if (!res.ok) {
+    let detail = `(Status ${res.status})`;
+    try {
+      const err = await res.json();
+      if (err.detail) detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    } catch {}
+    throw new Error(`Failed to execute batch queue action: ${detail}`);
+  }
   return res.json();
 }
 
@@ -1052,7 +1080,14 @@ export async function syncLeadsFromCard1(): Promise<{ success: boolean; synced_c
     method: "POST",
     headers,
   });
-  if (!res.ok) throw new Error("Failed to sync leads from Card 1");
+  if (!res.ok) {
+    let detail = `(Status ${res.status})`;
+    try {
+      const err = await res.json();
+      if (err.detail) detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    } catch {}
+    throw new Error(`Failed to sync leads: ${detail}`);
+  }
   return res.json();
 }
 
@@ -1317,7 +1352,12 @@ export function hasPermission(
 
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("leadgen_access_token");
+  return (
+    localStorage.getItem("leadgen_access_token") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("auth_token") ||
+    localStorage.getItem("access_token")
+  );
 }
 
 export function getStoredUser(): AuthUser | null {

@@ -79,7 +79,8 @@ import {
   VoiceCallLog,
   ScriptQuestionItem,
   FaqKbItem,
-} from "@/lib/api";
+  getStoredToken,
+} from "@/lib/api/voice";
 
 // Default Test Prospect so simulator is always ready for 1-click test calls
 const DEFAULT_TEST_PROSPECT: VoiceCallQueueItem = {
@@ -134,6 +135,7 @@ export default function VoiceAgentPage() {
     language: "Bengali",
     exact_problem: "",
   });
+  const [isAddingLead, setIsAddingLead] = useState(false);
 
 
   // WhatsApp Gateway Credentials & Test State
@@ -334,7 +336,7 @@ export default function VoiceAgentPage() {
     try {
       setSyncingLeads(true);
       const res = await syncLeadsFromCard1();
-      showToast(`Synced ${res.synced_count} verified leads from Card 1 into Call Queue!`, "success");
+      showToast(res.message || `Synced ${res.synced_count} verified leads from Card 1 into Call Queue!`, "success");
       const updatedQueue = await fetchCallQueue();
       setQueue(updatedQueue);
     } catch (err: any) {
@@ -562,20 +564,16 @@ export default function VoiceAgentPage() {
     try {
       window.speechSynthesis?.cancel();
 
-      // Check if user selected a male Gemini voice persona (Puck, Charon, Fenrir) or Male persona
-      const isMaleVoice =
-        ["Puck", "Charon", "Fenrir"].includes(kb?.gemini_voice_name || "") ||
-        /karim|alex|rahim|tanvir|hasan|male|john|david/i.test(kb?.agent_persona_name || "");
+      // Voice persona selection (defaults to authoritative male Charon)
+      const selectedVoice = kb?.gemini_voice_name || "Charon";
 
       // 1. Primary: High-fidelity natural voice via backend Google Gemini Live Native TTS
       try {
         const formData = new FormData();
         formData.append("text", text);
-        formData.append("voice_name", kb?.gemini_voice_name || (isMaleVoice ? "Charon" : "Aoede"));
-        if (isMaleVoice) {
-          formData.append("voice_id", "Charon");
-        }
-        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+        formData.append("voice_name", selectedVoice);
+        formData.append("voice_id", selectedVoice);
+        const token = getStoredToken();
         const headers: Record<string, string> = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -2965,20 +2963,28 @@ export default function VoiceAgentPage() {
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                await addLeadToQueue({
-                  ...newLead,
-                  selected_for_call: true,
-                });
-                setShowAddModal(false);
-                setNewLead({
-                  contact_person: "",
-                  company_name: "",
-                  phone: "",
-                  country: "Bangladesh",
-                  language: "Bengali",
-                  exact_problem: "",
-                });
-                await loadData();
+                setIsAddingLead(true);
+                try {
+                  await addLeadToQueue({
+                    ...newLead,
+                    selected_for_call: true,
+                  });
+                  showToast("✓ Lead added to voice queue successfully!", "success");
+                  setShowAddModal(false);
+                  setNewLead({
+                    contact_person: "",
+                    company_name: "",
+                    phone: "",
+                    country: "Bangladesh",
+                    language: "Bengali",
+                    exact_problem: "",
+                  });
+                  await loadData();
+                } catch (err: any) {
+                  showToast(err.message || "Failed to add lead to queue", "error");
+                } finally {
+                  setIsAddingLead(false);
+                }
               }}
               className="space-y-3 text-xs"
             >
@@ -3053,16 +3059,18 @@ export default function VoiceAgentPage() {
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
+                  disabled={isAddingLead}
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg"
+                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold"
+                  disabled={isAddingLead}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg font-bold transition flex items-center gap-2"
                 >
-                  Save Lead
+                  {isAddingLead ? "Saving..." : "Save Lead"}
                 </button>
               </div>
             </form>

@@ -21,7 +21,7 @@ class VoiceKnowledgeBaseCreate(BaseModel):
     faq_kb_json: List[Dict[str, Any]] = Field(default_factory=list)
     voice_provider: str = "gemini"
     gemini_api_key: Optional[str] = None
-    gemini_voice_name: str = "Aoede"
+    gemini_voice_name: str = "Charon"
     gemini_model_id: str = "gemini-2.5-flash-native-audio-latest"
     twilio_account_sid: Optional[str] = None
     twilio_auth_token: Optional[str] = None
@@ -125,7 +125,7 @@ class VoiceKnowledgeBaseResponse(BaseModel):
     faq_kb_json: List[Dict[str, Any]] = Field(default_factory=list)
     voice_provider: str = "gemini"
     gemini_api_key_configured: bool = False
-    gemini_voice_name: str = "Aoede"
+    gemini_voice_name: str = "Charon"
     gemini_model_id: str = "gemini-2.5-flash-native-audio-latest"
     twilio_configured: bool = False
     twilio_account_sid: Optional[str] = ""

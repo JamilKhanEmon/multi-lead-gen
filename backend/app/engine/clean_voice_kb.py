@@ -92,7 +92,7 @@ async def ensure_voice_tables_and_seed():
                 service_name="",
                 service_description="",
                 core_offer="",
-                gemini_voice_name="Aoede",
+                gemini_voice_name="Charon",
                 first_message="",
                 system_prompt="",
                 is_active=True
