@@ -961,45 +961,37 @@ async def synthesize_text_audio(
     gemini_key = getattr(kb, "gemini_api_key", None) or settings.GEMINI_API_KEY
     voice_name = getattr(kb, "gemini_voice_name", "Charon") or "Charon"
 
-    # 1. Native High-Fidelity Gemini Audio Generation (Natural Human Breath & Cadence)
+    # 1. Native High-Fidelity Gemini Audio Generation via Gemini Live Engine
     if gemini_key:
         try:
-            model_name = getattr(kb, "gemini_model_id", "gemini-2.5-flash-native-audio-latest") or "gemini-2.5-flash-native-audio-latest"
-            if model_name.startswith("models/"):
-                model_name = model_name[7:]
-            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
-            payload = {
-                "contents": [{
-                    "parts": [{
-                        "text": f"Read the following speech text in a polite, highly natural, consultative human voice. Take natural breaths between thoughts. Do not preface or explain anything, simply speak the exact text naturally:\n{clean_text}"
-                    }]
-                }],
-                "generationConfig": {
-                    "responseModalities": ["AUDIO"],
-                    "speechConfig": {
-                        "voiceConfig": {
-                            "prebuiltVoiceConfig": {
-                                "voiceName": voice_name
-                            }
-                        }
-                    }
-                }
-            }
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                resp = await client.post(gemini_url, json=payload)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        parts = candidates[0].get("content", {}).get("parts", [])
-                        for part in parts:
-                            inline = part.get("inlineData")
-                            if inline and inline.get("data"):
-                                raw_pcm = base64.b64decode(inline["data"])
-                                wav_bytes = pcm_to_wav(raw_pcm, 24000)
-                                return Response(content=wav_bytes, media_type="audio/wav")
+            live_session = GeminiLiveSession(
+                api_key=gemini_key,
+                system_prompt="You are a professional sales consultant. Read the exact text aloud in your natural, human, confident consultative voice with realistic conversational pauses. Speak ONLY the exact words provided without any preamble or commentary.",
+                voice_name=voice_name,
+            )
+            await live_session.connect()
+            await live_session.send_text_chunk(clean_text)
+
+            pcm_data = bytearray()
+            async def collect_audio():
+                async for event in live_session.receive_events():
+                    if event.get("type") == "audio" and event.get("pcm_24k"):
+                        pcm_data.extend(event["pcm_24k"])
+                    elif event.get("type") == "turn_complete":
+                        break
+
+            try:
+                await asyncio.wait_for(collect_audio(), timeout=7.0)
+            except (asyncio.TimeoutError, Exception):
+                pass
+            finally:
+                await live_session.close()
+
+            if len(pcm_data) > 400:
+                wav_bytes = pcm_to_wav(bytes(pcm_data), 24000)
+                return Response(content=wav_bytes, media_type="audio/wav")
         except Exception as ge:
-            logger.warning(f"[VoiceAgent TTS] Gemini Live synthesis fallback notice: {ge}")
+            logger.warning(f"[VoiceAgent TTS] Gemini Live synthesis notice: {ge}")
 
     # 2. Universal Multilingual Fallback
     is_bn = bool(re.search(r'[\u0980-\u09ff]', clean_text))

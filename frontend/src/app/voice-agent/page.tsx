@@ -601,60 +601,17 @@ export default function VoiceAgentPage() {
             await audio.play();
             return;
           }
+        } else {
+          const errData = await resp.json().catch(() => null);
+          console.warn("Audio synthesis error from backend:", errData);
+          showToast(errData?.detail || "Voice audio synthesis unavailable. Please check Gemini API Key.", "error");
         }
       } catch (err) {
-        console.warn("Backend audio notice, falling back:", err);
+        console.warn("Backend audio notice:", err);
       }
-
-      // 2. Emergency fallback via Web Speech API (Natural human pace, zero robotic distortion)
-      const utterance = new SpeechSynthesisUtterance(text);
-      const isBn = /[\u0980-\u09FF]/.test(text);
-
-      const voices = window.speechSynthesis?.getVoices() || [];
-
-      if (isBn) {
-        const bnVoice = voices.find((v) => v.lang.startsWith("bn") || v.name.toLowerCase().includes("bangla"));
-        if (bnVoice) utterance.voice = bnVoice;
-        utterance.lang = "bn-BD";
-        utterance.pitch = 1.0;
-        utterance.rate = 0.95;
-      } else {
-        if (isMaleVoice) {
-          const maleVoice = voices.find(
-            (v) =>
-              v.lang.startsWith("en") &&
-              (v.name.includes("David") ||
-                v.name.includes("Alex") ||
-                v.name.includes("Daniel") ||
-                v.name.includes("Guy") ||
-                v.name.includes("George") ||
-                v.name.includes("Male") ||
-                v.name.includes("Fred") ||
-                v.name.includes("Oliver"))
-          );
-          if (maleVoice) utterance.voice = maleVoice;
-          utterance.pitch = 0.8;
-          utterance.rate = 0.92;
-        } else {
-          const femaleVoice = voices.find(
-            (v) =>
-              v.lang.startsWith("en") &&
-              (v.name.includes("Samantha") || v.name.includes("Victoria") || v.name.includes("Female") || v.name.includes("Karen"))
-          );
-          if (femaleVoice) utterance.voice = femaleVoice;
-          utterance.pitch = 1.0;
-          utterance.rate = 0.95;
-        }
-        utterance.lang = "en-US";
-      }
-
-      utterance.onstart = () => setIsAgentSpeaking(true);
-      utterance.onend = () => setIsAgentSpeaking(false);
-      utterance.onerror = () => setIsAgentSpeaking(false);
-
-      window.speechSynthesis?.speak(utterance);
     } catch (e) {
       console.warn("Speech playback notice:", e);
+    } finally {
       setIsAgentSpeaking(false);
     }
   };
@@ -1598,7 +1555,7 @@ export default function VoiceAgentPage() {
                     autoComplete="off"
                     value={kb?.company_name || ""}
                     onChange={(e) => kb && setKb({ ...kb, company_name: e.target.value })}
-                    placeholder="e.g. Acme Corp, My Business..."
+                    placeholder="Enter company name..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-cyan-500"
                   />
                 </div>
@@ -1611,7 +1568,7 @@ export default function VoiceAgentPage() {
                     autoComplete="off"
                     value={kb?.agent_persona_name || ""}
                     onChange={(e) => kb && setKb({ ...kb, agent_persona_name: e.target.value })}
-                    placeholder="e.g. Sarah, Alex, John..."
+                    placeholder="Enter consultant persona name..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-cyan-500"
                   />
                 </div>
@@ -1619,15 +1576,15 @@ export default function VoiceAgentPage() {
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">Gemini Live Voice Profile</label>
                   <select
-                    value={kb?.gemini_voice_name || "Aoede"}
+                    value={kb?.gemini_voice_name || "Charon"}
                     onChange={(e) => kb && setKb({ ...kb, gemini_voice_name: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 text-xs focus:outline-none focus:border-cyan-500 font-medium"
                   >
-                    <option value="Aoede">✨ Aoede (Warm, Engaging Female - Multilingual)</option>
-                    <option value="Kore">🌸 Kore (Calm, Sophisticated Female - Multilingual)</option>
                     <option value="Charon">🏢 Charon (Authoritative, Deep Male - Multilingual)</option>
                     <option value="Puck">⚡ Puck (Energetic, Natural Male - Multilingual)</option>
                     <option value="Fenrir">🎯 Fenrir (Crisp, Confident Male - Multilingual)</option>
+                    <option value="Aoede">✨ Aoede (Warm, Engaging Female - Multilingual)</option>
+                    <option value="Kore">🌸 Kore (Calm, Sophisticated Female - Multilingual)</option>
                   </select>
                 </div>
 
@@ -1655,7 +1612,7 @@ export default function VoiceAgentPage() {
                     autoComplete="off"
                     value={kb?.service_name || ""}
                     onChange={(e) => kb && setKb({ ...kb, service_name: e.target.value })}
-                    placeholder="e.g. Custom Software, Web Development, Digital Marketing..."
+                    placeholder="Enter services..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-cyan-500"
                   />
                 </div>
@@ -1671,7 +1628,7 @@ export default function VoiceAgentPage() {
                     spellCheck={false}
                     value={kb?.core_offer || ""}
                     onChange={(e) => kb && setKb({ ...kb, core_offer: e.target.value })}
-                    placeholder="e.g. Free 5-minute online consultation & walkthrough..."
+                    placeholder="Enter core offer..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 focus:outline-none focus:border-cyan-500"
                   />
                 </div>
@@ -1813,9 +1770,6 @@ export default function VoiceAgentPage() {
                         Google Gemini 2.0 Flash Live & Twilio Voice Engine
                       </h4>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-                      ⚡ 100% Free AI • Zero Mac Load
-                    </span>
                   </div>
 
                   <p className="text-[11px] text-slate-400 leading-relaxed">
@@ -1830,8 +1784,8 @@ export default function VoiceAgentPage() {
                           Google Gemini API Key
                         </label>
                         {kb?.gemini_api_key_configured ? (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
-                            ✓ Saved in DB & Verified
+                          <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                            ✓ Verified
                           </span>
                         ) : (
                           <span className="text-[10px] text-amber-400 font-semibold">● Not Configured</span>
@@ -1841,20 +1795,14 @@ export default function VoiceAgentPage() {
                         type="password"
                         name="gemini_api_key_field"
                         autoComplete="new-password"
-                        placeholder={kb?.gemini_api_key_configured ? "•••••••••••••••••••••••• (API Key Saved in Database)" : "AIzaSy... (Free Google AI Studio Key)"}
+                        placeholder={kb?.gemini_api_key_configured ? "••••••••••••••••••••••••" : "AIzaSy... (Google AI Studio Key)"}
                         value={kb?.gemini_api_key || ""}
                         onChange={(e) => kb && setKb({ ...kb, gemini_api_key: e.target.value })}
                         className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-100 font-mono text-xs focus:outline-none focus:border-cyan-500"
                       />
-                      {kb?.gemini_api_key_configured ? (
-                        <p className="text-[10px] text-emerald-400/90 font-medium flex items-center gap-1">
-                          ✓ আপনার API Key ডেটাবেজে সুরক্ষিতভাবে সেভ আছে। পরিবর্তন করতে চাইলে নতুন কি টাইপ করুন।
-                        </p>
-                      ) : (
-                        <p className="text-[10px] text-slate-500">
-                          Get free key from <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline">aistudio.google.com</a> (No Credit Card required)
-                        </p>
-                      )}
+                      <p className="text-[10px] text-slate-500">
+                        Google AI Studio API Key from <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline">aistudio.google.com</a>
+                      </p>
                     </div>
 
                     {/* Gemini Voice Persona */}
