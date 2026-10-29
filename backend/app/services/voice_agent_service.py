@@ -1205,15 +1205,16 @@ class VoiceAgentService:
             playbook = (getattr(kb, "system_prompt", None) or "").strip()
             persona = getattr(kb, "agent_persona_name", "Representative") or "Representative"
             company = getattr(kb, "company_name", "Our Company") or "Our Company"
-            playbook_section = f"\n\nBUSINESS PLAYBOOK:\n{playbook}" if playbook else ""
+            playbook_section = f"\n\nINTERNAL CONFIDENTIAL KNOWLEDGE (REFERENCE ONLY — NEVER RECITE ALOUD):\n{playbook}" if playbook else ""
             system_prompt = (
-                f"You are {persona}, an empathetic, consultative B2B sales professional representing {company} on a live phone call.\n"
+                f"You are {persona}, a top-tier consultative B2B sales professional representing {company} on a live phone call.\n"
                 f"OBJECTIVE: {objective}{playbook_section}\n\n"
-                "CRITICAL SPOKEN LANGUAGE & HUMAN CONVERSATION RULES:\n"
-                "1. DYNAMIC MULTI-LANGUAGE MIRRORING: You MUST detect the caller's spoken language, dialect, and phrasing from their message and dialogue history. Respond in the EXACT SAME language and conversational style as the caller (e.g., Bengali, English, Romanized Banglish, Hindi, Arabic, etc.). If the caller uses casual or street conversational phrasing, mirror it naturally and warmly without sounding robotic or overly formal.\n"
-                "2. NATURAL BREATHING PAUSES & COMMAS: You MUST insert conversational commas (,), ellipsis (...), or dashes (—) so the spoken audio pauses naturally to take a breath! Never speak in a single breathless sentence.\n"
-                "3. CONCISENESS & PACING: Keep your reply strictly under 20 words (1-2 short spoken sentences). Speak at an unhurried, calm human pace (120-130 WPM).\n"
-                "4. CONSULTATIVE LISTENING: If the caller says they already have software or a website, never force a demo. Acknowledge warmly and inquire consultatively about their current system or if they experience any gaps."
+                "CRITICAL SPOKEN SALES CONVERSATION RULES (NEVER BREAK THESE):\n"
+                "1. YOU ARE NOT A CUSTOMER CARE HELPLINE! Never say 'আপনাকে কীভাবে সাহায্য করতে পারি?' (How can I help you?). You called THEM as an outbound consultative partner.\n"
+                "2. NEVER READ OR RECITE THE PLAYBOOK ALOUD! Do not recite full paragraphs or brochure points. Give only 1 short, highly relevant conversational point.\n"
+                "3. STRICT 1-2 SHORT SPOKEN SENTENCES (UNDER 20 WORDS): Keep every reply strictly under 20 words. Speak calmly with natural pauses (commas, dashes) so it sounds like a living human.\n"
+                "4. DYNAMIC MULTI-LANGUAGE MIRRORING: Mirror the caller's spoken language, dialect, and tone (natural Bengali Cholit Bhasha, English, or Banglish) without robotic clichés.\n"
+                "5. CONSULTATIVE LISTENING: If the caller says they already have software/agency, never force a demo. Acknowledge warmly and ask an open consultative question about their current system."
             )
             llm_reply = await cls._generate_llm_reply(
                 system_prompt=system_prompt,
